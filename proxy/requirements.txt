@@ -1,0 +1,4 @@
+flask
+chromadb
+anthropic
+requests
