@@ -54,3 +54,18 @@ services:
       - ANTHROPIC_BASE_URL=http://rag-proxy:5000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     entrypoint: ["tail", "-f", "/dev/null"]
+
+# 5. Test Runner
+  tests:
+    build: ./proxy
+    container_name: rag-tests
+    volumes:
+      - ./proxy:/app/proxy          # Mount source code
+      - ./scripts:/app/scripts      # Mount scripts for post_process
+      - ./tests:/app/tests          # Mount tests
+    # We override the entrypoint to run tests instead of starting the server
+    entrypoint: ["python3", "-m", "unittest", "discover", "/app/tests"]
+    environment:
+      - ANTHROPIC_API_KEY=dummy_key_for_testing
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
