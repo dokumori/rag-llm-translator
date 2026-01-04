@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 import chromadb
 import anthropic
 import os
-import sys
 
 app = Flask(__name__)
 
@@ -76,10 +75,38 @@ def handle_translation():
 
         final_system = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
+        # # 4. Log for Debugging
+        # print("\n" + "="*50, flush=True)
+        # print(f"--- SENDING PROMPT TO CLAUDE ({requested_model}) ---", flush=True)
+        # print(f"SOURCE: {source_text[:50]}...", flush=True)
+        # print("="*50 + "\n", flush=True)
+
         # 4. Log for Debugging
         print("\n" + "="*50, flush=True)
         print(f"--- SENDING PROMPT TO CLAUDE ({requested_model}) ---", flush=True)
-        print(f"SOURCE: {source_text[:50]}...", flush=True)
+
+        # ATTEMPT TO ISOLATE AND PRETTY-PRINT THE BATCH
+        try:
+            import json
+            # The prompt usually ends with the JSON list. We look for the last opening bracket.
+            # This avoids catching the "Example: [...]" inside the system instructions.
+            list_start = source_text.rfind('[')
+
+            if list_start != -1:
+                json_part = source_text[list_start:]
+                batch_items = json.loads(json_part)
+                print(f"📦 BATCH CONTENT: {len(batch_items)} strings", flush=True)
+                print(f"SOURCE: {source_text[:50]}...", flush=True)
+                # ensure_ascii=False allows Japanese characters to print correctly
+                print(json.dumps(batch_items, indent=2, ensure_ascii=False), flush=True)
+            else:
+                # Fallback: Print raw text if no JSON list found
+                print(f"📜 FULL SOURCE TEXT (No JSON found):\n{source_text}", flush=True)
+
+        except Exception as log_err:
+            # If parsing fails, just print the raw text safely
+            print(f"📜 RAW SOURCE TEXT (Parse failed: {log_err}):\n{source_text}", flush=True)
+
         print("="*50 + "\n", flush=True)
 
         # 5. Call API
