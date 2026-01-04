@@ -12,9 +12,12 @@ The filenames don't need to follow the example below:
 
 | File | Location | Description |
 |------|----------|-------------|
-|en-ja.po|(root)/po/untranslated/|The .po file **without** the translated strings. Export from a working Drupal instance|
+|en-ja.po|(root)/po/untranslated/|The .po file **without** the translated strings. Export from a working Drupal instance.|
 |refrerence.po|(root)/tm_source/|The .po file **with** the translations. Used as a reference to improve the quality and consistency of the translation|
 |glossary.csv|(root)/tm_source/|The translation dictionary for improving the consistency of the translation|
+
+**IMPORTANT:** You need to add the metadata `"Language: ja\n"
+` in en-ja.po (or the .po file whose content you want to translate) to the header entry, which is the chunk of lines you see at the top of a .po file. Without this line, gpt-po-translator cannot know what languate to translate into, and ends the process silently. We may automate this in the future.
 
 ## Set up the translator
 
