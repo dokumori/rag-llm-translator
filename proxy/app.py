@@ -9,8 +9,8 @@ app = Flask(__name__)
 # Clients
 real_claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 chroma_client = chromadb.HttpClient(
-    host=os.environ.get("CHROMA_HOST", "chroma"),
-    port=int(os.environ.get("CHROMA_PORT", 8000))
+    host = os.environ.get("CHROMA_HOST", "chroma"),
+    port = int(os.environ.get("CHROMA_PORT", 8000))
 )
 
 def get_system_prompt_from_md():
@@ -27,11 +27,15 @@ def handle_translation():
         messages = data.get('messages', [])
         user_messages = [m for m in messages if m.get('role') == 'user']
 
+        # Default to Haiku 3 if not provided, but respect the client's choice
+        requested_model = data.get('model', "claude-3-haiku-20240307")
+
         # Validation / Ping Check
         if not user_messages:
             return jsonify(real_claude.messages.create(
-                model="claude-3-haiku-20240307", max_tokens=10,
-                messages=[{"role": "user", "content": "Ping"}]
+                model = requested_model,
+                max_tokens = 10,
+                messages = [{"role": "user", "content": "Ping"}]
             ).model_dump())
 
         source_text = user_messages[-1].get('content', '')
@@ -48,7 +52,8 @@ def handle_translation():
             if gloss_res['documents'] and gloss_res['documents'][0]:
                 rag_content += "\n<glossary_matches>\n"
                 for i, doc in enumerate(gloss_res['documents'][0]):
-                    rag_content += f"- '{doc}' -> '{gloss_res['metadatas'][0][i]['target']}'\n"
+                    target = gloss_res['metadatas'][0][i].get('target', '')
+                    rag_content += f"- '{doc}' -> '{target}'\n"
                 rag_content += "</glossary_matches>\n"
 
             # Check TM
@@ -57,7 +62,8 @@ def handle_translation():
             if tm_res['documents'] and tm_res['documents'][0]:
                 rag_content += "\n<translation_memory_matches>\n"
                 for i, doc in enumerate(tm_res['documents'][0]):
-                    rag_content += f"Source: {doc}\nTarget: {tm_res['metadatas'][0][i]['target']}\n---\n"
+                    target = tm_res['metadatas'][0][i].get('target', '')
+                    rag_content += f"Source: {doc}\nTarget: {target}\n---\n"
                 rag_content += "</translation_memory_matches>\n"
 
         except Exception as e:
@@ -72,24 +78,23 @@ def handle_translation():
 
         # 4. Log for Debugging
         print("\n" + "="*50, flush=True)
-        print("--- SENDING PROMPT TO CLAUDE ---", flush=True)
+        print(f"--- SENDING PROMPT TO CLAUDE ({requested_model}) ---", flush=True)
         print(f"SOURCE: {source_text[:50]}...", flush=True)
-        print(f"PROMPT:\n{final_system}", flush=True)
         print("="*50 + "\n", flush=True)
 
         # 5. Call API
         response = real_claude.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=data.get('max_tokens', 1000),
-            messages=messages,
-            system=final_system,
-            temperature=0
+            model = requested_model, # <--- THIS IS THE KEY CHANGE
+            max_tokens = data.get('max_tokens', 1000),
+            messages = messages,
+            system = final_system,
+            temperature = 0
         )
         return jsonify(response.model_dump())
 
     except Exception as e:
-        print(f"❌ ERROR: {e}", flush=True)
+        print(f"❌ ERROR: {e}", flush = True)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host = '0.0.0.0', port = 5000)
