@@ -15,7 +15,7 @@ docker exec drupal-translator cp -r /app/po/untranslated/. /app/po/translated/
 echo "🚀 Starting Translation..."
 docker exec drupal-translator gpt-po-translator \
   --provider anthropic \
-  --model claude-haiku-4-5-20251001 \
+  --model claude-3-haiku-20240307 \
   --folder /app/po/translated \
   --lang ja \
   --bulk \
@@ -33,8 +33,9 @@ echo "✅ Done!"
 #The default is 50. Reduced for improved accuracy (more costs)
 
 # alternative models
-#--model claude-3-haiku-20240307 \
-#--model claude-haiku-4-5-20251001 \
+# claude-3-opus-20240229  >> Use this for a dry-run. No actual API calls are made
+# claude-3-haiku-20240307
+# claude-haiku-4-5-20251001
 
 #   -vv > debug_run.log 2>&1
 
