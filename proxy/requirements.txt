@@ -2,3 +2,4 @@ flask
 chromadb
 anthropic
 requests
+sentence-transformers
