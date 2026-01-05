@@ -10,7 +10,6 @@ echo "Please select the Anthropic model to use:"
 echo "Pricing info: https://platform.claude.com/docs/en/about-claude/pricing"
 echo "----------------------------------------------------------------"
 
-# 1. What the user sees
 menu_options=(
   "Dry Run (No API calls are made)"
   "Haiku 3 (claude-3-haiku-20240307)"
@@ -19,32 +18,36 @@ menu_options=(
   "Opus 4.5 (claude-opus-4-5-20251101)"
 )
 
-# 2. The actual IDs (Order must match the list above!)
-model_ids=(
-  "claude-3-opus-20240229" # Your dry run placeholder
-  "claude-3-haiku-20240307"
-  "claude-haiku-4-5-20251001"
-  "claude-sonnet-4-5-20250929"
-  "claude-opus-4-5-20251101"
-)
-
 PS3="Enter the number of your choice: "
 
 select opt in "${menu_options[@]}"
 do
-  # Check if the input is a valid number within range
-  if [[ -n "$opt" ]]; then
-    # Map the user's number choice ($REPLY) to the model_ids array
-    # We use $((REPLY-1)) because Bash arrays are 0-indexed
-    SELECTED_MODEL="${model_ids[$((REPLY-1))]}"
-    break
-  else
-    echo "Invalid option: $REPLY"
-  fi
+  case $opt in
+    "Dry Run (No API calls are made)")
+      SELECTED_MODEL="claude-3-opus-20240229"
+      break
+      ;;
+    "Haiku 3 (claude-3-haiku-20240307)")
+      SELECTED_MODEL="claude-3-haiku-20240307"
+      break
+      ;;
+    "Haiku 4.5 (claude-haiku-4-5-20251001)")
+      SELECTED_MODEL="claude-haiku-4-5-20251001"
+      break
+      ;;
+    "Sonnet 4.5 (claude-sonnet-4-5-20250929)")
+      SELECTED_MODEL="claude-sonnet-4-5-20250929"
+      break
+      ;;
+    "Opus 4.5 (claude-opus-4-5-20251101)")
+      SELECTED_MODEL="claude-opus-4-5-20251101"
+      break
+      ;;
+    *) 
+      echo "Invalid option $REPLY"
+      ;;
+  esac
 done
-
-echo "You selected: $opt"
-echo "Model ID: $SELECTED_MODEL"
 
 echo ""
 echo "✅ Selected Model: $SELECTED_MODEL"
