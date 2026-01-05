@@ -69,3 +69,6 @@ services:
       - ANTHROPIC_API_KEY=dummy_key_for_testing
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+
+volumes:
+  chroma_data:
