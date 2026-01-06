@@ -15,6 +15,7 @@ menu_options=(
   "Haiku 3 (claude-3-haiku-20240307)"
   "Haiku 4.5 (claude-haiku-4-5-20251001)"
   "Sonnet 4.5 (claude-sonnet-4-5-20250929)"
+  "Opus 4.5 (claude-opus-4-5-20251101)"
 )
 
 PS3="Enter the number of your choice: "
@@ -23,7 +24,7 @@ select opt in "${menu_options[@]}"
 do
   case $opt in
     "Dry Run (No API calls are made)")
-      # FIX 1: Use the specific Opus ID that app.py is configured to intercept
+      # STRATEGY: Use the Opus model ID as the Dry Run signal.
       SELECTED_MODEL="claude-opus-4-5-20251101"
       break
       ;;
@@ -39,7 +40,7 @@ do
       SELECTED_MODEL="claude-sonnet-4-5-20250929"
       break
       ;;
-    *)
+    *) 
       echo "Invalid option $REPLY"
       ;;
   esac
@@ -48,10 +49,29 @@ done
 echo ""
 echo "✅ Selected Model: $SELECTED_MODEL"
 echo "----------------------------------------------------------------"
-echo ""
+
+
+# --- Wait until RAG proxy wakes up ---
+echo "⏳ Waiting for RAG Proxy to wake up (loading AI models)..."
+echo "It can take a few minutes. Thanks for your patience!"
+MAX_RETRIES=60
+COUNT=0
+URL="http://rag-proxy:5000/v1/models"
+
+until docker exec drupal-translator python3 -c "import urllib.request; urllib.request.urlopen('$URL')" > /dev/null 2>&1; do
+  echo "   ... proxy is sleeping. Retrying in 2s..."
+  sleep 2
+  COUNT=$((COUNT+1))
+  if [ $COUNT -ge $MAX_RETRIES ]; then
+    echo "❌ Timeout: RAG Proxy failed to start after 120 seconds."
+    exit 1
+  fi
+done
+
+echo "✅ RAG Proxy is ready!"
+echo "----------------------------------------------------------------"
 
 echo "🧹 Cleaning previous run..."
-# Ensure directory exists before emptying to prevent errors
 docker exec drupal-translator mkdir -p /app/po/translated
 docker exec drupal-translator sh -c 'rm -rf /app/po/translated/*'
 
@@ -60,9 +80,13 @@ docker exec drupal-translator cp -r /app/po/untranslated/. /app/po/translated/
 
 echo "🚀 Starting Translation..."
 
-# FIX 2: Pass ANTHROPIC_BASE_URL to force the tool to use our local proxy.
-# Note: We do NOT include '/v1' here, as the client appends it automatically.
-docker exec -e ANTHROPIC_BASE_URL="http://rag-proxy:5000" drupal-translator gpt-po-translator \
+# FIX: Pass EVERY known environment variable for Anthropic Base URLs.
+# We also include '/v1' in the path, as some older clients require the full suffix.
+docker exec \
+  -e ANTHROPIC_BASE_URL="http://rag-proxy:5000" \
+  -e ANTHROPIC_API_URL="http://rag-proxy:5000" \
+  -e ANTHROPIC_ENDPOINT_URL="http://rag-proxy:5000" \
+  drupal-translator gpt-po-translator \
   --provider anthropic \
   --model "$SELECTED_MODEL" \
   --folder /app/po/translated \
@@ -72,20 +96,9 @@ docker exec -e ANTHROPIC_BASE_URL="http://rag-proxy:5000" drupal-translator gpt-
 
 echo "✨ Post-processing variables..."
 docker cp scripts/post_process.py drupal-translator:/app/post_process.py
-
-# Point to the FOLDER, not the file.
 docker exec drupal-translator python3 /app/post_process.py /app/po/translated
 
 echo "✅ Done!"
-
-###
-# The default is 50. Reduced for improved accuracy (more costs)
-
-# alternative models
-# claude-opus-4-5-20251101  >> Use this for a dry-run (intercepted by Proxy)
-# claude-3-haiku-20240307
-# claude-haiku-4-5-20251001
-# claude-sonnet-4-5-20250929
 
 ###
 #The default is 50. Reduced for improved accuracy (more costs)
