@@ -142,8 +142,8 @@ def handle_translation():
     print("=" * 50 + "\n", flush = True)
 
     # --- 6. DRY RUN CHECK ---
-    # If the model `claude-3-opus-20240229` is specified, a dry run is triggered
-    if requested_model == "claude-3-opus-20240229":
+    # If the model `claude-opus-4-5-20251101` is specified, a dry run is triggered
+    if requested_model == "claude-opus-4-5-20251101"":
       print(f"🚫 DRY RUN STOP: Aborting API call.", flush = True)
       mock_translations = [f"[DRY RUN] Translation {i + 1}" for i in range(len(query_payload))]
 
