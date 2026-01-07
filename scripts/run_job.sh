@@ -50,27 +50,6 @@ echo ""
 echo "✅ Selected Model: $SELECTED_MODEL"
 echo "----------------------------------------------------------------"
 
-
-# --- Wait until RAG proxy wakes up ---
-echo "⏳ Waiting for RAG Proxy to wake up (loading AI models)..."
-echo "It can take a few minutes. Thanks for your patience!"
-MAX_RETRIES=60
-COUNT=0
-URL="http://rag-proxy:5000/v1/models"
-
-until docker exec drupal-translator python3 -c "import urllib.request; urllib.request.urlopen('$URL')" > /dev/null 2>&1; do
-  echo "   ... proxy is sleeping. Retrying in 2s..."
-  sleep 2
-  COUNT=$((COUNT+1))
-  if [ $COUNT -ge $MAX_RETRIES ]; then
-    echo "❌ Timeout: RAG Proxy failed to start after 120 seconds."
-    exit 1
-  fi
-done
-
-echo "✅ RAG Proxy is ready!"
-echo "----------------------------------------------------------------"
-
 echo "🧹 Cleaning previous run..."
 docker exec drupal-translator mkdir -p /app/po/translated
 docker exec drupal-translator sh -c 'rm -rf /app/po/translated/*'
