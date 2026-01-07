@@ -143,12 +143,18 @@ def handle_translation():
 
                # LOG THE RAW DISTANCE
                print(f"📏 TM DISTANCE: {dist:.4f} | Query: '{query_payload[i]}' vs Match: '{src}'", flush=True)
-               
+
                if dist < SIMILARITY_THRESHOLD:
                  found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
     except Exception as e:
       print(f"⚠️ RAG Lookup skipped: {e}", flush=True)
+
+    if found_glossary:
+        rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
+
+    if found_tm:
+        rag_content += "\n<tm_matches>\n" + "\n".join(found_tm) + "\n</tm_matches>\n"
 
     # --- 4. CONSTRUCT PROMPT ---
     original_system = data.get('system', "")
