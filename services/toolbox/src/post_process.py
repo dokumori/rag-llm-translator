@@ -37,11 +37,14 @@ def process_single_file(file_path):
     print(f"❌ Failed to process {file_path}: {e}")
 
 if __name__ == "__main__":
-  if len(sys.argv) < 2:
-    print("Usage: python3 post_process.py <file_or_directory>")
-    sys.exit(1)
+  default_path = "/app/po/output"
 
-  input_path = sys.argv[1]
+  if len(sys.argv) < 2:
+    print(f"⚠️ No path provided. Defaulting to: {default_path}")
+    input_path = default_path
+  else:
+    input_path = sys.argv[1]
+
   files_to_process = []
 
   # Logic: Handle both specific files and directories

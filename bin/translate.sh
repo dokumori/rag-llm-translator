@@ -1,7 +1,13 @@
 #!/bin/bash
-# run_job.sh
+# bin/translate.sh
 
-# Stop execution on errors
+# 1. Load environment variables (ignoring UID/GID to prevent shell errors)
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
+elif [ -f ../.env ]; then
+  export $(grep -v '^#' ../.env | grep -vE '^(UID|GID)' | xargs)
+fi
+
 set -e
 
 # --- Model Selection Menu ---
@@ -10,6 +16,7 @@ echo "Please select the Anthropic model to use:"
 echo "Pricing info: https://platform.claude.com/docs/en/about-claude/pricing"
 echo "----------------------------------------------------------------"
 
+# RENAMED from 'options' to 'menu_options' to avoid Zsh reserved variable conflict
 menu_options=(
   "Dry Run (No API calls are made)"
   "Haiku 3 (claude-3-haiku-20240307)"
@@ -20,11 +27,11 @@ menu_options=(
 
 PS3="Enter the number of your choice: "
 
+# Use 'select' with the safe variable name
 select opt in "${menu_options[@]}"
 do
-  case $opt in
+  case "$opt" in
     "Dry Run (No API calls are made)")
-      # STRATEGY: Use the Opus model ID as the Dry Run signal.
       SELECTED_MODEL="claude-opus-4-5-20251101"
       break
       ;;
@@ -40,42 +47,47 @@ do
       SELECTED_MODEL="claude-sonnet-4-5-20250929"
       break
       ;;
+    "Opus 4.5 (claude-opus-4-5-20251101)")
+      SELECTED_MODEL="claude-opus-4-5-20251101"
+      break
+      ;;
     *) 
-      echo "Invalid option $REPLY"
+      echo "❌ Invalid option. Please try again."
       ;;
   esac
 done
+
+# --- CRITICAL SAFETY CHECK ---
+if [ -z "$SELECTED_MODEL" ]; then
+  echo "❌ Error: No model was selected. Exiting."
+  exit 1
+fi
 
 echo ""
 echo "✅ Selected Model: $SELECTED_MODEL"
 echo "----------------------------------------------------------------"
 
 echo "🧹 Cleaning previous run..."
-docker exec drupal-translator mkdir -p /app/po/translated
-docker exec drupal-translator sh -c 'rm -rf /app/po/translated/*'
+docker compose exec toolbox sh -c 'rm -rf /app/po/output/*'
 
 echo "📂 Copying fresh files..."
-docker exec drupal-translator cp -r /app/po/untranslated/. /app/po/translated/
+# (Files are read from input volume by the python script)
 
-echo "🚀 Starting Translation..."
+echo "🚀 Starting Translation Runner..."
 
-# FIX: Pass EVERY known environment variable for Anthropic Base URLs.
-# We also include '/v1' in the path, as some older clients require the full suffix.
-docker exec \
+# Call the Python Runner
+docker compose exec \
+  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
   -e ANTHROPIC_BASE_URL="http://rag-proxy:5000" \
   -e ANTHROPIC_API_URL="http://rag-proxy:5000" \
   -e ANTHROPIC_ENDPOINT_URL="http://rag-proxy:5000" \
-  drupal-translator gpt-po-translator \
-  --provider anthropic \
-  --model "$SELECTED_MODEL" \
-  --folder /app/po/translated \
-  --lang ja \
-  --bulk \
-  --bulksize 15
+  toolbox python3 /app/src/translate_runner.py \
+  "$SELECTED_MODEL" \
+  "/app/po/input" \
+  "/app/po/output"
 
 echo "✨ Post-processing variables..."
-docker cp scripts/post_process.py drupal-translator:/app/post_process.py
-docker exec drupal-translator python3 /app/post_process.py /app/po/translated
+docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
 
 echo "✅ Done!"
 

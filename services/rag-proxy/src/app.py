@@ -28,6 +28,7 @@ e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
 )
 
 def get_system_prompt_from_md():
+  # MATCHES VOLUME: ./config/system_prompt.md:/app/system_prompt.md:ro
   path = "/app/system_prompt.md"
   if os.path.exists(path):
     with open(path, "r", encoding = "utf-8") as f:

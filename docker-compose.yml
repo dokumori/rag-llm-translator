@@ -1,74 +1,48 @@
 services:
-  # 1. Vector Database
   chroma:
     image: chromadb/chroma:latest
-    container_name: chroma-db
     ports:
-      - "8000:8000"
+      - "${CHROMA_PORT}:8000"
     volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
+      - ./data/chroma_db:/chroma/chroma
+    networks:
+      - app_network
 
-  # 2. RAG Proxy
   rag-proxy:
-    volumes:
-      - ./system_prompt.md:/app/system_prompt.md:ro  # Mount the prompt file
-      - ./proxy/app.py:/app/app.py:ro
-    build: ./proxy
-    container_name: rag-proxy
-    depends_on:
-      - chroma
+    build: ./services/rag-proxy
     ports:
       - "5001:5000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
-      - PYTHONUNBUFFERED=1
-
-# 3. UTILITY (DATA INGESTOR)
-  ingestor:
-    build: ./scripts
-    container_name: rag-ingestor
+    volumes:
+      # Mount config so you can edit prompt without rebuilding
+      - ./config/system_prompt.md:/app/system_prompt.md:ro
     depends_on:
       - chroma
-    volumes:
-      # Mount the source data so the script can read it
-      - ./tm_source:/app/tm_source
-      - ./scripts:/app
+    networks:
+      - app_network
+
+  # This container acts as your "swiss army knife" for tasks
+  toolbox:
+    build: ./services/toolbox
+    # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
+    command: tail -f /dev/null 
     environment:
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
-
-# 4. Translator Too
-  translator:
-    image: ghcr.io/pescheckit/python-gpt-po:latest
-    platform: linux/amd64
-    container_name: drupal-translator
+    volumes:
+      # Map the data directories relative to the root
+      - ./data/glossary:/app/tm_source
+      - ./data/translations:/app/po
+      # Map source code for hot-reloading scripts during dev
+      - ./services/toolbox/src:/app/src
     depends_on:
-      - rag-proxy
-    volumes:
-      - ./po:/app/po                     # Access to both untranslated and translated folders
-    environment:
-      - ANTHROPIC_BASE_URL=http://rag-proxy:5000
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-    entrypoint: ["tail", "-f", "/dev/null"]
+      - chroma
+    networks:
+      - app_network
 
-# 5. Test Runner
-  tests:
-    build: ./proxy
-    container_name: rag-tests
-    volumes:
-      - ./proxy:/app/proxy          # Mount source code
-      - ./scripts:/app/scripts      # Mount scripts for post_process
-      - ./tests:/app/tests          # Mount tests
-    # We override the entrypoint to run tests instead of starting the server
-    entrypoint: ["python3", "-m", "unittest", "discover", "/app/tests"]
-    environment:
-      - ANTHROPIC_API_KEY=dummy_key_for_testing
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
-
-volumes:
-  chroma_data:
+networks:
+  app_network:
+    driver: bridge

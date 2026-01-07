@@ -1,7 +1,13 @@
 FROM python:3.10-slim
+
 WORKDIR /app
+
+# Install dependencies first (caching layer)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
-# We do not copy system_prompt.md here; we mount it via Docker Compose
+
+# Copy source code
+COPY src/ .
+
+# Run the application
 CMD ["python", "app.py"]

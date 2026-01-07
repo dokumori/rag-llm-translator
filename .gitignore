@@ -1,0 +1,72 @@
+# --- Operating System (macOS) ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# --- IDE (Visual Studio Code) ---
+.vscode/*
+# Uncomment the following lines if you want to share specific config with your team:
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+*.code-workspace
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+.env/
+venv.bak/
+
+# --- Environment Variables (Security) ---
+.env
+.env.local
+.env.*.local
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Project Logs ---
+*.log
+
+# --- Project Data & Runtime ---
+# Ignore the entire data directory where DBs and active files live
+data/
+
+# Specific File Types
+*.csv
+*.po
+*.pot
