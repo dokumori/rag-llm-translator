@@ -6,8 +6,14 @@ import os
 import sys
 import json
 import time
-
 app = Flask(__name__)
+
+# --- 1. Load Model at Startup (Prevent Timeout on first request) ---
+print("⏳ Loading Embedding Model... (This may take a while)", flush=True)
+e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+  model_name="intfloat/multilingual-e5-large" # consider 'small' if OOM occurs
+)
+print("✅ Embedding Model Loaded", flush=True)
 
 # Clients
 real_claude = anthropic.Anthropic(api_key = os.environ.get("ANTHROPIC_API_KEY"))
@@ -51,7 +57,7 @@ def handle_translation():
     data = request.json
     messages = data.get('messages', [])
     user_messages = [m for m in messages if m.get('role') == 'user']
-    
+
     # DEBUG: Strip whitespace to be safe
     requested_model = data.get('model', "claude-3-haiku-20240307").strip()
 
@@ -64,7 +70,7 @@ def handle_translation():
       ).model_dump())
 
     source_text = user_messages[-1].get('content', '')
-    
+
     # --- 2. EXTRACT CONTENT FOR RAG ---
     query_payload = []
     try:
@@ -95,37 +101,53 @@ def handle_translation():
     rag_content = ""
     found_glossary = set()
     found_tm = set()
+    
+    # Set this high temporarily to ensure we see EVERYTHING in the logs
+    SIMILARITY_THRESHOLD = 2.0 
 
     try:
-      # A. Glossary Lookup
-      gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function=e5_ef)
-      gloss_res = gloss_col.query(query_texts = query_payload, n_results = 1)
+      existing_collections = [c.name for c in chroma_client.list_collections()]
 
-      if gloss_res['documents']:
-        for i, doc_list in enumerate(gloss_res['documents']):
-          if doc_list:
-             src = doc_list[0]
-             tgt = gloss_res['metadatas'][i][0].get('target', '')
-             found_glossary.add(f"- '{src}' -> '{tgt}'")
+      # A. Glossary Lookup
+      if "drupal_glossary" in existing_collections:
+        gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function=e5_ef)
+        gloss_res = gloss_col.query(
+          query_texts=query_payload, n_results=1, include=["documents", "metadatas", "distances"]
+        )
+        if gloss_res['documents']:
+          for i, doc_list in enumerate(gloss_res['documents']):
+            if doc_list:
+               dist = gloss_res['distances'][i][0]
+               src = doc_list[0]
+               tgt = gloss_res['metadatas'][i][0].get('target', '')
+               
+               # LOG THE RAW DISTANCE
+               print(f"📏 GLOSSARY DISTANCE: {dist:.4f} | Query: '{query_payload[i]}' vs Match: '{src}'", flush=True)
+
+               if dist < SIMILARITY_THRESHOLD:
+                 found_glossary.add(f"- '{src}' -> '{tgt}'")
 
       # B. TM Lookup
-      tm_col = chroma_client.get_collection("drupal_tm", embedding_function=e5_ef)
-      tm_res = tm_col.query(query_texts = query_payload, n_results = 1)
+      if "drupal_tm" in existing_collections:
+        tm_col = chroma_client.get_collection("drupal_tm", embedding_function=e5_ef)
+        tm_res = tm_col.query(
+          query_texts=query_payload, n_results=1, include=["documents", "metadatas", "distances"]
+        )
+        if tm_res['documents']:
+          for i, doc_list in enumerate(tm_res['documents']):
+            if doc_list:
+               dist = tm_res['distances'][i][0]
+               src = doc_list[0]
+               tgt = tm_res['metadatas'][i][0].get('target', '')
 
-      if tm_res['documents']:
-        for i, doc_list in enumerate(tm_res['documents']):
-          if doc_list:
-             src = doc_list[0]
-             tgt = tm_res['metadatas'][i][0].get('target', '')
-             found_tm.add(f"Source: {src}\nTarget: {tgt}")
+               # LOG THE RAW DISTANCE
+               print(f"📏 TM DISTANCE: {dist:.4f} | Query: '{query_payload[i]}' vs Match: '{src}'", flush=True)
+               
+               if dist < SIMILARITY_THRESHOLD:
+                 found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
     except Exception as e:
-      print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
-
-    if found_glossary:
-      rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
-    if found_tm:
-      rag_content += "\n<translation_memory_matches>\n" + "\n---\n".join(found_tm) + "\n</translation_memory_matches>\n"
+      print(f"⚠️ RAG Lookup skipped: {e}", flush=True)
 
     # --- 4. CONSTRUCT PROMPT ---
     original_system = data.get('system', "")
@@ -142,10 +164,10 @@ def handle_translation():
     if rag_content.strip():
       print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush = True)
       print(rag_content[:500] + ("..." if len(rag_content) > 500 else ""), flush = True)
-    
+
     else:
       print("⚠️ NO RAG CONTEXT FOUND", flush = True)
-    
+
     print("-" * 20, flush = True)
     print(f"📦 BATCH SIZE: {len(query_payload)} items", flush = True)
     print(json.dumps(query_payload, indent = 2, ensure_ascii = False), flush = True)
