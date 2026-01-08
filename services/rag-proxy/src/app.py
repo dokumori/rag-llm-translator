@@ -3,14 +3,13 @@ import chromadb
 from chromadb.utils import embedding_functions
 from openai import OpenAI
 import os
-import sys
 import json
 import time
 
 app = Flask(__name__)
 
 # --- 1. Load Model at Startup ---
-print("⏳ Loading Embedding Model... (This may take a while)", flush = True)
+print("⏳ Loading Embedding Model...", flush = True)
 e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
   model_name = "intfloat/multilingual-e5-large"
 )
@@ -34,8 +33,10 @@ def get_system_prompt_from_md():
   path = "/app/system_prompt.md"
   if os.path.exists(path):
     with open(path, "r", encoding = "utf-8") as f:
-      return f.read()
-  return "You are a professional translator."
+      content = f.read().strip()
+      if content:
+        return content
+  return "You are a professional translator for Drupal CMS."
 
 @app.route('/v1/chat/completions', methods = ['POST'])
 def handle_translation():
@@ -50,7 +51,7 @@ def handle_translation():
 
     source_text = user_messages[-1].get('content', '')
 
-    # --- 1. EXTRACT CONTENT FOR RAG ---
+    # --- 1. EXTRACT CONTENT FOR RAG (RESTORED) ---
     query_payload = []
     try:
       list_start = source_text.rfind('[')
@@ -75,12 +76,12 @@ def handle_translation():
         cleaned_payload.append(item)
     query_payload = cleaned_payload
 
-    # --- 2. RAG LOOKUP ---
+    # --- 2. RAG LOOKUP (RESTORED) ---
     expert_instructions = get_system_prompt_from_md()
     rag_content = ""
     found_glossary = set()
     found_tm = set()
-    SIMILARITY_THRESHOLD = 2.0 
+    SIMILARITY_THRESHOLD = 2.0
 
     try:
       existing_collections = [c.name for c in chroma_client.list_collections()]
@@ -94,7 +95,7 @@ def handle_translation():
               dist = gloss_res['distances'][i][0]
               src = doc_list[0]
               tgt = gloss_res['metadatas'][i][0].get('target', '')
-              print(f"📏 GLOSSARY DISTANCE: {dist:.4f} | Query: '{query_payload[i][:30]}' vs Match: '{src[:30]}'", flush = True)
+              print(f"📏 GLOSSARY DISTANCE: {dist:.4f} | Query: '{query_payload[i][:30]}...' vs Match: '{src[:30]}...'", flush = True)
               if dist < SIMILARITY_THRESHOLD:
                 found_glossary.add(f"- '{src}' -> '{tgt}'")
 
@@ -107,7 +108,7 @@ def handle_translation():
               dist = tm_res['distances'][i][0]
               src = doc_list[0]
               tgt = tm_res['metadatas'][i][0].get('target', '')
-              print(f"📏 TM DISTANCE: {dist:.4f} | Query: '{query_payload[i][:30]}' vs Match: '{src[:30]}'", flush = True)
+              print(f"📏 TM DISTANCE: {dist:.4f} | Query: '{query_payload[i][:30]}...' vs Match: '{src[:30]}...'", flush = True)
               if dist < SIMILARITY_THRESHOLD:
                 found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
@@ -119,47 +120,47 @@ def handle_translation():
     if found_tm:
       rag_content += "\n<tm_matches>\n" + "\n".join(found_tm) + "\n</tm_matches>\n"
 
-    # --- 3. CONSTRUCT PROMPT (RE-INTEGRATED) ---
+    # --- 3. CONSTRUCT PROMPT ---
     original_system = data.get('system', "")
     if isinstance(original_system, list):
       original_system = " ".join([s.get('text', '') for s in original_system if 'text' in s])
 
-    final_system = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
+    final_system_content = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
-    # --- 4. LOGGING (RE-INTEGRATED) ---
+    # --- 4. LOGGING (RESTORED) ---
     print("\n" + "=" * 50, flush = True)
     print(f"--- REQUEST RECEIVED (Model: {repr(requested_model)}) ---", flush = True)
 
     if rag_content.strip():
       print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush = True)
-      print(rag_content[:500] + ("..." if len(rag_content) > 500 else ""), flush = True)
+      # print(rag_content[:500] + ("..." if len(rag_content) > 500 else ""), flush = True)
     else:
       print("⚠️ NO RAG CONTEXT FOUND", flush = True)
 
     print("-" * 20, flush = True)
     print(f"📦 BATCH SIZE: {len(query_payload)} items", flush = True)
-    print(json.dumps(query_payload, indent = 2, ensure_ascii = False), flush = True)
     print("=" * 50 + "\n", flush = True)
 
     # --- 5. DRY RUN CHECK ---
     if requested_model == "claude-opus-4-5-20251101":
       print(f"🚫 DRY RUN STOP: Aborting API call.", flush = True)
       mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
+      # Return valid OpenAI JSON structure
+      content_str = json.dumps(mock_translations, ensure_ascii = False)
       return jsonify({
-        "id": f"msg_dryrun_{int(time.time())}",
+        "id": "dry-run",
         "object": "chat.completion",
         "choices": [{
           "index": 0,
           "message": {"role": "assistant", "content": json.dumps(mock_translations, ensure_ascii = False)},
+          # "message": {"role": "assistant", "content": content_str},
           "finish_reason": "stop"
         }]
       })
 
     # --- 6. REAL API CALL ---
-    new_messages = [{"role": "system", "content": final_system}]
-    for m in messages:
-      if m.get('role') != 'system':
-        new_messages.append(m)
+    new_messages = [{"role": "system", "content": final_system_content}]
+    new_messages += [m for m in messages if m.get('role') != 'system']
 
     print(f"📡 SENDING REAL API CALL TO AMAZEE ({requested_model})...", flush = True)
     response = upstream_client.chat.completions.create(

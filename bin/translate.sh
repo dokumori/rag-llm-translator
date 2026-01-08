@@ -1,22 +1,17 @@
 #!/bin/bash
 # bin/translate.sh
 
-# 1. Load environment variables (ignoring UID/GID to prevent shell errors)
+# Load environment variables
 if [ -f .env ]; then
   export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
-elif [ -f ../.env ]; then
-  export $(grep -v '^#' ../.env | grep -vE '^(UID|GID)' | xargs)
 fi
 
 set -e
 
-# --- Model Selection Menu ---
 echo "----------------------------------------------------------------"
 echo "Please select the Amazee.ai (OpenAI-compatible) model to use:"
 echo "----------------------------------------------------------------"
 
-# Define the menu options properly
-# Drupal Standard: 2-space indent
 menu_options=(
   "DeepSeek R1 (deepseek-r1-v1)"
   "Claude 3.5 Sonnet (claude-3-5-sonnet)"
@@ -28,42 +23,19 @@ menu_options=(
 
 PS3="Enter the number of your choice: "
 
-# Use 'select' with the correct variable name 'menu_options'
 select opt in "${menu_options[@]}"
 do
   case "$opt" in
-    "DeepSeek R1 (deepseek-r1-v1)")
-      SELECTED_MODEL="deepseek-r1-v1"
-      break
-      ;;
-    "Claude 3.5 Sonnet (claude-3-5-sonnet)")
-      SELECTED_MODEL="claude-3-5-sonnet"
-      break
-      ;;
-    "Claude Opus 4 (claude-opus-4-20250514-v1)")
-      SELECTED_MODEL="claude-opus-4-20250514-v1"
-      break
-      ;;
-    "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)")
-      SELECTED_MODEL="claude-sonnet-4-20250514-v1"
-      break
-      ;;
-    "Mistral Large (mistral-large-2402-v1)")
-      SELECTED_MODEL="mistral-large-2402-v1"
-      break
-      ;;
-    "Dry Run (No API calls)")
-      # Preserving specific dry-run ID as requested
-      SELECTED_MODEL="claude-opus-4-5-20251101"
-      break
-      ;;
-    *)
-      echo "❌ Invalid option. Please try again."
-      ;;
+    "DeepSeek R1 (deepseek-r1-v1)") SELECTED_MODEL="deepseek-r1-v1"; break ;;
+    "Claude 3.5 Sonnet (claude-3-5-sonnet)") SELECTED_MODEL="claude-3-5-sonnet"; break ;;
+    "Claude Opus 4 (claude-opus-4-20250514-v1)") SELECTED_MODEL="claude-opus-4-20250514-v1"; break ;;
+    "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)") SELECTED_MODEL="claude-sonnet-4-20250514-v1"; break ;;
+    "Mistral Large (mistral-large-2402-v1)") SELECTED_MODEL="mistral-large-2402-v1"; break ;;
+    "Dry Run (No API calls)") SELECTED_MODEL="claude-opus-4-5-20251101"; break ;;
+    *) echo "❌ Invalid option. Please try again.";;
   esac
 done
 
-# --- CRITICAL SAFETY CHECK ---
 if [ -z "$SELECTED_MODEL" ]; then
   echo "❌ Error: No model was selected. Exiting."
   exit 1
@@ -73,32 +45,28 @@ echo ""
 echo "✅ Selected Model: $SELECTED_MODEL"
 echo "----------------------------------------------------------------"
 
-echo "🧹 Cleaning previous run..."
-docker compose exec toolbox sh -c 'rm -rf /app/po/output/*'
+# --- FILE PREPARATION ---
+echo "🧹 Preparing output directory..."
+# Ensure directory exists and is clean
+docker compose exec toolbox sh -c 'mkdir -p /app/po/output && rm -f /app/po/output/*.po'
 
 echo "📂 Copying fresh files..."
-# Explicitly copy files so they exist even if the script fails later
-docker compose exec toolbox sh -c 'cp -r /app/po/input/. /app/po/output/'
+# Copy with archive mode (-a) to preserve attributes
+docker compose exec toolbox sh -c 'cp -a /app/po/input/. /app/po/output/'
 
-# Ensure the copied files are writable (fix permission issues)
+# CRITICAL: Fix permissions so python can overwrite files
 docker compose exec toolbox sh -c 'chmod -R 777 /app/po/output'
+
 echo "🚀 Starting Translation Runner..."
 
-# CORRECTED CONFIGURATION FOR PROXY USAGE:
-# 1. OPENAI_BASE_URL points to the internal Docker service 'rag-proxy'
-# 2. OPENAI_API_KEY can be a dummy value here, because the REAL key 
-#    is stored in the proxy container (app.py)
-
+# Note: We use 'python3 -u' to unbuffer stdout so logs appear immediately
 docker compose exec \
-  -e OPENAI_API_KEY="dummy-key-client" \
+  -e OPENAI_API_KEY="dummy" \
   -e OPENAI_BASE_URL="http://rag-proxy:5000/v1" \
-  toolbox python3 /app/src/translate_runner.py \
+  toolbox python3 -u /app/src/translate_runner.py \
   "$SELECTED_MODEL" \
   "/app/po/input" \
   "/app/po/output"
-
-echo "✨ Post-processing variables..."
-docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
 
 echo "✅ Done!"
 
