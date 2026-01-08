@@ -1,156 +1,102 @@
 import os
 import sys
-import polib
-import json
+import subprocess
 import glob
-from openai import OpenAI
+import shutil
 
-# Configuration
-BATCH_SIZE = 15
-
-def get_llm_client():
-  try:
-    client = OpenAI()
-    return client
-  except Exception as e:
-    print(f"❌ API Client Error: {e}", flush=True)
-    sys.exit(1)
-
-def translate_batch(client, model, texts):
-  """
-  Sends a batch of texts to the RAG proxy as a JSON string.
-  """
-  content_str = json.dumps(texts, ensure_ascii=False)
-  messages = [{"role": "user", "content": content_str}]
+# Drupal Standard: 2-space indent
+def run_translation(model, input_base_dir, output_base_dir):
+  # 1. Setup Directories
+  # We use a temp dir to isolate files, ensuring the tool processes exactly one file at a time
+  TEMP_WORK_DIR = "/app/temp_work_dir"
+  if os.path.exists(TEMP_WORK_DIR):
+    shutil.rmtree(TEMP_WORK_DIR)
+  os.makedirs(TEMP_WORK_DIR)
   
-  try:
-    response = client.chat.completions.create(
-      model=model,
-      messages=messages,
-      temperature=0,
-    )
-    response_content = response.choices[0].message.content.strip()
-    
-    # Clean potential markdown wrapping
-    if "```" in response_content:
-      response_content = response_content.split("```json")[-1].split("```")[0].strip()
-    
-    translated_list = json.loads(response_content)
-    
-    if isinstance(translated_list, list) and len(translated_list) == len(texts):
-      return translated_list
-    return None
+  # Ensure output directory exists
+  os.makedirs(output_base_dir, exist_ok=True)
 
-  except Exception as e:
-    print(f"⚠️ Batch Error: {e}", flush=True)
-    return None
-
-def translate_single_fallback(client, model, text):
-  """Fallback for failed batches"""
-  try:
-    messages = [{"role": "user", "content": text}]
-    response = client.chat.completions.create(
-      model=model,
-      messages=messages,
-      temperature=0,
-    )
-    return response.choices[0].message.content.strip()
-  except Exception:
-    return text
-
-MAX_BATCH_SIZE = 15
-MAX_CHARS_PER_BATCH = 4000 # Roughly 1000-1500 tokens
-
-def process_po_file(client, model, input_file, output_file):
-  print(f"🔍 Processing: {input_file}", flush = True)
-  os.makedirs(os.path.dirname(output_file), exist_ok = True)
-  
-  try:
-    po = polib.pofile(input_file)
-    untranslated_entries = [e for e in po if not e.translated()]
-    total = len(untranslated_entries)
-    
-    if total == 0:
-      po.save(output_file)
-      return
-
-    print(f"   📝 Found {total} items. Starting smart batching...", flush = True)
-
-    cursor = 0
-    batch_count = 0
-    
-    while cursor < total:
-      current_batch_entries = []
-      current_batch_chars = 0
-      
-      # Build a batch dynamically
-      while len(current_batch_entries) < MAX_BATCH_SIZE and cursor < total:
-        entry = untranslated_entries[cursor]
-        entry_len = len(entry.msgid)
-        
-        # If adding this entry exceeds our char limit, and we already have items, stop here.
-        if (current_batch_chars + entry_len) > MAX_CHARS_PER_BATCH and len(current_batch_entries) > 0:
-          break
-          
-        current_batch_entries.append(entry)
-        current_batch_chars += entry_len
-        cursor += 1
-
-      # Translate the dynamic batch
-      batch_texts = [e.msgid for e in current_batch_entries]
-      batch_count += 1
-      
-      translated_texts = translate_batch(client, model, batch_texts)
-      
-      if translated_texts:
-        for entry, translation in zip(current_batch_entries, translated_texts):
-          if translation and translation.strip():
-            entry.msgstr = translation
-      else:
-        # Fallback for the whole batch
-        for entry in current_batch_entries:
-          entry.msgstr = translate_single_fallback(client, model, entry.msgid)
-
-      # Progress logging
-      percent = (cursor / total) * 100
-      print(f"   - Batch {batch_count} done. [{cursor}/{total}] ({percent:.1f}%)", flush = True)
-      
-      # Save every batch
-      po.save(output_file)
-
-    print(f"   💾 Saved to: {output_file}", flush = True)
-
-  except Exception as e:
-    print(f"❌ Failed: {e}", flush = True)
-
-def main():
-  if len(sys.argv) < 4:
-    print("Usage: python3 translate_runner.py <model> <input_dir> <output_dir>")
-    sys.exit(1)
-
-  model_name = sys.argv[1]
-  input_base_dir = sys.argv[2]
-  output_base_dir = sys.argv[3]
-
-  print(f"🔌 Connecting to API using model: {model_name}")
-
-  client = get_llm_client()
-
-  # RECURSIVE SEARCH
+  # 2. Find files recursively
   po_files = glob.glob(os.path.join(input_base_dir, "**/*.po"), recursive=True)
   
   if not po_files:
     print(f"⚠️ No .po files found in {input_base_dir}", flush=True)
     return
 
-  print(f"🚀 Found {len(po_files)} PO files to process.", flush=True)
+  total_files = len(po_files)
+  print(f"🚀 Found {total_files} files. Using gpt-po-translator with {model}...", flush=True)
 
-  for src_file in po_files:
-    # Calculate relative path to mirror structure in output
-    rel_path = os.path.relpath(src_file, input_base_dir)
-    final_dest_file = os.path.join(output_base_dir, rel_path)
-    
-    process_po_file(client, model_name, src_file, final_dest_file)
+  # 3. Process Loop
+  for index, src_file in enumerate(po_files, 1):
+    try:
+      # Calculate paths
+      rel_path = os.path.relpath(src_file, input_base_dir)
+      filename = os.path.basename(src_file)
+      final_dest_file = os.path.join(output_base_dir, rel_path)
+      
+      # Ensure final destination directory exists
+      os.makedirs(os.path.dirname(final_dest_file), exist_ok=True)
+
+      # Progress Log
+      print(f"[{index}/{total_files}] 📦 Processing: {rel_path}", flush=True)
+
+      # A. ISOLATION STEP: Clear temp and copy target file there
+      # This mimics your original logic to force the tool to see only this file
+      for f in glob.glob(os.path.join(TEMP_WORK_DIR, "*")):
+        os.remove(f)
+      
+      temp_file_path = os.path.join(TEMP_WORK_DIR, filename)
+      shutil.copy2(src_file, temp_file_path)
+
+      # B. PREPARE COMMAND
+      # We use '--folder' to match your original successful workflow
+      cmd = [
+        "gpt-po-translator",
+        "--provider", "openai",
+        "--model", model,
+        "--folder", TEMP_WORK_DIR, 
+        "--lang", "ja",
+        "--bulk",
+        "--bulksize", "15"
+      ]
+
+      # C. CONFIGURE ENVIRONMENT (Amazee/Proxy Connection)
+      env = os.environ.copy()
+      env["OPENAI_API_KEY"] = "dummy" 
+      env["OPENAI_BASE_URL"] = "http://rag-proxy:5000/v1"
+
+      # D. EXECUTE TOOL
+      # capture_output=False lets the tool's own progress bar show in Docker logs
+      result = subprocess.run(
+        cmd,
+        env=env,
+        capture_output=False, 
+        text=True
+      )
+
+      # E. HANDLE RESULT
+      if result.returncode == 0:
+        # Success: Move the processed file from temp to final destination
+        if os.path.exists(temp_file_path):
+          shutil.copy2(temp_file_path, final_dest_file)
+          print(f"   ✅ Saved to: {final_dest_file}", flush=True)
+        else:
+          print(f"   ⚠️ Error: Output file missing in temp dir: {filename}", flush=True)
+      else:
+        print(f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})", flush=True)
+
+    except Exception as e:
+      print(f"   ❌ Critical Error on {rel_path}: {e}", flush=True)
+
+  # Cleanup
+  if os.path.exists(TEMP_WORK_DIR):
+    shutil.rmtree(TEMP_WORK_DIR)
+  
+  print("🎉 Translation run complete.", flush=True)
 
 if __name__ == "__main__":
-  main()
+  if len(sys.argv) < 4:
+    print("Usage: python3 translate_runner.py <model> <input_dir> <output_dir>")
+    sys.exit(1)
+
+  run_translation(sys.argv[1], sys.argv[2], sys.argv[3])

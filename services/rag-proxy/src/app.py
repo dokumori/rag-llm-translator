@@ -38,6 +38,25 @@ def get_system_prompt_from_md():
         return content
   return "You are a professional translator for Drupal CMS."
 
+# --- NEW: Models Endpoint for Validation ---
+@app.route('/v1/models', methods=['GET'])
+def list_models():
+  """
+  Returns a static list of models to satisfy the gpt-po-translator validation check.
+  Includes the special dry-run ID.
+  """
+  return jsonify({
+    "object": "list",
+    "data": [
+      {"id": "deepseek-r1-v1", "object": "model", "owned_by": "amazee"},
+      {"id": "claude-3-5-sonnet", "object": "model", "owned_by": "amazee"},
+      {"id": "claude-opus-4-20250514-v1", "object": "model", "owned_by": "amazee"},
+      {"id": "claude-sonnet-4-20250514-v1", "object": "model", "owned_by": "amazee"},
+      {"id": "mistral-large-2402-v1", "object": "model", "owned_by": "amazee"},
+      {"id": "claude-opus-4-5-20251101", "object": "model", "owned_by": "amazee"} # DRY RUN ID
+    ]
+  })
+
 @app.route('/v1/chat/completions', methods=['POST'])
 def handle_translation():
   try:
@@ -95,7 +114,6 @@ def handle_translation():
               dist = gloss_res['distances'][i][0]
               src = doc_list[0]
               tgt = gloss_res['metadatas'][i][0].get('target', '')
-              # We print the calculation log, but relying on the final block for visibility
               print(f"📏 GLOSSARY DIST: {dist:.4f} | '{src[:20]}...' -> '{tgt[:20]}...'", flush=True)
               if dist < SIMILARITY_THRESHOLD:
                 found_glossary.add(f"- '{src}' -> '{tgt}'")
@@ -128,20 +146,18 @@ def handle_translation():
 
     final_system_content = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
-    # --- 4. VERBOSE LOGGING (RESTORED) ---
+    # --- 4. VERBOSE LOGGING ---
     print("\n" + "=" * 50, flush=True)
     print(f"--- REQUEST RECEIVED (Model: {repr(requested_model)}) ---", flush=True)
 
     if rag_content.strip():
       print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush=True)
-      # RESTORED: Printing the full content so you can see the tags
       print(rag_content, flush=True)
     else:
       print("⚠️ NO RAG CONTEXT FOUND", flush=True)
 
     print("-" * 20, flush=True)
     print(f"📦 BATCH SIZE: {len(query_payload)} items", flush=True)
-    # RESTORED: Printing the actual input list
     print(json.dumps(query_payload, indent=2, ensure_ascii=False), flush=True)
     print("=" * 50 + "\n", flush=True)
 

@@ -61,8 +61,6 @@ echo "🚀 Starting Translation Runner..."
 
 # Note: We use 'python3 -u' to unbuffer stdout so logs appear immediately
 docker compose exec \
-  -e OPENAI_API_KEY="dummy" \
-  -e OPENAI_BASE_URL="http://rag-proxy:5000/v1" \
   toolbox python3 -u /app/src/translate_runner.py \
   "$SELECTED_MODEL" \
   "/app/po/input" \
