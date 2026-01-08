@@ -1,6 +1,32 @@
 """
-Integration Tests for RAG Proxy Service (OpenAI Compatible)
+Integration Tests for RAG Proxy Service
 ---------------------------------------
+This suite tests the `rag-proxy` Flask application (app.py).
+
+Key Features Tested:
+1. RAG Context Injection: 
+   - Mocks ChromaDB to return a fake Glossary match ("Drupal Core").
+   - Mocks the OpenAI-compatible upstream client to avoid real costs.
+   - Verifies that the 'system prompt' sent to the LLM actually contains
+     the data retrieved from ChromaDB (the RAG pattern).
+
+2. Cost Safety (Dry Run):
+   - Ensures that using the specific "Dry Run" model ID triggers a mock response
+     internally and strictly *prevents* the code from calling the real paid API.
+
+3. Health Checks:
+   - Verifies the server responds to basic ping requests.
+
+Usage:
+  Execute inside the 'rag-proxy' container:
+  $ python3 -m unittest /app/tests/integration/test_proxy.py
+
+  or
+
+  docker compose run --rm \
+  -v "$(pwd)/tests:/app/tests" \
+  -v "$(pwd)/services/rag-proxy:/app/services/rag-proxy" \
+  rag-proxy python3 -m unittest /app/tests/integration/test_proxy.py
 """
 import unittest
 from unittest.mock import patch, MagicMock

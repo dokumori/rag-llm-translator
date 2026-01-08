@@ -55,7 +55,7 @@ def run_translation(model, input_base_dir, output_base_dir):
         "--provider", "openai",
         "--model", model,
         "--folder", TEMP_WORK_DIR, 
-        "--lang", "ja",
+        "--lang", "ja", #TODO: allow users to specify the language
         "--bulk",
         "--bulksize", "15"
       ]
