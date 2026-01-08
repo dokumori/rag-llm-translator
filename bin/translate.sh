@@ -12,46 +12,52 @@ set -e
 
 # --- Model Selection Menu ---
 echo "----------------------------------------------------------------"
-echo "Please select the Anthropic model to use:"
-echo "Pricing info: https://platform.claude.com/docs/en/about-claude/pricing"
+echo "Please select the Amazee.ai (OpenAI-compatible) model to use:"
 echo "----------------------------------------------------------------"
 
-# RENAMED from 'options' to 'menu_options' to avoid Zsh reserved variable conflict
+# Define the menu options properly
+# Drupal Standard: 2-space indent
 menu_options=(
-  "Dry Run (No API calls are made)"
-  "Haiku 3 (claude-3-haiku-20240307)"
-  "Haiku 4.5 (claude-haiku-4-5-20251001)"
-  "Sonnet 4.5 (claude-sonnet-4-5-20250929)"
-  "Opus 4.5 (claude-opus-4-5-20251101)"
+  "DeepSeek R1 (deepseek-r1-v1)"
+  "Claude 3.5 Sonnet (claude-3-5-sonnet)"
+  "Claude Opus 4 (claude-opus-4-20250514-v1)"
+  "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)"
+  "Mistral Large (mistral-large-2402-v1)"
+  "Dry Run (No API calls)"
 )
 
 PS3="Enter the number of your choice: "
 
-# Use 'select' with the safe variable name
+# Use 'select' with the correct variable name 'menu_options'
 select opt in "${menu_options[@]}"
 do
   case "$opt" in
-    "Dry Run (No API calls are made)")
+    "DeepSeek R1 (deepseek-r1-v1)")
+      SELECTED_MODEL="deepseek-r1-v1"
+      break
+      ;;
+    "Claude 3.5 Sonnet (claude-3-5-sonnet)")
+      SELECTED_MODEL="claude-3-5-sonnet"
+      break
+      ;;
+    "Claude Opus 4 (claude-opus-4-20250514-v1)")
+      SELECTED_MODEL="claude-opus-4-20250514-v1"
+      break
+      ;;
+    "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)")
+      SELECTED_MODEL="claude-sonnet-4-20250514-v1"
+      break
+      ;;
+    "Mistral Large (mistral-large-2402-v1)")
+      SELECTED_MODEL="mistral-large-2402-v1"
+      break
+      ;;
+    "Dry Run (No API calls)")
+      # Preserving specific dry-run ID as requested
       SELECTED_MODEL="claude-opus-4-5-20251101"
       break
       ;;
-    "Haiku 3 (claude-3-haiku-20240307)")
-      SELECTED_MODEL="claude-3-haiku-20240307"
-      break
-      ;;
-    "Haiku 4.5 (claude-haiku-4-5-20251001)")
-      SELECTED_MODEL="claude-haiku-4-5-20251001"
-      break
-      ;;
-    "Sonnet 4.5 (claude-sonnet-4-5-20250929)")
-      SELECTED_MODEL="claude-sonnet-4-5-20250929"
-      break
-      ;;
-    "Opus 4.5 (claude-opus-4-5-20251101)")
-      SELECTED_MODEL="claude-opus-4-5-20251101"
-      break
-      ;;
-    *) 
+    *)
       echo "❌ Invalid option. Please try again."
       ;;
   esac
@@ -71,16 +77,21 @@ echo "🧹 Cleaning previous run..."
 docker compose exec toolbox sh -c 'rm -rf /app/po/output/*'
 
 echo "📂 Copying fresh files..."
-# (Files are read from input volume by the python script)
+# Explicitly copy files so they exist even if the script fails later
+docker compose exec toolbox sh -c 'cp -r /app/po/input/. /app/po/output/'
 
+# Ensure the copied files are writable (fix permission issues)
+docker compose exec toolbox sh -c 'chmod -R 777 /app/po/output'
 echo "🚀 Starting Translation Runner..."
 
-# Call the Python Runner
+# CORRECTED CONFIGURATION FOR PROXY USAGE:
+# 1. OPENAI_BASE_URL points to the internal Docker service 'rag-proxy'
+# 2. OPENAI_API_KEY can be a dummy value here, because the REAL key 
+#    is stored in the proxy container (app.py)
+
 docker compose exec \
-  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  -e ANTHROPIC_BASE_URL="http://rag-proxy:5000" \
-  -e ANTHROPIC_API_URL="http://rag-proxy:5000" \
-  -e ANTHROPIC_ENDPOINT_URL="http://rag-proxy:5000" \
+  -e OPENAI_API_KEY="dummy-key-client" \
+  -e OPENAI_BASE_URL="http://rag-proxy:5000/v1" \
   toolbox python3 /app/src/translate_runner.py \
   "$SELECTED_MODEL" \
   "/app/po/input" \

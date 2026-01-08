@@ -10,10 +10,11 @@ services:
 
   rag-proxy:
     build: ./services/rag-proxy
+    container_name: rag-proxy
     ports:
       - "5001:5000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AMAZEE_API_KEY=${AMAZEE_API_TOKEN} # Maps env var to container
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
     volumes:

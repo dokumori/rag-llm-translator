@@ -1,101 +1,118 @@
 import os
 import sys
-import subprocess
-import glob
-import shutil
-from tqdm import tqdm
+import polib
+from openai import OpenAI
 
-def run_translation(model, input_base_dir, output_base_dir):
-    # Temp directory to "trick" the tool into processing one file at a time
-    TEMP_WORK_DIR = "/app/temp_work_dir"
+def get_llm_client():
+  """
+  Initializes the OpenAI client for Amazee.ai.
+  Relies on environment variables set in translate.sh:
+  - OPENAI_API_KEY
+  - OPENAI_BASE_URL
+  """
+  # Drupal Standard: 2-space indent
+  # The OpenAI client automatically looks for OPENAI_API_KEY and OPENAI_BASE_URL
+  # in the environment, so no arguments are needed here if env vars are set.
+  try:
+    client = OpenAI()
+    return client
+  except Exception as e:
+    print(f"❌ Error initializing API client: {e}")
+    sys.exit(1)
+
+def translate_text(client, model, text, context = ""):
+  """
+  Sends the text to the LLM for translation.
+  """
+  # DRY RUN CHECK:
+  # If the model is the specific dry-run ID, return a mock translation.
+  if model == "claude-opus-4-5-20251101":
+    return f"[DRY_RUN] {text}"
+
+  # specific prompt for Drupal PO files
+  system_prompt = (
+    "You are a professional translator for Drupal CMS."
+    "Translate the following text into the target language (assumed Japanese/Target based on context)."
+    "Keep HTML tags and placeholders (like @variable or %variable) intact."
+    "Do not add explanations, only return the translated string."
+  )
+
+  messages = [
+    {"role": "system", "content": system_prompt},
+    {"role": "user", "content": f"Translate this: {text}"}
+  ]
+
+  try:
+    # Amazee.ai / OpenAI Chat Completion Call
+    response = client.chat.completions.create(
+      model = model,
+      messages = messages,
+      temperature = 0,
+    )
     
-    # Clean/Create output and temp dirs
-    os.makedirs(output_base_dir, exist_ok=True)
-    if os.path.exists(TEMP_WORK_DIR):
-        shutil.rmtree(TEMP_WORK_DIR)
-    os.makedirs(TEMP_WORK_DIR)
+    # Extract the content from the response
+    translated_text = response.choices[0].message.content.strip()
+    return translated_text
 
-    # Find all .po files in the input folder
-    po_files = glob.glob(os.path.join(input_base_dir, "**/*.po"), recursive=True)
+  except Exception as e:
+    print(f"⚠️ API Call failed for '{text[:20]}...': {e}")
+    return text # Return original on failure to avoid breaking the file
+
+def process_po_file(client, model, input_file, output_file):
+  """
+  Reads a PO file, translates untranslated entries, and saves it.
+  """
+  print(f"Processing: {input_file}")
+  
+  try:
+    po = polib.pofile(input_file)
     
-    if not po_files:
-        print(f"⚠️ No .po files found in {input_base_dir}")
-        return
+    count = 0
+    total = len([e for e in po if not e.translated()])
 
-    print(f"🚀 Starting translation of {len(po_files)} files using {model}...")
+    for entry in po:
+      if not entry.translated():
+        # Drupal Standard: space around =
+        translation = translate_text(client, model, entry.msgid)
+        entry.msgstr = translation
+        count += 1
+        
+        # Simple progress indicator
+        if count % 5 == 0:
+          print(f"  - Translated {count}/{total} entries...")
 
-    # Initialize Progress Bar
-    with tqdm(total=len(po_files), unit="file", desc="Translating") as pbar:
-        for src_file in po_files:
-            # 1. Determine relative path (e.g., 'subfolder/en-ja.po')
-            rel_path = os.path.relpath(src_file, input_base_dir)
-            filename = os.path.basename(src_file)
-            
-            # 2. Determine final destination
-            final_dest_file = os.path.join(output_base_dir, rel_path)
-            final_dest_dir = os.path.dirname(final_dest_file)
-            os.makedirs(final_dest_dir, exist_ok=True)
+    po.save(output_file)
+    print(f"✅ Saved to: {output_file}")
 
-            # 3. Update Progress Bar
-            pbar.set_description(f"Processing {filename[:20]}")
+  except Exception as e:
+    print(f"❌ Failed to process {input_file}: {e}")
 
-            # 4. ISOLATION STEP: Copy single file to temp dir
-            # Clear temp dir first
-            for f in glob.glob(os.path.join(TEMP_WORK_DIR, "*")):
-                os.remove(f)
-            
-            temp_file_path = os.path.join(TEMP_WORK_DIR, filename)
-            shutil.copy(src_file, temp_file_path)
+def main():
+  # Arguments passed from translate.sh
+  if len(sys.argv) < 4:
+    print("Usage: python3 translate_runner.py <model> <input_dir> <output_dir>")
+    sys.exit(1)
 
-            try:
-                # 5. Run Tool on the TEMP folder
-                cmd = [
-                    "gpt-po-translator",
-                    "--provider", "anthropic",
-                    "--model", model,
-                    "--folder", TEMP_WORK_DIR, # Tool processes this folder
-                    "--lang", "ja",
-                    "--bulk",
-                    "--bulksize", "15"
-                    # Note: API Keys and Base URL are passed via env vars automatically
-                ]
-                
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=True, 
-                    text=True, 
-                    env=os.environ.copy()
-                )
+  model_name = sys.argv[1]
+  input_dir = sys.argv[2]
+  output_dir = sys.argv[3]
 
-                if result.returncode != 0:
-                    tqdm.write(f"\n❌ Error processing {rel_path}:")
-                    tqdm.write(result.stderr)
-                else:
-                    # 6. Success: Move processed file to final destination
-                    # The tool usually updates the file in-place or creates a new one in the folder
-                    # We assume in-place update for the file in TEMP_WORK_DIR
-                    if os.path.exists(temp_file_path):
-                        shutil.copy(temp_file_path, final_dest_file)
-                    else:
-                        tqdm.write(f"\n⚠️ Output file missing for {rel_path}")
+  print(f"🔌 Connecting to API using model: {model_name}")
+  
+  # Initialize Client
+  client = get_llm_client()
 
-            except Exception as e:
-                tqdm.write(f"\n❌ Unexpected error on {rel_path}: {e}")
-            
-            pbar.update(1)
+  # Ensure output directory exists
+  if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
-    # Cleanup
-    if os.path.exists(TEMP_WORK_DIR):
-        shutil.rmtree(TEMP_WORK_DIR)
+  # Iterate over .po files in input directory
+  for filename in os.listdir(input_dir):
+    if filename.endswith(".po"):
+      input_path = os.path.join(input_dir, filename)
+      output_path = os.path.join(output_dir, filename)
+      
+      process_po_file(client, model_name, input_path, output_path)
 
 if __name__ == "__main__":
-    # We removed api_url arg since it's handled by env vars
-    if len(sys.argv) < 3:
-        print("Usage: python translate_runner.py <model> <input_dir> <output_dir>")
-        sys.exit(1)
-
-    model = sys.argv[1]
-    input_dir = sys.argv[2]
-    output_dir = sys.argv[3]
-
-    run_translation(model, input_dir, output_dir)
+  main()
