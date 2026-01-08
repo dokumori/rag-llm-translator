@@ -11,7 +11,7 @@ app = Flask(__name__)
 # --- 1. Load Model at Startup ---
 print("⏳ Loading Embedding Model...", flush=True)
 e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-  model_name="intfloat/multilingual-e5-large"
+  model_name = "intfloat/multilingual-e5-large"
 )
 print("✅ Embedding Model Loaded", flush=True)
 
@@ -20,31 +20,32 @@ amazee_api_key = os.environ.get("AMAZEE_API_KEY")
 amazee_base_url = "https://llm.us104.amazee.ai/v1"
 
 upstream_client = OpenAI(
-  api_key=amazee_api_key,
-  base_url=amazee_base_url
+  api_key = amazee_api_key,
+  base_url = amazee_base_url
 )
 
 chroma_client = chromadb.HttpClient(
-  host=os.environ.get("CHROMA_HOST", "chroma"),
-  port=int(os.environ.get("CHROMA_PORT", 8000))
+  host = os.environ.get("CHROMA_HOST", "chroma"),
+  port = int(os.environ.get("CHROMA_PORT", 8000))
 )
 
 def get_system_prompt_from_md():
   path = "/app/system_prompt.md"
   if os.path.exists(path):
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding = "utf-8") as f:
       content = f.read().strip()
       if content:
         return content
   return "You are a professional translator for Drupal CMS."
 
-# --- NEW: Models Endpoint for Validation ---
-@app.route('/v1/models', methods=['GET'])
+@app.route('/v1/models', methods = ['GET'])
 def list_models():
+
   """
   Returns a static list of models to satisfy the gpt-po-translator validation check.
   Includes the special dry-run ID.
   """
+
   return jsonify({
     "object": "list",
     "data": [
@@ -57,7 +58,7 @@ def list_models():
     ]
   })
 
-@app.route('/v1/chat/completions', methods=['POST'])
+@app.route('/v1/chat/completions', methods = ['POST'])
 def handle_translation():
   try:
     data = request.json
@@ -85,7 +86,6 @@ def handle_translation():
     if not query_payload:
       query_payload = [source_text.strip()]
 
-    # Cleaning step
     delimiter = "Text to translate:\n"
     cleaned_payload = []
     for item in query_payload:
@@ -95,44 +95,49 @@ def handle_translation():
         cleaned_payload.append(item)
     query_payload = cleaned_payload
 
-    # --- 2. RAG LOOKUP ---
+    # --- 2. RAG LOOKUP CONFIG ---
     expert_instructions = get_system_prompt_from_md()
     rag_content = ""
     found_glossary = set()
     found_tm = set()
-    SIMILARITY_THRESHOLD = 2.0 
+    TM_THRESHOLD = 0.10
+    GLOSSARY_THRESHOLD = 0.12
 
     try:
       existing_collections = [c.name for c in chroma_client.list_collections()]
 
+      # Prepare the E5 query prefix
+      formatted_query = ["query: " + text for text in query_payload]
+
       if "drupal_glossary" in existing_collections:
-        gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function=e5_ef)
-        gloss_res = gloss_col.query(query_texts=query_payload, n_results=1)
+        gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function = e5_ef)
+        gloss_res = gloss_col.query(query_texts = formatted_query, n_results = 1)
         if gloss_res['documents']:
           for i, doc_list in enumerate(gloss_res['documents']):
             if doc_list:
               dist = gloss_res['distances'][i][0]
-              src = doc_list[0]
+              # Remove 'passage: ' prefix for logs and prompt
+              src = doc_list[0].replace("passage: ", "")
               tgt = gloss_res['metadatas'][i][0].get('target', '')
               print(f"📏 GLOSSARY DIST: {dist:.4f} | '{src[:20]}...' -> '{tgt[:20]}...'", flush=True)
-              if dist < SIMILARITY_THRESHOLD:
-                found_glossary.add(f"- '{src}' -> '{tgt}'")
+              # if dist < GLOSSARY_THRESHOLD: #Temporarily commenting out
+              found_glossary.add(f"- '{src}' -> '{tgt}'")
 
       if "drupal_tm" in existing_collections:
-        tm_col = chroma_client.get_collection("drupal_tm", embedding_function=e5_ef)
-        tm_res = tm_col.query(query_texts=query_payload, n_results=1)
+        tm_col = chroma_client.get_collection("drupal_tm", embedding_function = e5_ef)
+        tm_res = tm_col.query(query_texts = formatted_query, n_results = 1)
         if tm_res['documents']:
           for i, doc_list in enumerate(tm_res['documents']):
             if doc_list:
               dist = tm_res['distances'][i][0]
-              src = doc_list[0]
+              src = doc_list[0].replace("passage: ", "")
               tgt = tm_res['metadatas'][i][0].get('target', '')
               print(f"📏 TM DIST: {dist:.4f} | '{src[:20]}...' -> '{tgt[:20]}...'", flush=True)
-              if dist < SIMILARITY_THRESHOLD:
-                found_tm.add(f"Source: {src}\nTarget: {tgt}")
+              # if dist < TM_THRESHOLD:  #Temporarily commenting out
+              found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
     except Exception as e:
-      print(f"⚠️ RAG Lookup skipped: {e}", flush=True)
+      print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
 
     if found_glossary:
       rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
@@ -147,26 +152,23 @@ def handle_translation():
     final_system_content = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
     # --- 4. VERBOSE LOGGING ---
-    print("\n" + "=" * 50, flush=True)
-    print(f"--- REQUEST RECEIVED (Model: {repr(requested_model)}) ---", flush=True)
 
+    print("\n" + "=" * 50, flush = True)
+    print(f"--- REQUEST RECEIVED (Model: {repr(requested_model)}) ---", flush = True)
     if rag_content.strip():
-      print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush=True)
-      print(rag_content, flush=True)
+      print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush = True)
+      print(rag_content, flush = True)
     else:
-      print("⚠️ NO RAG CONTEXT FOUND", flush=True)
-
-    print("-" * 20, flush=True)
-    print(f"📦 BATCH SIZE: {len(query_payload)} items", flush=True)
-    print(json.dumps(query_payload, indent=2, ensure_ascii=False), flush=True)
-    print("=" * 50 + "\n", flush=True)
+      print("⚠️ NO RAG CONTEXT FOUND", flush = True)
+    print("-" * 20, flush = True)
+    print(f"📦 BATCH SIZE: {len(query_payload)} items", flush = True)
+    print(json.dumps(query_payload, indent = 2, ensure_ascii = False), flush = True)
+    print("=" * 50 + "\n", flush = True)
 
     # --- 5. DRY RUN CHECK ---
     if requested_model == "claude-opus-4-5-20251101":
-      print(f"🚫 DRY RUN STOP: Aborting API call.", flush=True)
       mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
-      
-      content_return = json.dumps(mock_translations, ensure_ascii=False)
+      content_return = json.dumps(mock_translations, ensure_ascii = False)
       return jsonify({
         "id": "dry-run",
         "object": "chat.completion",
@@ -181,18 +183,17 @@ def handle_translation():
     new_messages = [{"role": "system", "content": final_system_content}]
     new_messages += [m for m in messages if m.get('role') != 'system']
 
-    print(f"📡 SENDING REAL API CALL TO AMAZEE ({requested_model})...", flush=True)
     response = upstream_client.chat.completions.create(
-      model=requested_model,
-      messages=new_messages,
-      temperature=0,
-      max_tokens=data.get('max_tokens', 1000)
+      model = requested_model,
+      messages = new_messages,
+      temperature = 0,
+      max_tokens = data.get('max_tokens', 1000)
     )
     return jsonify(response.model_dump())
 
   except Exception as e:
-    print(f"❌ ERROR: {e}", flush=True)
+    print(f"❌ ERROR: {e}", flush = True)
     return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=5000)
+  app.run(host = '0.0.0.0', port = 5000)

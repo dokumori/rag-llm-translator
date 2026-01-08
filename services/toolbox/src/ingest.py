@@ -1,3 +1,7 @@
+'''
+Ingests the glossary and translation string
+'''
+
 import chromadb
 from chromadb.utils import embedding_functions
 import pandas as pd
@@ -60,11 +64,12 @@ try:
       client.delete_collection("drupal_glossary")
     except:
       pass # Collection didn't exist
-    
-    # Re-create immediately
+
+    # Re-create with Cosine distance metric
     glossary_collection = client.create_collection(
       name = "drupal_glossary",
-      embedding_function = e5_ef
+      embedding_function = e5_ef,
+      metadata = {"hnsw:space": "cosine"}
     )
 
   if run_tm:
@@ -72,10 +77,12 @@ try:
       client.delete_collection("drupal_tm")
     except:
       pass
-      
+
+    # Re-create with Cosine distance metric
     tm_collection = client.create_collection(
       name = "drupal_tm",
-      embedding_function = e5_ef
+      embedding_function = e5_ef,
+      metadata = {"hnsw:space": "cosine"}
     )
 except Exception as e:
   print(f"⚠️ Error resetting collections: {e}")
@@ -100,7 +107,7 @@ if run_glossary:
         # We now store 'category' and 'note' in metadata
         glossary_collection.add(
           ids = [f"gloss_{i}" for i in range(len(df))],
-          documents = df['source'].tolist(),
+          documents = ["passage: " + str(text) for text in df['source']],
           metadatas = df[['target', 'category', 'note']].to_dict('records')
         )
         print(f"✅ Ingested {len(df)} glossary terms (with Category/Note).")
@@ -134,7 +141,7 @@ if run_tm:
 
       BATCH_SIZE = 500
       current_ids = [f"tm_{os.path.basename(po_file)}_{i}" for i in range(len(valid_entries))]
-      current_docs = [e.msgid for e in valid_entries]
+      current_docs = ["passage: " + e.msgid for e in valid_entries]
       current_meta = [{"target": e.msgstr, "file": os.path.basename(po_file)} for e in valid_entries]
 
       print(f"📄 Processing {os.path.basename(po_file)} ({len(valid_entries)} items)...")
