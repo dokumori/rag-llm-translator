@@ -29,7 +29,8 @@ services:
   toolbox:
     build: ./services/toolbox
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
-    command: tail -f /dev/null 
+    command: tail -f /dev/null
+    user: "${UID}:${GID}"
     environment:
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
