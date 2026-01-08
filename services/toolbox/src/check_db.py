@@ -1,3 +1,10 @@
+'''
+Checks if the DB is populated with the glossary / translation memory.
+If empty, use ingest.py to populate the DB.
+
+docker compose exec toolbox python3 /app/src/check_db.py
+'''
+
 import chromadb
 import os
 
