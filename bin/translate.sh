@@ -13,12 +13,12 @@ echo "Please select the Amazee.ai (OpenAI-compatible) model to use:"
 echo "----------------------------------------------------------------"
 
 menu_options=(
+  "Dry Run (No API calls)"
   "DeepSeek R1 (deepseek-r1-v1)"
   "Claude 3.5 Sonnet (claude-3-5-sonnet)"
   "Claude Opus 4 (claude-opus-4-20250514-v1)"
   "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)"
   "Mistral Large (mistral-large-2402-v1)"
-  "Dry Run (No API calls)"
 )
 
 PS3="Enter the number of your choice: "
@@ -26,12 +26,12 @@ PS3="Enter the number of your choice: "
 select opt in "${menu_options[@]}"
 do
   case "$opt" in
+    "Dry Run (No API calls)") SELECTED_MODEL="claude-opus-4-5-20251101"; break ;;
     "DeepSeek R1 (deepseek-r1-v1)") SELECTED_MODEL="deepseek-r1-v1"; break ;;
     "Claude 3.5 Sonnet (claude-3-5-sonnet)") SELECTED_MODEL="claude-3-5-sonnet"; break ;;
     "Claude Opus 4 (claude-opus-4-20250514-v1)") SELECTED_MODEL="claude-opus-4-20250514-v1"; break ;;
     "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)") SELECTED_MODEL="claude-sonnet-4-20250514-v1"; break ;;
     "Mistral Large (mistral-large-2402-v1)") SELECTED_MODEL="mistral-large-2402-v1"; break ;;
-    "Dry Run (No API calls)") SELECTED_MODEL="claude-opus-4-5-20251101"; break ;;
     *) echo "❌ Invalid option. Please try again.";;
   esac
 done
@@ -69,18 +69,3 @@ docker compose exec \
   "/app/po/output"
 
 echo "✅ Done!"
-
-###
-#The default is 50. Reduced for improved accuracy (more costs)
-
-# alternative models
-# claude-3-opus-20240229  >> Use this for a dry-run. No actual API calls are made
-# claude-3-haiku-20240307
-# claude-haiku-4-5-20251001
-# claude-sonnet-4-5-20250929
-# claude-opus-4-5-20251101
-
-
-#   -vv > debug_run.log 2>&1
-
-# echo "✅ Done! Check debug_run.log for the full request payloads."
