@@ -66,4 +66,8 @@ docker compose exec \
   "/app/po/input" \
   "/app/po/output"
 
+# --- POST-PROCESSING ---
+echo "✨ Running Post-Process (Drupal Standards)..."
+docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
+
 echo "✅ Done!"
