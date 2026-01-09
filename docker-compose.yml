@@ -40,6 +40,8 @@ services:
       - ./data/translations:/app/po
       # Map source code for hot-reloading scripts during dev
       - ./services/toolbox/src:/app/src
+      # Map the destination directory for RAG analysis results
+      - ./data/rag-analysis:/app/data/rag-analysis
     depends_on:
       - chroma
     networks:
