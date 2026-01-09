@@ -8,7 +8,7 @@ import shutil
 def run_translation(model, input_base_dir, output_base_dir):
   # 1. Setup Directories
   # We use a temp dir to isolate files, ensuring the tool processes exactly one file at a time
-  TEMP_WORK_DIR = "/app/temp_work_dir"
+  TEMP_WORK_DIR = "/tmp/temp_work_dir"
   if os.path.exists(TEMP_WORK_DIR):
     shutil.rmtree(TEMP_WORK_DIR)
   os.makedirs(TEMP_WORK_DIR)
