@@ -82,8 +82,6 @@ def handle_translation():
 
     # --- 1. EXTRACT CONTENT FOR RAG ---
     # REVISED: "Sliding Window" JSON Parsing.
-    # Scans backwards for '[' and checks if a valid list starts there.
-    # This correctly ignores brackets inside the text (e.g. [site:name]).
     query_payload = []
     
     start_indices = [i for i, char in enumerate(source_text) if char == '[']
@@ -132,15 +130,15 @@ def handle_translation():
     found_tm = set()
 
     # STRICT THRESHOLDS
-    # Revised: Increased to account for asymmetric embedding distance floor (~0.15)
+    # Tuned for multilingual-e5-large (Distance Floor ~0.15)
     TM_THRESHOLD = 0.23
     GLOSSARY_THRESHOLD = 0.25
-
+{GLOSSARY_THRESHOLD}", flush=True)
     try:
       existing_collections = [c.name for c in chroma_client.list_collections()]
 
-      # Prepare the E5 query prefix
-      formatted_query = ["query: " + text for text in query_payload]
+      # Prepare the E5 query prefix AND strip whitespace
+      formatted_query = ["query: " + text.strip() for text in query_payload]
 
       if "drupal_glossary" in existing_collections:
         gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function = e5_ef)
@@ -172,6 +170,9 @@ def handle_translation():
               tgt = tm_res['metadatas'][i][0].get('target', '')
 
               is_accepted = dist < TM_THRESHOLD
+              
+              {is_accepted}", flush=True)
+
               log_entry["rag_matches"].append({
                 "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
               })
