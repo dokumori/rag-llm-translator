@@ -53,7 +53,7 @@ except Exception as e:
 
 # --- Define the E5 Embedding Function ---
 e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-  model_name = "intfloat/multilingual-e5-large"
+  model_name = "intfloat/multilingual-e5-large-instruct"
 )
 
 # Reset Collections based on what we are running
