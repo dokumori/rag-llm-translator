@@ -17,14 +17,17 @@ services:
       - AMAZEE_API_KEY=${AMAZEE_API_TOKEN} # Maps env var to container
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - HF_HOME=/app/data/cache/huggingface
     volumes:
       # Mount config so you can edit prompt without rebuilding
       - ./config/system_prompt.md:/app/system_prompt.md:ro
+      # Map the cache directory
+      - ./data/cache:/app/data/cache
     depends_on:
       - chroma
     networks:
       - app_network
-
+    user: "${UID}:${GID}"
   # This container acts as your "swiss army knife" for tasks
   toolbox:
     build: ./services/toolbox
@@ -34,6 +37,7 @@ services:
     environment:
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - HF_HOME=/app/data/cache/huggingface
     volumes:
       # Map the data directories relative to the root
       - ./data/glossary:/app/tm_source
@@ -42,6 +46,8 @@ services:
       - ./services/toolbox/src:/app/src
       # Map the destination directory for RAG analysis results
       - ./data/rag-analysis:/app/data/rag-analysis
+      # Map the cache directory
+      - ./data/cache:/app/data/cache
     depends_on:
       - chroma
     networks:
