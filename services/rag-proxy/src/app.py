@@ -5,6 +5,7 @@ from openai import OpenAI
 import os
 import json
 import time
+import datetime
 
 app = Flask(__name__)
 
@@ -40,12 +41,10 @@ def get_system_prompt_from_md():
 
 @app.route('/v1/models', methods = ['GET'])
 def list_models():
-
   """
   Returns a static list of models to satisfy the gpt-po-translator validation check.
   Includes the special dry-run ID.
   """
-
   return jsonify({
     "object": "list",
     "data": [
@@ -60,10 +59,19 @@ def list_models():
 
 @app.route('/v1/chat/completions', methods = ['POST'])
 def handle_translation():
+  start_time = time.time()
   try:
     data = request.json
     messages = data.get('messages', [])
     requested_model = data.get('model', "deepseek-r1-v1").strip()
+
+    # Initialize Structured Log
+    log_entry = {
+      "timestamp": datetime.datetime.utcnow().isoformat(),
+      "model": requested_model,
+      "rag_matches": [],
+      "input_text": []
+    }
 
     user_messages = [m for m in messages if m.get('role') == 'user']
     if not user_messages:
@@ -95,11 +103,16 @@ def handle_translation():
         cleaned_payload.append(item)
     query_payload = cleaned_payload
 
+    log_entry["input_text"] = query_payload
+    log_entry["batch_size"] = len(query_payload)
+
     # --- 2. RAG LOOKUP CONFIG ---
     expert_instructions = get_system_prompt_from_md()
     rag_content = ""
     found_glossary = set()
     found_tm = set()
+
+    # STRICT THRESHOLDS
     TM_THRESHOLD = 0.10
     GLOSSARY_THRESHOLD = 0.12
 
@@ -119,9 +132,14 @@ def handle_translation():
               # Remove 'passage: ' prefix for logs and prompt
               src = doc_list[0].replace("passage: ", "")
               tgt = gloss_res['metadatas'][i][0].get('target', '')
-              print(f"📏 GLOSSARY DIST: {dist:.4f} | '{src[:20]}...' -> '{tgt[:20]}...'", flush=True)
-              # if dist < GLOSSARY_THRESHOLD: #Temporarily commenting out
-              found_glossary.add(f"- '{src}' -> '{tgt}'")
+
+              is_accepted = dist < GLOSSARY_THRESHOLD
+              log_entry["rag_matches"].append({
+                "type": "glossary", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+              })
+
+              if is_accepted:
+                found_glossary.add(f"- '{src}' -> '{tgt}'")
 
       if "drupal_tm" in existing_collections:
         tm_col = chroma_client.get_collection("drupal_tm", embedding_function = e5_ef)
@@ -132,11 +150,17 @@ def handle_translation():
               dist = tm_res['distances'][i][0]
               src = doc_list[0].replace("passage: ", "")
               tgt = tm_res['metadatas'][i][0].get('target', '')
-              print(f"📏 TM DIST: {dist:.4f} | '{src[:20]}...' -> '{tgt[:20]}...'", flush=True)
-              # if dist < TM_THRESHOLD:  #Temporarily commenting out
-              found_tm.add(f"Source: {src}\nTarget: {tgt}")
+
+              is_accepted = dist < TM_THRESHOLD
+              log_entry["rag_matches"].append({
+                "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+              })
+
+              if is_accepted:
+                found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
     except Exception as e:
+      log_entry["rag_error"] = str(e)
       print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
 
     if found_glossary:
@@ -151,22 +175,13 @@ def handle_translation():
 
     final_system_content = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
-    # --- 4. VERBOSE LOGGING ---
-
-    print("\n" + "=" * 50, flush = True)
-    print(f"--- REQUEST RECEIVED (Model: {repr(requested_model)}) ---", flush = True)
-    if rag_content.strip():
-      print(f"📚 RAG CONTEXT RETRIEVED ({len(found_glossary)} gloss, {len(found_tm)} TM):", flush = True)
-      print(rag_content, flush = True)
-    else:
-      print("⚠️ NO RAG CONTEXT FOUND", flush = True)
-    print("-" * 20, flush = True)
-    print(f"📦 BATCH SIZE: {len(query_payload)} items", flush = True)
-    print(json.dumps(query_payload, indent = 2, ensure_ascii = False), flush = True)
-    print("=" * 50 + "\n", flush = True)
+    # --- 4. STRUCTURED LOGGING ---
+    log_entry["system_prompt_length"] = len(final_system_content)
+    print(json.dumps(log_entry, ensure_ascii=False), flush=True)
 
     # --- 5. DRY RUN CHECK ---
     if requested_model == "claude-opus-4-5-20251101":
+      log_entry["action"] = "dry_run"
       mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
       content_return = json.dumps(mock_translations, ensure_ascii = False)
       return jsonify({
@@ -189,6 +204,8 @@ def handle_translation():
       temperature = 0,
       max_tokens = data.get('max_tokens', 1000)
     )
+
+    log_entry["processing_time"] = time.time() - start_time
     return jsonify(response.model_dump())
 
   except Exception as e:
