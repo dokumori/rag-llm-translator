@@ -6,15 +6,16 @@ import os
 import json
 import time
 import datetime
+import re
 
 app = Flask(__name__)
 
 # --- 1. Load Model at Startup ---
-print("⏳ Loading Embedding Model...", flush=True)
+print("⏳ Loading Embedding Model...", flush = True)
 e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
   model_name = "intfloat/multilingual-e5-large"
 )
-print("✅ Embedding Model Loaded", flush=True)
+print("✅ Embedding Model Loaded", flush = True)
 
 # --- 2. Clients ---
 amazee_api_key = os.environ.get("AMAZEE_API_KEY")
@@ -80,17 +81,35 @@ def handle_translation():
     source_text = user_messages[-1].get('content', '')
 
     # --- 1. EXTRACT CONTENT FOR RAG ---
+    # REVISED: "Sliding Window" JSON Parsing.
+    # Scans backwards for '[' and checks if a valid list starts there.
+    # This correctly ignores brackets inside the text (e.g. [site:name]).
     query_payload = []
-    try:
-      list_start = source_text.rfind('[')
-      if list_start != -1:
-        json_part = source_text[list_start:]
-        batch_items = json.loads(json_part)
-        if isinstance(batch_items, list):
-          query_payload = batch_items
-    except Exception:
-      pass
+    
+    start_indices = [i for i, char in enumerate(source_text) if char == '[']
+    
+    for idx in reversed(start_indices):
+      try:
+        # Check 1: Try parsing from this bracket to the very end
+        candidate = source_text[idx:]
+        parsed = json.loads(candidate)
+        if isinstance(parsed, list):
+          query_payload = parsed
+          break
+      except json.JSONDecodeError:
+        # Check 2: Try parsing from this bracket to the last ']'
+        try:
+          last_bracket = source_text.rfind(']')
+          if last_bracket > idx:
+            candidate_trimmed = source_text[idx : last_bracket + 1]
+            parsed = json.loads(candidate_trimmed)
+            if isinstance(parsed, list):
+              query_payload = parsed
+              break
+        except Exception:
+          pass
 
+    # Fallback: Treat as single item
     if not query_payload:
       query_payload = [source_text.strip()]
 
@@ -113,8 +132,9 @@ def handle_translation():
     found_tm = set()
 
     # STRICT THRESHOLDS
-    TM_THRESHOLD = 0.10
-    GLOSSARY_THRESHOLD = 0.12
+    # Revised: Increased to account for asymmetric embedding distance floor (~0.15)
+    TM_THRESHOLD = 0.23
+    GLOSSARY_THRESHOLD = 0.25
 
     try:
       existing_collections = [c.name for c in chroma_client.list_collections()]
@@ -177,7 +197,7 @@ def handle_translation():
 
     # --- 4. STRUCTURED LOGGING ---
     log_entry["system_prompt_length"] = len(final_system_content)
-    print(json.dumps(log_entry, ensure_ascii=False), flush=True)
+    print(json.dumps(log_entry, ensure_ascii = False), flush = True)
 
     # --- 5. DRY RUN CHECK ---
     if requested_model == "claude-opus-4-5-20251101":
