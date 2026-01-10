@@ -35,7 +35,7 @@ flowchart TD
 ## 1. The Vector Store (ChromaDB)
 The core of this system is **ChromaDB**, which stores vector representations of the glossary and translation memory.
 
-* **Embedding Model:** I use `intfloat/multilingual-e5-large`. This model is optimised for multilingual retrieval.
+* **Embedding Model:** The model `intfloat/multilingual-e5-large` is used. This model is optimised for multilingual retrieval.
 * **Distance Metric:** The database uses **Cosine Similarity** to find the closest matches.
 * **Data Formatting:** The embedding model requires specific prefixes. During ingestion, the system automatically adds the prefix `passage:` to all data stored in the database.
 
@@ -48,8 +48,8 @@ The script `ingest.py` populates the database. It handles two types of data:
 ## 3. Stage 2: Translation Process
 The script `translate_runner.py` manages the translation workflow. It orchestrates the `gpt-po-translator` tool to process files securely and efficiently.
 
-### Why I use a RAG Proxy
-`gpt-po-translator` was selected for this PoC for this project because it provides robust handling of `.po` files and useful features such as bulk processing. However, this tool has a limitation: it does not natively support external glossaries or translation memory.
+### Why a RAG Proxy is used
+`gpt-po-translator` was selected for this PoC for this project because it provides robust handling of `.po` files and useful features such as bulk processing. However, this tool has one major limitation: it does not natively support external glossaries or translation memory.
 
 This is the reason **RAG Proxy** was built. The `translate_runner.py` script routes all requests to this proxy (`http://rag-proxy:5000/v1`) instead of connecting directly to the OpenAI API.
 
@@ -61,9 +61,16 @@ This is the reason **RAG Proxy** was built. The `translate_runner.py` script rou
 This approach ensures the LLM has the necessary context to maintain consistency with Drupal terminology and high translation quality, while still leveraging the efficient file processing of `gpt-po-translator`.
 
 **Key Benefit: Token Optimization**
-By retrieving only the most relevant matches for each specific string, the proxy significantly reduces the number of tokens handled per request. This avoids the need to send a massive, static glossary or translation memory with every API call, improving both speed and cost-efficiency.
+By retrieving only the most relevant matches for batched strings, the proxy significantly reduces the number of tokens handled per request. This avoids the need to send a massive, static glossary or translation memory with every API call, improving both speed and cost-efficiency.
 
 ### File Isolation
+To ensure the translator focuses strictly on one file at a time, the runner script isolates files during processing. It copies the target `.po` file to a temporary directory (`/tmp/temp_work_dir`) before the translation command runs. This prevents the tool from scanning or modifying unrelated files in the source directory.
+
+After the translation is complete, the file is saved in `data/translations/output`.
+
+**Caution**
+The content of `data/translations/output` is wiped every time you run `bash bin/translate.sh`.
+
 To ensure the translator focuses strictly on one file at a time, the runner script isolates files during processing. It copies the target `.po` file to a temporary directory (`/tmp/temp_work_dir`) before the translation command runs. This prevents the tool from scanning or modifying unrelated files in the source directory.
 
 ## 4. Stage 3: Post-Processing
