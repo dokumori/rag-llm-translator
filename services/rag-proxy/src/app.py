@@ -40,22 +40,25 @@ def get_system_prompt_from_md():
         return content
   return "You are a professional translator for Drupal CMS."
 
+# Helper to read shared config
+def get_models_config():
+  config_path = "/app/config/models.json"
+  if os.path.exists(config_path):
+    with open(config_path, "r", encoding = "utf-8") as f:
+      return json.load(f).get("models", [])
+  return []
+
 @app.route('/v1/models', methods = ['GET'])
 def list_models():
   """
-  Returns a static list of models to satisfy the gpt-po-translator validation check.
-  Includes the special dry-run ID.
+  Returns a dynamic list of models from the shared JSON config.
   """
+  config_models = get_models_config()
   return jsonify({
     "object": "list",
     "data": [
-      {"id": "deepseek-r1-v1", "object": "model", "owned_by": "amazee"},
-      {"id": "claude-3-5-haiku", "object": "model", "owned_by": "amazee"},
-      {"id": "claude-3-5-sonnet", "object": "model", "owned_by": "amazee"},
-      {"id": "claude-opus-4-20250514-v1", "object": "model", "owned_by": "amazee"},
-      {"id": "claude-sonnet-4-20250514-v1", "object": "model", "owned_by": "amazee"},
-      {"id": "mistral-large-2402-v1", "object": "model", "owned_by": "amazee"},
-      {"id": "claude-opus-4-5-20251101", "object": "model", "owned_by": "amazee"} # DRY RUN ID
+      {"id": m["id"], "object": "model", "owned_by": "amazee"} 
+      for m in config_models
     ]
   })
 
@@ -200,7 +203,9 @@ def handle_translation():
     print(json.dumps(log_entry, ensure_ascii = False), flush = True)
 
     # --- 5. DRY RUN CHECK ---
-    if requested_model == "claude-opus-4-5-20251101":
+    model_meta = next((m for m in get_models_config() if m["id"] == requested_model), None)
+    
+    if model_meta and model_meta.get("is_dry_run"):
       log_entry["action"] = "dry_run"
       mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
       content_return = json.dumps(mock_translations, ensure_ascii = False)
