@@ -12,32 +12,32 @@ More information on amazee.ai:
 # How to use the llm translator
 
 To use the LLM translator, the following steps are required:
-- **Build and configure**: Set up the Docker environment and create the `.env` file.
+- **Configure and build**: Set up the Docker environment and create the `.env` file.
 - **Prepare**: Place untranslated `.po` files and RAG data (TM/Glossary) in the data directory.
 - **Ingest**: Populate the vector database with your RAG data.
 - **Translate**: Run the translation script to process your files.
 
 Detailed instructions for each step are provided below.
 
-## 1. Build
-
-Run:
-`docker compose build && docker compose up -d`
-
-## 2. Create the .env file
+## 1. Create the .env file
 
 Run:
 `execute bin/create_env.sh`
 
 ...and supply the API key and the endpoint URL. (At the moment, the API key and the endpoint URL are only shared with the maintainers of https://www.drupal.org/project/translation_llm)
 
-## 3. Place the files in place
+## 2. Build
+
+Run:
+`docker compose build && docker compose up -d`
+
+## 3. Place the files
 
 **Untranslated strings**: a .po file that only contains untranslated strings. You can generate it from a working Drupal instance using the following command, after importing translation strings that are currently available:
 
 `drush locale:export {langcode} --types=not-translated > untranslated.po`
 
-Place it under `data/translations/input`.
+Place untranslated.po under `data/translations/input`.
 
 **Translation memory and glossary**:
 While the system works perfectly fine without a translation memory and glossary, it defeats the purpose of the RAG-based approach. For maintaining consistency and quality of the translation, it is highly recommended to provide them.
@@ -71,6 +71,8 @@ Then in the other window (or press ctrl+c, then), run the following command to i
 
 Finally, run the following command to translate the untranslates strings:
 `bash bin/translate.sh`
+
+Note: This process automatically includes a post-processing step to fix spacing around Drupal variables (e.g., %user) for better Japanese typography. See [Post-Processing Logic](docs/2_post_processing.md) for more details.
 
 **IMPORTANT:** Please be modest with the use of the LLM resources provided by amazee.ai, and refrain from running processes that are unnecessary / irrelevant to the goal of this project.
 
