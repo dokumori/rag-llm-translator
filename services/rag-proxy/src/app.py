@@ -50,6 +50,7 @@ def list_models():
     "object": "list",
     "data": [
       {"id": "deepseek-r1-v1", "object": "model", "owned_by": "amazee"},
+      {"id": "claude-3-5-haiku", "object": "model", "owned_by": "amazee"},
       {"id": "claude-3-5-sonnet", "object": "model", "owned_by": "amazee"},
       {"id": "claude-opus-4-20250514-v1", "object": "model", "owned_by": "amazee"},
       {"id": "claude-sonnet-4-20250514-v1", "object": "model", "owned_by": "amazee"},
@@ -133,7 +134,7 @@ def handle_translation():
     # Tuned for multilingual-e5-large (Distance Floor ~0.15)
     TM_THRESHOLD = 0.23
     GLOSSARY_THRESHOLD = 0.25
-{GLOSSARY_THRESHOLD}", flush=True)
+
     try:
       existing_collections = [c.name for c in chroma_client.list_collections()]
 
@@ -170,8 +171,6 @@ def handle_translation():
               tgt = tm_res['metadatas'][i][0].get('target', '')
 
               is_accepted = dist < TM_THRESHOLD
-              
-              {is_accepted}", flush=True)
 
               log_entry["rag_matches"].append({
                 "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted

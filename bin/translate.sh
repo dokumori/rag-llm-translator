@@ -14,10 +14,11 @@ echo "----------------------------------------------------------------"
 
 menu_options=(
   "Dry Run (No API calls)"
-  "DeepSeek R1 (deepseek-r1-v1)"
+  "Claude 3.5 Haiku (claude-3-5-haiku)"
   "Claude 3.5 Sonnet (claude-3-5-sonnet)"
   "Claude Opus 4 (claude-opus-4-20250514-v1)"
   "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)"
+  "DeepSeek R1 (deepseek-r1-v1)"
   "Mistral Large (mistral-large-2402-v1)"
 )
 
@@ -27,10 +28,11 @@ select opt in "${menu_options[@]}"
 do
   case "$opt" in
     "Dry Run (No API calls)") SELECTED_MODEL="claude-opus-4-5-20251101"; break ;;
-    "DeepSeek R1 (deepseek-r1-v1)") SELECTED_MODEL="deepseek-r1-v1"; break ;;
+    "Claude 3.5 Haiku (claude-3-5-haiku)") SELECTED_MODEL="claude-3-5-haiku"; break ;;
     "Claude 3.5 Sonnet (claude-3-5-sonnet)") SELECTED_MODEL="claude-3-5-sonnet"; break ;;
     "Claude Opus 4 (claude-opus-4-20250514-v1)") SELECTED_MODEL="claude-opus-4-20250514-v1"; break ;;
     "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)") SELECTED_MODEL="claude-sonnet-4-20250514-v1"; break ;;
+    "DeepSeek R1 (deepseek-r1-v1)") SELECTED_MODEL="deepseek-r1-v1"; break ;;
     "Mistral Large (mistral-large-2402-v1)") SELECTED_MODEL="mistral-large-2402-v1"; break ;;
     *) echo "❌ Invalid option. Please try again.";;
   esac
