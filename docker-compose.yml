@@ -21,6 +21,8 @@ services:
     volumes:
       # Mount config so you can edit prompt without rebuilding
       - ./config/system_prompt.md:/app/system_prompt.md:ro
+      # Mount the list of models
+      - ./config/models.json:/app/config/models.json:ro
       # Map the cache directory
       - ./data/cache:/app/data/cache
     depends_on:
@@ -44,6 +46,8 @@ services:
       - ./data/translations:/app/po
       # Map source code for hot-reloading scripts during dev
       - ./services/toolbox/src:/app/src
+      # Mount the list of models
+      - ./config/models.json:/app/config/models.json:ro
       # Map the destination directory for RAG analysis results
       - ./data/rag-analysis:/app/data/rag-analysis
       # Map the cache directory

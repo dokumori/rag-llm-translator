@@ -1,0 +1,39 @@
+{
+  "models": [
+    {
+      "id": "claude-3-5-haiku",
+      "name": "Claude 3.5 Haiku",
+      "is_dry_run": false
+    },
+    {
+      "id": "claude-3-5-sonnet",
+      "name": "Claude 3.5 Sonnet",
+      "is_dry_run": false
+    },
+    {
+      "id": "claude-opus-4-20250514-v1",
+      "name": "Claude Opus 4",
+      "is_dry_run": false
+    },
+    {
+      "id": "claude-sonnet-4-20250514-v1",
+      "name": "Claude Sonnet 4",
+      "is_dry_run": false
+    },
+    {
+      "id": "mistral-large-2402-v1",
+      "name": "Mistral Large",
+      "is_dry_run": false
+    },
+    {
+      "id": "deepseek-r1-v1",
+      "name": "DeepSeek R1",
+      "is_dry_run": false
+    },
+    {
+      "id": "claude-opus-4-5-20251101",
+      "name": "Dry Run (No API calls)",
+      "is_dry_run": true
+    }
+  ]
+}

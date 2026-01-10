@@ -9,48 +9,42 @@ fi
 set -e
 
 echo "----------------------------------------------------------------"
-echo "Please select the Amazee.ai (OpenAI-compatible) model to use:"
+echo "Please select the LLM model to use:"
 echo "----------------------------------------------------------------"
 
-menu_options=(
-  "Dry Run (No API calls)"
-  "Claude 3.5 Haiku (claude-3-5-haiku)"
-  "Claude 3.5 Sonnet (claude-3-5-sonnet)"
-  "Claude Opus 4 (claude-opus-4-20250514-v1)"
-  "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)"
-  "DeepSeek R1 (deepseek-r1-v1)"
-  "Mistral Large (mistral-large-2402-v1)"
-)
+MODELS_JSON="config/models.json"
 
+# Parse JSON names for the menu
+menu_options=()
+while IFS= read -r line; do
+  menu_options+=("$line")
+done < <(python3 -c "import json; [print(m['name']) for m in json.load(open('$MODELS_JSON'))['models']]")
 PS3="Enter the number of your choice: "
 
 select opt in "${menu_options[@]}"
 do
-  case "$opt" in
-    "Dry Run (No API calls)") SELECTED_MODEL="claude-opus-4-5-20251101"; break ;;
-    "Claude 3.5 Haiku (claude-3-5-haiku)") SELECTED_MODEL="claude-3-5-haiku"; break ;;
-    "Claude 3.5 Sonnet (claude-3-5-sonnet)") SELECTED_MODEL="claude-3-5-sonnet"; break ;;
-    "Claude Opus 4 (claude-opus-4-20250514-v1)") SELECTED_MODEL="claude-opus-4-20250514-v1"; break ;;
-    "Claude Sonnet 4 (claude-sonnet-4-20250514-v1)") SELECTED_MODEL="claude-sonnet-4-20250514-v1"; break ;;
-    "DeepSeek R1 (deepseek-r1-v1)") SELECTED_MODEL="deepseek-r1-v1"; break ;;
-    "Mistral Large (mistral-large-2402-v1)") SELECTED_MODEL="mistral-large-2402-v1"; break ;;
-    *) echo "❌ Invalid option. Please try again.";;
-  esac
+  if [ -n "$opt" ]; then
+    # Extract metadata for the chosen name
+    SELECTED_MODEL=$(python3 -c "import json; m = [m for m in json.load(open('$MODELS_JSON'))['models'] if m['name'] == '$opt'][0]; print(m['id'])")
+    IS_DRY_RUN=$(python3 -c "import json; m = [m for m in json.load(open('$MODELS_JSON'))['models'] if m['name'] == '$opt'][0]; print(str(m['is_dry_run']).lower())")
+    break
+  else
+    echo "❌ Invalid option. Please try again."
+  fi
 done
+
+echo ""
+if [ "$IS_DRY_RUN" = "true" ]; then
+  echo "🔬 This is a dry run. No external requests are sent."
+else
+  echo "✅ Selected Model: $SELECTED_MODEL"
+fi
+echo "----------------------------------------------------------------"
 
 if [ -z "$SELECTED_MODEL" ]; then
   echo "❌ Error: No model was selected. Exiting."
   exit 1
 fi
-
-echo ""
-# --- UI IMPROVEMENT: Specific message for Dry Run ---
-if [ "$SELECTED_MODEL" = "claude-opus-4-5-20251101" ]; then
-  echo "🔬 This is a dry run. No external requests are sent."
-else
-  echo "✅ Selected Model: $SELECTED_MODEL"
-fi
-echo "------------------------------
 
 # Check if there are any .po files in the output directory
 if ls "${OUTPUT_HOST_DIR}"/*.po 1> /dev/null 2>&1; then
