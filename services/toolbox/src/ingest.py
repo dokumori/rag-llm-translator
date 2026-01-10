@@ -68,7 +68,8 @@ if run_glossary:
     unique_entries = {} # Key: Lowercase Source, Value: (Original Source, Target)
     
     if os.path.exists(GLOSSARY_FILE):
-      with open(GLOSSARY_FILE, mode='r', encoding='utf-8') as f:
+      # Use 'utf-8-sig' to handle the BOM (\ufeff) marker automatically
+      with open(GLOSSARY_FILE, mode='r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         for row in reader:
           # Clean Whitespace
@@ -123,6 +124,7 @@ if run_glossary:
 # ---------------------------------------------------------
 # Part B: Ingest Reference PO Files (Translation Memory)
 # ---------------------------------------------------------
+
 if run_tm:
   print("\n💾 Processing Translation Memory (.po files)...")
   try:
