@@ -13,6 +13,10 @@ echo "Please select the LLM model to use:"
 echo "----------------------------------------------------------------"
 
 MODELS_JSON="config/models.json"
+INPUT_HOST_DIR="data/translations/input"
+OUTPUT_HOST_DIR="data/translations/output"
+# The exact string required by Gettext/gpt-po-translator
+REQUIRED_LANG_STR="\"Language: ja\\\n\""
 
 # Parse JSON names for the menu
 menu_options=()
@@ -41,10 +45,24 @@ else
 fi
 echo "----------------------------------------------------------------"
 
+# This safety check is essential if the selection is bypassed or fails
 if [ -z "$SELECTED_MODEL" ]; then
   echo "❌ Error: No model was selected. Exiting."
   exit 1
 fi
+
+# --- METADATA VALIDATION ---
+# Ensure .po files have the "Language: ja" header required by gpt-po-translator
+echo "🔍 Validating .po metadata in $INPUT_HOST_DIR..."
+for po_file in "$INPUT_HOST_DIR"/*.po; do
+  [ -e "$po_file" ] || continue
+  
+  if ! grep -qi "Language: ja" "$po_file"; then
+    echo "📝 Adding missing language metadata to $(basename "$po_file")..."
+    # Prepend the required string to the top of the file using a temporary file
+    { printf "%s\n" "$REQUIRED_LANG_STR"; cat "$po_file"; } > "${po_file}.tmp" && mv "${po_file}.tmp" "$po_file"
+  fi
+done
 
 # Check if there are any .po files in the output directory
 if ls "${OUTPUT_HOST_DIR}"/*.po 1> /dev/null 2>&1; then
@@ -71,11 +89,12 @@ docker compose exec toolbox sh -c 'chmod -R 777 /app/po/output'
 echo "🚀 Starting Translation Runner..."
 
 # Note: We use 'python3 -u' to unbuffer stdout so logs appear immediately
+# Both input and output point to /app/po/output because we translate the copies
 docker compose exec \
   toolbox python3 -u /app/src/translate_runner.py \
-  "$SELECTED_MODEL" \
-  "/app/po/input" \
-  "/app/po/output"
+  --model "$SELECTED_MODEL" \
+  --input "/app/po/output" \
+  --output "/app/po/output"
 
 # --- POST-PROCESSING ---
 echo "✨ Running Post-Process (Drupal Standards)..."
