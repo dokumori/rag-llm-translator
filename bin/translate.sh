@@ -44,8 +44,23 @@ if [ -z "$SELECTED_MODEL" ]; then
 fi
 
 echo ""
-echo "✅ Selected Model: $SELECTED_MODEL"
-echo "----------------------------------------------------------------"
+# --- UI IMPROVEMENT: Specific message for Dry Run ---
+if [ "$SELECTED_MODEL" = "claude-opus-4-5-20251101" ]; then
+  echo "🔬 This is a dry run. No external requests are sent."
+else
+  echo "✅ Selected Model: $SELECTED_MODEL"
+fi
+echo "------------------------------
+
+# Check if there are any .po files in the output directory
+if ls "${OUTPUT_HOST_DIR}"/*.po 1> /dev/null 2>&1; then
+  echo "⚠️  WARNING: The output directory '${OUTPUT_HOST_DIR}' contains existing translation files."
+  read -p "   Are you sure you want to DELETE them and start fresh? (y/N): " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "❌ Operation cancelled by user."
+    exit 1
+  fi
+fi
 
 # --- FILE PREPARATION ---
 echo "🧹 Preparing output directory..."
