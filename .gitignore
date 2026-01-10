@@ -61,6 +61,7 @@ docker-compose.override.yml
 
 # --- Project Logs ---
 *.log
+*.jsonl
 
 # --- Project Data & Runtime ---
 # Ignore the entire data directory where DBs and active files live
@@ -70,3 +71,4 @@ data/
 *.csv
 *.po
 *.pot
+.tmp
