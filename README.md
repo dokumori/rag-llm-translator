@@ -1,10 +1,23 @@
 # What is this for?
 
-This is a PoC for https://www.drupal.org/project/translation_llm. The aim of the project is to simplify the translation process of strings in the Drupal codebase, while maintaining / improving the quality of translation by utilising LLMs in a broad sense.
+This is a PoC for https://www.drupal.org/project/translation_llm. This project aims to streamline* the translation of Drupal codebase strings using LLMs, while also ensuring consistency and accuracy through a RAG-based architecture.
+*The human is in the loop for the quality check and approval. The full automation of the translation process, therefore, is outside of the scope of this project.
 
-amazee.ai is generously providing their service for this project. Thank you!
+Huge thanks to amazee.ai for generously providing their LLM resources for this project ❤️
+
+More information on amazee.ai:
+- https://amazee.ai
+- https://www.drupal.org/project/ai_provider_amazeeio
 
 # How to use the llm translator
+
+To use the LLM translator, the following steps are required:
+- **Build and configure**: Set up the Docker environment and create the `.env` file.
+- **Prepare**: Place untranslated `.po` files and RAG data (TM/Glossary) in the data directory.
+- **Ingest**: Populate the vector database with your RAG data.
+- **Translate**: Run the translation script to process your files.
+
+Detailed instructions for each step are provided below.
 
 ## 1. Build
 
@@ -20,22 +33,20 @@ Run:
 
 ## 3. Place the files in place
 
-**A must-have**: a .po file that only contains untranslated strings. You can generate it from a working Drupal instance using the following command, after importing translation strings that are currently available:
+**Untranslated strings**: a .po file that only contains untranslated strings. You can generate it from a working Drupal instance using the following command, after importing translation strings that are currently available:
 
 `drush locale:export {langcode} --types=not-translated > untranslated.po`
 
-
 Place it under `data/translations/input`.
 
-**Nice-to-haves**:
+**Translation memory and glossary**:
+While the system works perfectly fine without a translation memory and glossary, it defeats the purpose of the RAG-based approach. For maintaining consistency and quality of the translation, it is highly recommended to provide them.
 
 - A .po file with translated strings as a translation memory (place it under data/glossary).
   - You can download it from https://ftp.drupal.org/files/translations/all/drupal/ (this is more resource-friendly than using l.d.o ;) )
 - A translation dictionary in a .csv format (save as `glossary.csv` under `data/glossary`). It must have the following columns:
   - source: the original string e.g. `Node`
   - target: the translated string e.g. `ノード`
-  - category: e.g. `entity`
-  - note: e.g. `content`
 
 ## 4. Ingest the translation memory and glossary
 
@@ -53,14 +64,20 @@ rag-proxy  |  * Running on http://172.20.0.3:5000
 rag-proxy  | Press CTRL+C to quit
 ```
 
-Then in the other window (or press ctrl+c, then), run `docker compose exec toolbox python3 /app/src/ingest.py`
+Then in the other window (or press ctrl+c, then), run the following command to ingest the translation memory and glossary:
+`docker compose exec toolbox python3 /app/src/ingest.py`
 
 ## 5. Translate!
 
-Finally, run `bash bin/translate.sh` to translate the untranslates strings
+Finally, run the following command to translate the untranslates strings:
+`bash bin/translate.sh`
 
-IMPORTANT: Be modest with the use of the LLM provided by amazee.ai, and not run processes that are unnecessary / irrelevant to the goal of this project.
+**IMPORTANT:** Please be modest with the use of the LLM resources provided by amazee.ai, and refrain from running processes that are unnecessary / irrelevant to the goal of this project.
 
-# The architecture
+# Documentation
 
-gpt-po-translate intelligently decides 
+The following documents provide detailed information about the project's technical implementation and logic etc:
+
+- [**Architecture & RAG Workflow**](docs/1_architecture.md): An overview of the system's three-stage pipeline (Ingestion, Translation, Post-Processing) and the role of the RAG Proxy.
+- [**Post-Processing Logic**](docs/2_post_processing.md): Details on the regex-based script used to ensure correct spacing for Drupal variables in Japanese translations.
+- [**Translation Quality Analysis**](docs/3_quality_analysis.md): A guide on monitoring RAG performance, interpreting distance metrics, and tuning thresholds for optimal accuracy.
