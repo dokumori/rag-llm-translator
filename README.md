@@ -1,6 +1,7 @@
 # What is this for?
 
-This is a PoC for https://www.drupal.org/project/translation_llm. This project aims to streamline the translation of Drupal codebase strings using LLMs, while also ensuring consistency and accuracy through a RAG-based architecture.
+This is a PoC for https://www.drupal.org/project/translation_llm. This project aims to streamline* the translation of Drupal codebase strings using LLMs, while also ensuring consistency and accuracy through a RAG-based architecture.
+*The human is in the loop for the quality check and approval. The full automation of the translation process, therefore, is outside of the scope of this project.
 
 Huge thanks to amazee.ai for generously providing their LLM resources for this project ❤️
 
@@ -35,7 +36,6 @@ Run:
 **Untranslated strings**: a .po file that only contains untranslated strings. You can generate it from a working Drupal instance using the following command, after importing translation strings that are currently available:
 
 `drush locale:export {langcode} --types=not-translated > untranslated.po`
-
 
 Place it under `data/translations/input`.
 
@@ -72,18 +72,12 @@ Then in the other window (or press ctrl+c, then), run the following command to i
 Finally, run the following command to translate the untranslates strings:
 `bash bin/translate.sh`
 
-IMPORTANT: Please be modest with the use of the LLMs provided by amazee.ai, and refrain from running processes that are unnecessary / irrelevant to the goal of this project.
-
+**IMPORTANT:** Please be modest with the use of the LLM resources provided by amazee.ai, and refrain from running processes that are unnecessary / irrelevant to the goal of this project.
 
 # Documentation
 
-The following documents provide detailed information about the project's technical implementation, logic, and analysis tools:
+The following documents provide detailed information about the project's technical implementation and logic etc:
 
 - [**Architecture & RAG Workflow**](docs/1_architecture.md): An overview of the system's three-stage pipeline (Ingestion, Translation, Post-Processing) and the role of the RAG Proxy.
 - [**Post-Processing Logic**](docs/2_post_processing.md): Details on the regex-based script used to ensure correct spacing for Drupal variables in Japanese translations.
 - [**Translation Quality Analysis**](docs/3_quality_analysis.md): A guide on monitoring RAG performance, interpreting distance metrics, and tuning thresholds for optimal accuracy.
-
-
-# Future improvements (in case this system gets accepted)
-- The destination language is hard-coded to Japanese. It would be nice to make this configurable.
-
