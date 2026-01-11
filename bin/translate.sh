@@ -6,6 +6,9 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
 fi
 
+# Default to 'ja' if not set in .env
+TARGET_LANG=${TARGET_LANG:-ja}
+
 set -e
 
 echo "----------------------------------------------------------------"
@@ -16,7 +19,7 @@ MODELS_JSON="config/models.json"
 INPUT_HOST_DIR="data/translations/input"
 OUTPUT_HOST_DIR="data/translations/output"
 # The exact string required by Gettext/gpt-po-translator
-REQUIRED_LANG_STR="\"Language: ja\\\n\""
+REQUIRED_LANG_STR="\"Language: ${TARGET_LANG}\\\n\""
 
 # Parse JSON names for the menu
 menu_options=()
@@ -52,12 +55,12 @@ if [ -z "$SELECTED_MODEL" ]; then
 fi
 
 # --- METADATA VALIDATION ---
-# Ensure .po files have the "Language: ja" header required by gpt-po-translator
+# Ensure .po files have the "Language: <TARGET_LANG>" header required by gpt-po-translator
 echo "🔍 Validating .po metadata in $INPUT_HOST_DIR..."
 for po_file in "$INPUT_HOST_DIR"/*.po; do
   [ -e "$po_file" ] || continue
   
-  if ! grep -qi "Language: ja" "$po_file"; then
+  if ! grep -qi "Language: ${TARGET_LANG}" "$po_file"; then
     echo "📝 Adding missing language metadata to $(basename "$po_file")..."
     # Prepend the required string to the top of the file using a temporary file
     { printf "%s\n" "$REQUIRED_LANG_STR"; cat "$po_file"; } > "${po_file}.tmp" && mv "${po_file}.tmp" "$po_file"

@@ -7,6 +7,10 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 read -p "Enter AMAZEE_API_TOKEN: " AMAZEE_API_TOKEN
 read -p "Enter OPENAI_API_BASE: " OPENAI_API_BASE
 
+# Prompt for Target Language (default to 'ja')
+read -p "Enter TARGET_LANG (default: ja): " TARGET_LANG
+TARGET_LANG=${TARGET_LANG:-ja}
+
 # 1. Detect actual UID/GID to ensure the container matches the host user
 DETECTED_UID=$(id -u)
 DETECTED_GID=$(id -g)
@@ -24,6 +28,7 @@ cat > "${PROJECT_ROOT}/.env" << EOF
 # .env file - Generated on $(date)
 AMAZEE_API_TOKEN=${AMAZEE_API_TOKEN}
 OPENAI_API_BASE=${OPENAI_API_BASE}
+TARGET_LANG=${TARGET_LANG}
 CHROMA_PORT=8000
 
 # User IDs for Docker Compose

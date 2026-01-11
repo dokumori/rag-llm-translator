@@ -3,6 +3,7 @@ import sys
 import subprocess
 import glob
 import shutil
+import argparse
 
 # Drupal Standard: 2-space indent
 def run_translation(model, input_base_dir, output_base_dir):
@@ -16,6 +17,9 @@ def run_translation(model, input_base_dir, output_base_dir):
   # Ensure output directory exists
   os.makedirs(output_base_dir, exist_ok=True)
 
+  # Retrieve Target Language from environment, default to 'ja' if missing
+  target_lang = os.environ.get("TARGET_LANG", "ja")
+
   # 2. Find files recursively
   po_files = glob.glob(os.path.join(input_base_dir, "**/*.po"), recursive=True)
   
@@ -24,7 +28,7 @@ def run_translation(model, input_base_dir, output_base_dir):
     return
 
   total_files = len(po_files)
-  print(f"🚀 Found {total_files} files. Using gpt-po-translator with {model}...", flush=True)
+  print(f"🚀 Found {total_files} files. Using gpt-po-translator with {model} for language '{target_lang}'...", flush=True)
 
   # 3. Process Loop
   for index, src_file in enumerate(po_files, 1):
@@ -55,7 +59,7 @@ def run_translation(model, input_base_dir, output_base_dir):
         "--provider", "openai",
         "--model", model,
         "--folder", TEMP_WORK_DIR, 
-        "--lang", "ja", #TODO: allow users to specify the language
+        "--lang", target_lang, 
         "--bulk",
         "--bulksize", "15"
       ]
@@ -95,8 +99,11 @@ def run_translation(model, input_base_dir, output_base_dir):
   print("🎉 Translation run complete.", flush=True)
 
 if __name__ == "__main__":
-  if len(sys.argv) < 4:
-    print("Usage: python3 translate_runner.py <model> <input_dir> <output_dir>")
-    sys.exit(1)
+  parser = argparse.ArgumentParser(description="Run translations on .po files")
+  parser.add_argument("--model", required=True, help="LLM Model ID")
+  parser.add_argument("--input", required=True, help="Input directory")
+  parser.add_argument("--output", required=True, help="Output directory")
 
-  run_translation(sys.argv[1], sys.argv[2], sys.argv[3])
+  args = parser.parse_args()
+
+  run_translation(args.model, args.input, args.output)
