@@ -36,7 +36,7 @@ flowchart TD
 The core of this system is **ChromaDB**, which stores vector representations of the glossary and translation memory.
 
 * **Embedding Model:** The model `intfloat/multilingual-e5-large` is used. This model is optimised for multilingual retrieval.
-* **Distance Metric:** The database uses **Cosine Similarity** to find the closest matches.
+* **Distance Metric:** The database is configured to use **Cosine Similarity** to find the closest matches.
 * **Data Formatting:** The embedding model requires specific prefixes. During ingestion, the system automatically adds the prefix `passage:` to all data stored in the database.
 
 ## 2. Stage 1: Ingestion
