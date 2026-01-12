@@ -21,6 +21,7 @@ mkdir -p "${PROJECT_ROOT}/data/cache"
 mkdir -p "${PROJECT_ROOT}/data/rag-analysis"
 mkdir -p "${PROJECT_ROOT}/data/glossary"
 mkdir -p "${PROJECT_ROOT}/data/translations"
+mkdir -p "${PROJECT_ROOT}/data/chroma_db"
 
 # 3. Create .env file with final values (No sed required)
 echo "📝 Generating .env file..."
@@ -38,8 +39,8 @@ EOF
 
 # 4. Fix ownership of the data directory (Executed on Host)
 echo "🔧 Setting folder permissions..."
-# REVISION: Use numeric GID (${DETECTED_GID}) instead of group name (${DETECTED_GROUP})
-# This avoids "illegal group name" errors entirely on Mac/Linux.
+# Use numeric GID (${DETECTED_GID}) to avoid "illegal group name" errors
+# entirely on Mac/Linux.
 sudo chown -R ${DETECTED_UID}:${DETECTED_GID} "${PROJECT_ROOT}/data"
 chmod -R 775 "${PROJECT_ROOT}/data"
 

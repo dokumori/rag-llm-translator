@@ -5,12 +5,11 @@ services:
     ports:
       - "${CHROMA_PORT}:8000"
     volumes:
-      # Use a named volume for better I/O performance and persistence
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
     environment:
-      # Explicitly enable persistence and set the internal path
+      - PERSIST_DIRECTORY=/data
       - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
     networks:
       - app_network
     healthcheck:
@@ -63,6 +62,8 @@ services:
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
+      # Passed from .env to the container for translate_runner.py
+      - TARGET_LANG=${TARGET_LANG}
     volumes:
       # Mount shared model configuration
       - ./config/models.json:/app/config/models.json:ro
