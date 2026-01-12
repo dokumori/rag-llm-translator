@@ -22,9 +22,11 @@ Detailed instructions for each step are provided below.
 ## 1. Create the .env file
 
 Run:
-`execute bin/create_env.sh`
+`execute bin/initial_setup.sh`
 
 ...and supply the API key and the endpoint URL. (At the moment, the API key and the endpoint URL are only shared with the maintainers of https://www.drupal.org/project/translation_llm)
+
+This script also takes care of creation of directories, setting permissions etc.
 
 ## 2. Build
 
@@ -87,3 +89,4 @@ The following documents provide detailed information about the project's technic
 - [**Architecture & RAG Workflow**](docs/1_architecture.md): An overview of the system's three-stage pipeline (Ingestion, Translation, Post-Processing) and the role of the RAG Proxy.
 - [**Post-Processing Logic**](docs/2_post_processing.md): Details on the regex-based script used to ensure correct spacing for Drupal variables in Japanese translations.
 - [**Translation Quality Analysis**](docs/3_quality_analysis.md): A guide on monitoring RAG performance, interpreting distance metrics, and tuning thresholds for optimal accuracy.
+- [**Glossary Extraction & Audit**](docs/4_glossary_extraction.md): Over time, translation consistency can diminish as projects grow. This tool extracts 1–3 word terms from the existing Translation Memory to generate a draft glossary. It identifies the most frequent translations and highlights usage variations (e.g., *Browser* vs. *Browsers*), allowing you to audit terminology consistency and build a data-driven foundation for a unified user experience.

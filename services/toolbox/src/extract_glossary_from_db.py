@@ -1,0 +1,173 @@
+import os
+import csv
+import re
+import chromadb
+from collections import defaultdict
+
+# Configuration
+CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+COLLECTION_NAME = "drupal_tm"
+
+def is_substring_match(term_src, term_tgt, record_src, record_tgt):
+  """
+  Checks if the term pair exists within the record.
+  """
+  # 1. Check Japanese Target (simple substring)
+  if term_tgt not in record_tgt:
+    return False
+
+  # 2. Check English Source (Word Boundary is critical)
+  pattern = r'\b' + re.escape(term_src) + r'\b'
+  if re.search(pattern, record_src, re.IGNORECASE):
+    return True
+  
+  return False
+
+def main():
+  client = chromadb.HttpClient(host = CHROMA_HOST, port = CHROMA_PORT)
+  
+  try:
+    collection = client.get_collection(name = COLLECTION_NAME)
+  except Exception as e:
+    print(f"❌ Could not find collection '{COLLECTION_NAME}': {e}")
+    return
+
+  print(f"📂 Accessing collection '{COLLECTION_NAME}'...")
+  
+  results = collection.get(include = ['documents', 'metadatas'])
+  docs = results.get('documents', [])
+  metas = results.get('metadatas', [])
+  
+  if not docs or not metas:
+    print("❌ No data found.")
+    return
+
+  print(f"✅ Retrieved {len(docs)} records. Phase 1: Identifying Variations...")
+
+  # --- PHASE 1: Identify Candidates (All Variations) ---
+  # candidates[src_lower] = set of (original_src, target_string)
+  candidates = defaultdict(set)
+
+  for i in range(len(docs)):
+    src = docs[i].strip()
+    if src.startswith("passage:"):
+      src = src[len("passage:"):].strip()
+    tgt = str(metas[i].get('target', '')).strip()
+    
+    if not src or not tgt:
+      continue
+
+    # Only consider short terms (1-3 words) as glossary headers
+    word_count = len(src.split())
+    if 0 < word_count <= 3 and len(src) < 50:
+      src_lower = src.lower()
+      # Store every variation found, e.g. ('Browser', 'ブラウザ') AND ('Browser', 'ブラウザー')
+      candidates[src_lower].add((src, tgt))
+
+  print(f"🔍 Found {len(candidates)} unique English terms. Phase 2: Counting Frequencies...")
+
+  # --- PHASE 2: Global Frequency Scan ---
+  # We count how often EACH variation appears in the full database
+  
+  # Optimization: Pre-load records
+  records = []
+  for i in range(len(docs)):
+    d_src = docs[i].strip()
+    if d_src.startswith("passage:"): d_src = d_src[len("passage:"):].strip()
+    d_tgt = str(metas[i].get('target', '')).strip()
+    records.append((d_src, d_tgt))
+
+  # tallied_terms = list of dicts with counts
+  tallied_terms = []
+
+  for src_key, variations in candidates.items():
+    for (head_src, head_tgt) in variations:
+      count = 0
+      for r_src, r_tgt in records:
+        if is_substring_match(head_src, head_tgt, r_src, r_tgt):
+          count += 1
+      
+      # Keep if it appears more than once
+      if count > 1:
+        tallied_terms.append({
+          'key': src_key,
+          'src': head_src,
+          'tgt': head_tgt,
+          'count': count
+        })
+
+  print(f"📉 Phase 3: Pruning Superstrings...")
+
+  # --- PHASE 3: Pruning (Removing 'Action ID' if 'Action' exists) ---
+  # We only prune if the Source matches (substring) AND the Target matches (substring).
+  
+  final_map = defaultdict(list)
+  
+  # Sort by length of English source (shortest first) to prioritize base terms
+  tallied_terms.sort(key=lambda x: len(x['src']))
+  
+  ignore_indices = set()
+
+  for i in range(len(tallied_terms)):
+    if i in ignore_indices: continue
+    short = tallied_terms[i]
+
+    for j in range(i + 1, len(tallied_terms)):
+      if j in ignore_indices: continue
+      long = tallied_terms[j]
+
+      # Check if English 'Action' is in 'Action ID'
+      if is_substring_match(short['src'], short['tgt'], long['src'], long['tgt']):
+        # If 'Action' -> 'アクション' covers 'Action ID' -> 'アクションID'
+        # We suppress 'Action ID'
+        ignore_indices.add(j)
+
+  # --- PHASE 4: Aggregation by English Term ---
+  # Group surviving terms by their English key
+  for i, item in enumerate(tallied_terms):
+    if i not in ignore_indices:
+      final_map[item['key']].append(item)
+
+  output_path = "/app/data/rag-analysis/db_derived_glossary.csv"
+  print(f"💾 Exporting glossary...")
+
+  with open(output_path, 'w', newline = '', encoding = 'utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['Source', 'Target', 'Total Occurrences', 'Consistency', 'Alternatives'])
+
+    # Sort alphabetically by Source
+    sorted_keys = sorted(final_map.keys())
+
+    for key in sorted_keys:
+      variations = final_map[key]
+      
+      # Calculate total occurrences for this English term (sum of all variations)
+      # Note: This sum might double-count if "ブラウザ" is inside "ブラウザー".
+      # But for a glossary, showing the "Winner" is the priority.
+      
+      # Pick the variation with the highest count as the "Primary"
+      primary = max(variations, key=lambda x: x['count'])
+      total_count = sum(v['count'] for v in variations)
+      
+      # Consistency of the Primary translation
+      consistency = (primary['count'] / total_count) * 100 if total_count > 0 else 0
+      
+      # List alternatives
+      alts = []
+      for v in variations:
+        if v['tgt'] != primary['tgt']:
+          alts.append(f"{v['tgt']} ({v['count']})")
+      
+      writer.writerow([
+        primary['src'],     # e.g., "Browser"
+        primary['tgt'],     # e.g., "ブラウザ"
+        primary['count'],   # Count for THIS specific translation
+        f"{consistency:.1f}%", # Consistency relative to other variations
+        "; ".join(alts)     # e.g., "ブラウザー (5)"
+      ])
+
+  print(f"🎉 Done! Glossary saved to '{output_path}'.")
+
+if __name__ == "__main__":
+  main()
