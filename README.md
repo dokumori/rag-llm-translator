@@ -22,9 +22,11 @@ Detailed instructions for each step are provided below.
 ## 1. Create the .env file
 
 Run:
-`execute bin/create_env.sh`
+`execute bin/initial_setup.sh`
 
 ...and supply the API key and the endpoint URL. (At the moment, the API key and the endpoint URL are only shared with the maintainers of https://www.drupal.org/project/translation_llm)
+
+This script also takes care of creation of directories, setting permissions etc.
 
 ## 2. Build
 
