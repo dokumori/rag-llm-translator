@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import chromadb
 from chromadb.utils import embedding_functions
 from openai import OpenAI
@@ -7,31 +7,52 @@ import json
 import time
 import datetime
 import re
+from typing import List, Dict, Any, Tuple, Optional, Union
 
 app = Flask(__name__)
 
-# --- 1. Load Model at Startup ---
-print("⏳ Loading Embedding Model...", flush = True)
-e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-  model_name = "intfloat/multilingual-e5-large"
-)
-print("✅ Embedding Model Loaded", flush = True)
+# --- 1. Load Model at Startup (Lazy & Cached) ---
+_e5_ef = None
 
-# --- 2. Clients ---
-amazee_api_key = os.environ.get("AMAZEE_API_KEY")
-amazee_base_url = "https://llm.us104.amazee.ai/v1"
+def get_embedding_function() -> embedding_functions.SentenceTransformerEmbeddingFunction:
+  global _e5_ef
+  if _e5_ef is None:
+    print("⏳ Loading Embedding Model...", flush = True)
+    _e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+      model_name = "intfloat/multilingual-e5-large"
+    )
+    print("✅ Embedding Model Loaded", flush = True)
+  return _e5_ef
 
-upstream_client = OpenAI(
-  api_key = amazee_api_key,
-  base_url = amazee_base_url
-)
+# --- 2. Clients (Lazy & Cached) ---
+_amazee_api_key = os.environ.get("AMAZEE_API_KEY")
+_amazee_base_url = "https://llm.us104.amazee.ai/v1"
 
-chroma_client = chromadb.HttpClient(
-  host = os.environ.get("CHROMA_HOST", "chroma"),
-  port = int(os.environ.get("CHROMA_PORT", 8000))
-)
+_upstream_client = None
+_chroma_client = None
 
-def get_system_prompt_from_md():
+def get_upstream_client() -> OpenAI:
+  """Returns a cached instance of the OpenAI client."""
+  global _upstream_client
+  if _upstream_client is None:
+    _upstream_client = OpenAI(
+      api_key = _amazee_api_key,
+      base_url = _amazee_base_url
+    )
+  return _upstream_client
+
+def get_chroma_client() -> chromadb.HttpClient:
+  """Returns a cached instance of the ChromaDB client."""
+  global _chroma_client
+  if _chroma_client is None:
+    _chroma_client = chromadb.HttpClient(
+      host = os.environ.get("CHROMA_HOST", "chroma"),
+      port = int(os.environ.get("CHROMA_PORT", 8000))
+    )
+  return _chroma_client
+
+def get_system_prompt_from_md() -> str:
+  """Retrieves the expert system prompt from the markdown file."""
   path = "/app/system_prompt.md"
   if os.path.exists(path):
     with open(path, "r", encoding = "utf-8") as f:
@@ -40,19 +61,177 @@ def get_system_prompt_from_md():
         return content
   return "You are a professional translator for Drupal CMS."
 
-# Helper to read shared config
-def get_models_config():
+def get_models_config() -> List[Dict[str, Any]]:
+  """Retrieves model configurations from the shared JSON file."""
   config_path = "/app/config/models.json"
   if os.path.exists(config_path):
     with open(config_path, "r", encoding = "utf-8") as f:
       return json.load(f).get("models", [])
   return []
 
+# --- 3. Helper Functions ---
+
+def parse_input_payload(source_text: str) -> List[str]:
+  """
+  Extracts the content to be translated using the 'Sliding Window' JSON parsing logic.
+  Returns a cleaned list of strings.
+  """
+  query_payload: List[str] = []
+  start_indices = [i for i, char in enumerate(source_text) if char == '[']
+  
+  for idx in reversed(start_indices):
+    try:
+      # Check 1: Try parsing from this bracket to the very end
+      candidate = source_text[idx:]
+      parsed = json.loads(candidate)
+      if isinstance(parsed, list):
+        query_payload = parsed
+        break
+    except json.JSONDecodeError:
+      # Check 2: Try parsing from this bracket to the last ']'
+      try:
+        last_bracket = source_text.rfind(']')
+        if last_bracket > idx:
+          candidate_trimmed = source_text[idx : last_bracket + 1]
+          parsed = json.loads(candidate_trimmed)
+          if isinstance(parsed, list):
+            query_payload = parsed
+            break
+      except Exception:
+        pass
+
+  # Fallback: Treat as single item if no JSON list was identified
+  if not query_payload:
+    query_payload = [source_text.strip()]
+
+  # Clean the content by removing the "Text to translate:\n" prefix if present
+  delimiter = "Text to translate:\n"
+  cleaned_payload: List[str] = []
+  for item in query_payload:
+    if isinstance(item, str) and delimiter in item:
+      cleaned_payload.append(item.split(delimiter)[-1])
+    else:
+      cleaned_payload.append(item)
+      
+  return cleaned_payload
+
+def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, Any]]]:
+  """
+  Queries ChromaDB, applies Guardrail logic (Glossary/TM), and returns 
+  the XML formatted context string and the list of match logs.
+  """
+  rag_content = ""
+  matches_log: List[Dict[str, Any]] = []
+  found_glossary: set = set()
+  found_tm: set = set()
+  
+  # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
+  TM_THRESHOLD = 0.23
+  GLOSSARY_THRESHOLD = 0.25
+
+  try:
+    client = get_chroma_client()
+    existing_collections = [c.name for c in client.list_collections()]
+
+    # Prepare the E5 query prefix and strip whitespace
+    formatted_query = ["query: " + text.strip() for text in query_payload]
+
+    # Process Glossary
+    if "drupal_glossary" in existing_collections:
+      gloss_col = client.get_collection(
+        "drupal_glossary", 
+        embedding_function = get_embedding_function()
+      )
+      gloss_res = gloss_col.query(query_texts = formatted_query, n_results = 1)
+      if gloss_res['documents']:
+        for i, doc_list in enumerate(gloss_res['documents']):
+          if doc_list:
+            dist = gloss_res['distances'][i][0]
+            src = doc_list[0].replace("passage: ", "")
+            tgt = gloss_res['metadatas'][i][0].get('target', '')
+
+            # --- GUARDRAIL (GLOSSARY) ---
+            query_words = set(re.findall(r'\w+', query_payload[i].lower()))
+            src_words = set(re.findall(r'\w+', src.lower()))
+            overlap = query_words.intersection(src_words)
+
+            is_semantic_match = dist < GLOSSARY_THRESHOLD
+            has_shared_words = len(overlap) > 0
+
+            # Reject if no shared words unless distance is extremely low (synonym exception)
+            if not has_shared_words and dist > 0.08:
+              is_accepted = False
+              print(f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush = True)
+            else:
+              is_accepted = is_semantic_match
+
+            matches_log.append({
+              "type": "glossary", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+            })
+
+            if is_accepted:
+              found_glossary.add(f"- '{src}' -> '{tgt}'")
+
+    # Process Translation Memory (TM)
+    if "drupal_tm" in existing_collections:
+      tm_col = client.get_collection(
+        "drupal_tm", 
+        embedding_function = get_embedding_function()
+      )
+      tm_res = tm_col.query(query_texts = formatted_query, n_results = 1)
+      if tm_res['documents']:
+        for i, doc_list in enumerate(tm_res['documents']):
+          if doc_list:
+            dist = tm_res['distances'][i][0]
+            src = doc_list[0].replace("passage: ", "")
+            tgt = tm_res['metadatas'][i][0].get('target', '')
+
+            # --- GUARDRAIL (TM) ---
+            query_words = set(re.findall(r'\w+', query_payload[i].lower()))
+            src_words = set(re.findall(r'\w+', src.lower()))
+            overlap = query_words.intersection(src_words)
+
+            is_semantic_match = dist < TM_THRESHOLD
+            has_shared_words = len(overlap) > 0
+
+            if not has_shared_words and dist > 0.08:
+              is_accepted = False
+              print(f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush = True)
+            else:
+              is_accepted = is_semantic_match
+
+            matches_log.append({
+              "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+            })
+
+            if is_accepted:
+              found_tm.add(f"Source: {src}\nTarget: {tgt}")
+
+  except Exception as e:
+    print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
+    
+  if found_glossary:
+    rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
+  if found_tm:
+    rag_content += "\n<tm_matches>\n" + "\n".join(found_tm) + "\n</tm_matches>\n"
+    
+  return rag_content, matches_log
+
+def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str) -> str:
+  """Combines instructions, RAG context, and original system message."""
+  expert_instructions = get_system_prompt_from_md()
+  
+  original_system = original_system_data
+  if isinstance(original_system, list):
+    original_system = " ".join([s.get('text', '') for s in original_system if 'text' in s])
+
+  return f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
+
+# --- 4. Routes ---
+
 @app.route('/v1/models', methods = ['GET'])
-def list_models():
-  """
-  Returns a dynamic list of models from the shared JSON config.
-  """
+def list_models() -> Response:
+  """Returns a dynamic list of models from configuration."""
   config_models = get_models_config()
   return jsonify({
     "object": "list",
@@ -63,15 +242,15 @@ def list_models():
   })
 
 @app.route('/v1/chat/completions', methods = ['POST'])
-def handle_translation():
+def handle_translation() -> Union[Response, Tuple[Response, int]]:
+  """Main endpoint for handling translation requests."""
   start_time = time.time()
   try:
     data = request.json
     messages = data.get('messages', [])
     requested_model = data.get('model', "deepseek-r1-v1").strip()
 
-    # Initialize Structured Log
-    log_entry = {
+    log_entry: Dict[str, Any] = {
       "timestamp": datetime.datetime.utcnow().isoformat(),
       "model": requested_model,
       "rag_matches": [],
@@ -85,151 +264,21 @@ def handle_translation():
     source_text = user_messages[-1].get('content', '')
 
     # --- 1. EXTRACT CONTENT FOR RAG ---
-    # REVISED: "Sliding Window" JSON Parsing.
-    query_payload = []
-    
-    start_indices = [i for i, char in enumerate(source_text) if char == '[']
-    
-    for idx in reversed(start_indices):
-      try:
-        # Check 1: Try parsing from this bracket to the very end
-        candidate = source_text[idx:]
-        parsed = json.loads(candidate)
-        if isinstance(parsed, list):
-          query_payload = parsed
-          break
-      except json.JSONDecodeError:
-        # Check 2: Try parsing from this bracket to the last ']'
-        try:
-          last_bracket = source_text.rfind(']')
-          if last_bracket > idx:
-            candidate_trimmed = source_text[idx : last_bracket + 1]
-            parsed = json.loads(candidate_trimmed)
-            if isinstance(parsed, list):
-              query_payload = parsed
-              break
-        except Exception:
-          pass
-
-    # Fallback: Treat as single item
-    if not query_payload:
-      query_payload = [source_text.strip()]
-
-    delimiter = "Text to translate:\n"
-    cleaned_payload = []
-    for item in query_payload:
-      if delimiter in item:
-        cleaned_payload.append(item.split(delimiter)[-1])
-      else:
-        cleaned_payload.append(item)
-    query_payload = cleaned_payload
-
+    query_payload = parse_input_payload(source_text)
     log_entry["input_text"] = query_payload
     log_entry["batch_size"] = len(query_payload)
 
-    # --- 2. RAG LOOKUP CONFIG ---
-    expert_instructions = get_system_prompt_from_md()
-    rag_content = ""
-    found_glossary = set()
-    found_tm = set()
-
-    # STRICT THRESHOLDS
-    # Tuned for multilingual-e5-large (Distance Floor ~0.15)
-    TM_THRESHOLD = 0.23
-    GLOSSARY_THRESHOLD = 0.25
-
+    # --- 2. RAG LOOKUP ---
     try:
-      existing_collections = [c.name for c in chroma_client.list_collections()]
-
-      # Prepare the E5 query prefix AND strip whitespace
-      formatted_query = ["query: " + text.strip() for text in query_payload]
-
-      if "drupal_glossary" in existing_collections:
-        gloss_col = chroma_client.get_collection("drupal_glossary", embedding_function = e5_ef)
-        gloss_res = gloss_col.query(query_texts = formatted_query, n_results = 1)
-        if gloss_res['documents']:
-          for i, doc_list in enumerate(gloss_res['documents']):
-            if doc_list:
-              dist = gloss_res['distances'][i][0]
-              # Remove 'passage: ' prefix for logs and prompt
-              src = doc_list[0].replace("passage: ", "")
-              tgt = gloss_res['metadatas'][i][0].get('target', '')
-
-              # --- GUARDRAIL (GLOSSARY) ---
-              # Create sets of words (simple whitespace split, lowercase)
-              query_words = set(re.findall(r'\w+', query_payload[i].lower()))
-              src_words = set(re.findall(r'\w+', src.lower()))
-
-              # Calculate overlap (intersection)
-              overlap = query_words.intersection(src_words)
-
-              # Rule: Reject if distance is high OR (distance is low BUT zero word overlap)
-              # We allow low-overlap matches ONLY if the distance is extremely low (e.g. < 0.08 for exact synonyms)
-              is_semantic_match = dist < GLOSSARY_THRESHOLD
-              has_shared_words = len(overlap) > 0
-
-              if not has_shared_words and dist > 0.08:
-                is_accepted = False
-                print(f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush=True)
-              else:
-                is_accepted = is_semantic_match
-              # ---------------------------
-
-              log_entry["rag_matches"].append({
-                "type": "glossary", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
-              })
-
-              if is_accepted:
-                found_glossary.add(f"- '{src}' -> '{tgt}'")
-
-      if "drupal_tm" in existing_collections:
-        tm_col = chroma_client.get_collection("drupal_tm", embedding_function = e5_ef)
-        tm_res = tm_col.query(query_texts = formatted_query, n_results = 1)
-        if tm_res['documents']:
-          for i, doc_list in enumerate(tm_res['documents']):
-            if doc_list:
-              dist = tm_res['distances'][i][0]
-              src = doc_list[0].replace("passage: ", "")
-              tgt = tm_res['metadatas'][i][0].get('target', '')
-
-              # --- GUARDRAIL (TM) ---
-              query_words = set(re.findall(r'\w+', query_payload[i].lower()))
-              src_words = set(re.findall(r'\w+', src.lower()))
-
-              overlap = query_words.intersection(src_words)
-
-              is_semantic_match = dist < TM_THRESHOLD
-              has_shared_words = len(overlap) > 0
-
-              if not has_shared_words and dist > 0.08:
-                is_accepted = False
-                print(f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush=True)
-              else:
-                is_accepted = is_semantic_match
-              # ----------------------
-
-              log_entry["rag_matches"].append({
-                "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
-              })
-
-              if is_accepted:
-                found_tm.add(f"Source: {src}\nTarget: {tgt}")
-
+      rag_content, rag_matches = perform_rag_lookup(query_payload)
+      log_entry["rag_matches"] = rag_matches
     except Exception as e:
+      rag_content = ""
       log_entry["rag_error"] = str(e)
       print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
 
-    if found_glossary:
-      rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
-    if found_tm:
-      rag_content += "\n<tm_matches>\n" + "\n".join(found_tm) + "\n</tm_matches>\n"
-
     # --- 3. CONSTRUCT PROMPT ---
-    original_system = data.get('system', "")
-    if isinstance(original_system, list):
-      original_system = " ".join([s.get('text', '') for s in original_system if 'text' in s])
-
-    final_system_content = f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
+    final_system_content = construct_system_prompt(data.get('system', ""), rag_content)
 
     # --- 4. STRUCTURED LOGGING ---
     log_entry["system_prompt_length"] = len(final_system_content)
@@ -237,7 +286,6 @@ def handle_translation():
 
     # --- 5. DRY RUN CHECK ---
     model_meta = next((m for m in get_models_config() if m["id"] == requested_model), None)
-    
     if model_meta and model_meta.get("is_dry_run"):
       log_entry["action"] = "dry_run"
       mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
@@ -256,7 +304,7 @@ def handle_translation():
     new_messages = [{"role": "system", "content": final_system_content}]
     new_messages += [m for m in messages if m.get('role') != 'system']
 
-    response = upstream_client.chat.completions.create(
+    response = get_upstream_client().chat.completions.create(
       model = requested_model,
       messages = new_messages,
       temperature = 0,

@@ -4,4 +4,6 @@ polib
 sentence-transformers
 gpt-po-translator
 tqdm
+pytest
+pytest-mock
 
