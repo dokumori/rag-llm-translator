@@ -155,7 +155,26 @@ def handle_translation():
               src = doc_list[0].replace("passage: ", "")
               tgt = gloss_res['metadatas'][i][0].get('target', '')
 
-              is_accepted = dist < GLOSSARY_THRESHOLD
+              # --- GUARDRAIL (GLOSSARY) ---
+              # Create sets of words (simple whitespace split, lowercase)
+              query_words = set(re.findall(r'\w+', query_payload[i].lower()))
+              src_words = set(re.findall(r'\w+', src.lower()))
+
+              # Calculate overlap (intersection)
+              overlap = query_words.intersection(src_words)
+
+              # Rule: Reject if distance is high OR (distance is low BUT zero word overlap)
+              # We allow low-overlap matches ONLY if the distance is extremely low (e.g. < 0.08 for exact synonyms)
+              is_semantic_match = dist < GLOSSARY_THRESHOLD
+              has_shared_words = len(overlap) > 0
+
+              if not has_shared_words and dist > 0.08:
+                is_accepted = False
+                print(f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush=True)
+              else:
+                is_accepted = is_semantic_match
+              # ---------------------------
+
               log_entry["rag_matches"].append({
                 "type": "glossary", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
               })
@@ -173,7 +192,21 @@ def handle_translation():
               src = doc_list[0].replace("passage: ", "")
               tgt = tm_res['metadatas'][i][0].get('target', '')
 
-              is_accepted = dist < TM_THRESHOLD
+              # --- GUARDRAIL (TM) ---
+              query_words = set(re.findall(r'\w+', query_payload[i].lower()))
+              src_words = set(re.findall(r'\w+', src.lower()))
+
+              overlap = query_words.intersection(src_words)
+
+              is_semantic_match = dist < TM_THRESHOLD
+              has_shared_words = len(overlap) > 0
+
+              if not has_shared_words and dist > 0.08:
+                is_accepted = False
+                print(f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush=True)
+              else:
+                is_accepted = is_semantic_match
+              # ----------------------
 
               log_entry["rag_matches"].append({
                 "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
