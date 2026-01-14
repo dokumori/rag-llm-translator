@@ -1,6 +1,8 @@
 #!/bin/bash
 # bin/translate.sh
 
+# Executes the translation pipeline
+
 # Load environment variables
 if [ -f .env ]; then
   export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
