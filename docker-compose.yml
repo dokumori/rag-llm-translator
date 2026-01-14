@@ -70,7 +70,7 @@ services:
       # Map the toolbox source scripts
       - ./services/toolbox/src:/app/src
       # Map the data directories relative to the root
-      - ./data/glossary:/app/tm_source
+      - ./data/tm_source:/app/tm_source
       - ./data/translations:/app/po
       # Map the destination directory for RAG analysis results
       - ./data/rag-analysis:/app/data/rag-analysis
