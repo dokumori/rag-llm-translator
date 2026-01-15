@@ -50,19 +50,41 @@ def main():
   rag_data = []
 
   # Read Log File
+  # Read Log File
+  skipped_lines = 0
   try:
     with open(log_file, 'r', encoding = 'utf-8') as f:
       for line in f:
+        line = line.strip()
+        if not line:
+          continue
+
+        # Extract JSON substring
         try:
-          entry = json.loads(line)
-          all_entries.append(entry)
-          if 'rag_matches' in entry and entry['rag_matches']:
-            rag_data.extend(entry['rag_matches'])
+          json_start = line.find('{')
+          if json_start == -1:
+            skipped_lines += 1
+            continue
+          
+          json_str = line[json_start:]
+          entry = json.loads(json_str)
+
+          # Validate Request
+          if 'rag_matches' in entry and 'input_text' in entry:
+            all_entries.append(entry)
+            
+            # Enrich matches with timestamp if available in regex parse or just use current
+            if entry.get('rag_matches'):
+              rag_data.extend(entry['rag_matches'])
         except json.JSONDecodeError:
+          skipped_lines += 1
           continue
   except Exception as e:
     logger.error(f"❌ Error reading log file: {e}", exc_info = True)
     sys.exit(1)
+
+  if skipped_lines > 0:
+    logger.info(f"ℹ️ Skipped {skipped_lines} lines (non-JSON or parse errors).")
 
   logger.info(f"✅ Processed {len(all_entries)} translation requests.")
   logger.info(f"✅ Found {len(rag_data)} potential RAG matches.")
