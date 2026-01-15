@@ -295,6 +295,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
       rag_content = ""
       log_entry["rag_error"] = str(e)
       logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info = True)
+      # Non-critical, we proceed without RAG
 
     # --- 3. CONSTRUCT PROMPT ---
     final_system_content = construct_system_prompt(data.get('system', ""), rag_content)
@@ -323,19 +324,36 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
     new_messages = [{"role": "system", "content": final_system_content}]
     new_messages += [m for m in messages if m.get('role') != 'system']
 
-    response = get_upstream_client().chat.completions.create(
-      model = requested_model,
-      messages = new_messages,
-      temperature = 0,
-      max_tokens = data.get('max_tokens', 1000)
-    )
-
-    log_entry["processing_time"] = time.time() - start_time
-    return jsonify(response.model_dump())
+    try:
+      response = get_upstream_client().chat.completions.create(
+        model = requested_model,
+        messages = new_messages,
+        temperature = 0,
+        max_tokens = data.get('max_tokens', 1000)
+      )
+      log_entry["processing_time"] = time.time() - start_time
+      return jsonify(response.model_dump())
+    except Exception as e:
+      logger.error(f"❌ Translation provider error: {e}", exc_info = True)
+      return jsonify({"error": "Translation provider unavailable"}), 502
 
   except Exception as e:
     logger.error(f"❌ ERROR: {e}", exc_info = True)
     return jsonify({"error": str(e)}), 500
+
+@app.route('/health', methods = ['GET'])
+def health_check() -> Tuple[Response, int]:
+  """
+  Healthz endpoint for Docker and Load Balancers.
+  Checks connectivity to Vector Database.
+  """
+  try:
+    client = get_chroma_client()
+    client.heartbeat()
+    return jsonify({"status": "ok", "database": "connected"}), 200
+  except Exception as e:
+    logger.error(f"❌ Health check failed: {e}", exc_info = True)
+    return jsonify({"status": "error", "database": "disconnected", "details": str(e)}), 503
 
 if __name__ == '__main__':
   app.run(host = '0.0.0.0', port = 5000)
