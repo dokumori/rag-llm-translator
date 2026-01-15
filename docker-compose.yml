@@ -20,7 +20,9 @@ services:
       start_period: 10s
 
   rag-proxy:
-    build: ./services/rag-proxy
+    build:
+      context: .
+      dockerfile: ./services/rag-proxy/Dockerfile
     container_name: rag-proxy
     ports:
       - "5001:5000"
@@ -58,7 +60,9 @@ services:
 
   toolbox:
     container_name: toolbox
-    build: ./services/toolbox
+    build:
+      context: .
+      dockerfile: ./services/toolbox/Dockerfile
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
     command: tail -f /dev/null
     user: "${UID}:${GID}"
