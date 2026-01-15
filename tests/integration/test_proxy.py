@@ -1,7 +1,6 @@
 """
 Integration Tests for RAG Proxy Service (Pytest)
 ---------------------------------------
-Refactored to align with project standards and use pytest.
 
 Key Features Tested:
 1. RAG Context Injection: Verified via simulated ChromaDB responses.
@@ -17,7 +16,6 @@ import sys
 import os
 from unittest.mock import MagicMock
 
-# --- 🚀 PERFORMANCE FIX -----------------------------------------------------
 # We must mock the Embedding Function BEFORE 'app' imports it, 
 # to prevent the 2GB model download during test collection/execution.
 # In pytest, we can use sys.modules patching or just rely on 'mocker.patch' 
