@@ -8,11 +8,11 @@ import tempfile
 import time
 from typing import List, Dict, Any, Optional
 
-# Configure Logging
+# --- Logging Configuration ---
 logging.basicConfig(
-  level=logging.INFO,
-  format='%(asctime)s - %(levelname)s - %(message)s',
-  datefmt='%H:%M:%S'
+  format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  datefmt = '%Y-%m-%d %H:%M:%S',
+  level = logging.INFO
 )
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,17 @@ def get_env_config() -> Dict[str, str]:
   """Returns the environment configuration for the translation tool."""
   env = os.environ.copy()
   env["OPENAI_API_KEY"] = "dummy"
-  env["OPENAI_BASE_URL"] = "http://rag-proxy:5000/v1"
+  
+  # Allow override via environment variable, default to http://rag-proxy:5000/v1
+  base_url = os.environ.get("OPENAI_BASE_URL", "http://rag-proxy:5000/v1")
+  env["OPENAI_BASE_URL"] = base_url
+  
+  logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
   return env
 
 def find_po_files(input_dir: str) -> List[str]:
   """Recursively finds all .po files in the input directory."""
-  return glob.glob(os.path.join(input_dir, "**/*.po"), recursive=True)
+  return glob.glob(os.path.join(input_dir, "**/*.po"), recursive = True)
 
 def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
   """Prepares the gpt-po-translator command arguments."""
@@ -53,12 +58,12 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
   
   while attempt <= max_retries:
     try:
-      # capture_output=False lets the tool's own progress bar show in Docker logs/Terminal
+      # capture_output = False lets the tool's own progress bar show in Docker logs/Terminal
       result = subprocess.run(
         cmd,
-        env=env,
-        capture_output=False,
-        text=True
+        env = env,
+        capture_output = False,
+        text = True
       )
       
       if result.returncode == 0:
@@ -89,17 +94,17 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
   target_lang = os.environ.get("TARGET_LANG", "ja")
   
   # Ensure output directory exists
-  os.makedirs(output_base_dir, exist_ok=True)
+  os.makedirs(output_base_dir, exist_ok = True)
 
   # 2. Find Files
   po_files = find_po_files(input_base_dir)
   
   if not po_files:
-    print(f"⚠️ No .po files found in {input_base_dir}", flush=True)
+    logger.warning(f"⚠️ No .po files found in {input_base_dir}")
     return
 
   total_files = len(po_files)
-  print(f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...", flush=True)
+  logger.info(f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...")
 
   success_count = 0
   failure_count = 0
@@ -118,9 +123,9 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
         final_dest_file = os.path.join(output_base_dir, rel_path)
         
         # Ensure final destination sub-directory exists
-        os.makedirs(os.path.dirname(final_dest_file), exist_ok=True)
+        os.makedirs(os.path.dirname(final_dest_file), exist_ok = True)
 
-        print(f"[{index}/{total_files}] 📦 Processing: {rel_path}", flush=True)
+        logger.info(f"[{index}/{total_files}] 📦 Processing: {rel_path}")
 
         try:
           # A. ISOLATION STEP: Clear temp (should be empty, but good practice if reusing dir in loop logic)
@@ -142,36 +147,35 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
           if result.returncode == 0:
             if os.path.exists(temp_file_path):
               shutil.copy2(temp_file_path, final_dest_file)
-              print(f"   ✅ Saved to: {final_dest_file}", flush=True)
+              logger.info(f"   ✅ Saved to: {final_dest_file}")
               success_count += 1
             else:
-              print(f"   ⚠️ Error: Output file missing in temp dir: {filename}", flush=True)
+              logger.warning(f"   ⚠️ Error: Output file missing in temp dir: {filename}")
               logger.error(f"File {filename} missing from {temp_work_dir} after successful run.")
               failure_count += 1
           else:
-            print(f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})", flush=True)
+            logger.error(f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})")
             failure_count += 1
 
         except Exception as e:
-          print(f"   ❌ Critical Error on {rel_path}: {e}", flush=True)
-          logger.exception(f"Exception processing {rel_path}")
+          logger.critical(f"   ❌ Critical Error on {rel_path}: {e}", exc_info = True)
           failure_count += 1
 
   except Exception as e:
-    logger.critical(f"Failed to create or manage temporary directory: {e}")
+    logger.critical(f"Failed to create or manage temporary directory: {e}", exc_info = True)
     return
 
   # 4. Summary
-  print("\n" + "="*30, flush=True)
-  print("🎉 Translation run complete.", flush=True)
-  print(f"📊 Summary: {success_count} Success, {failure_count} Failed, {total_files} Total", flush=True)
-  print("="*30 + "\n", flush=True)
+  logger.info("=" * 30)
+  logger.info("🎉 Translation run complete.")
+  logger.info(f"📊 Summary: {success_count} Success, {failure_count} Failed, {total_files} Total")
+  logger.info("=" * 30)
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="Run translations on .po files")
-  parser.add_argument("--model", required=True, help="LLM Model ID")
-  parser.add_argument("--input", required=True, help="Input directory")
-  parser.add_argument("--output", required=True, help="Output directory")
+  parser = argparse.ArgumentParser(description = "Run translations on .po files")
+  parser.add_argument("--model", required = True, help = "LLM Model ID")
+  parser.add_argument("--input", required = True, help = "Input directory")
+  parser.add_argument("--output", required = True, help = "Output directory")
 
   args = parser.parse_args()
 

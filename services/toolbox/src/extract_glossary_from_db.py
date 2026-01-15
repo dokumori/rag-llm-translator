@@ -2,7 +2,16 @@ import os
 import csv
 import re
 import chromadb
+import logging
 from collections import defaultdict
+
+# --- Logging Configuration ---
+logging.basicConfig(
+  format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  datefmt = '%Y-%m-%d %H:%M:%S',
+  level = logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Configuration
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
@@ -30,20 +39,20 @@ def main():
   try:
     collection = client.get_collection(name = COLLECTION_NAME)
   except Exception as e:
-    print(f"❌ Could not find collection '{COLLECTION_NAME}': {e}")
+    logger.error(f"❌ Could not find collection '{COLLECTION_NAME}': {e}")
     return
 
-  print(f"📂 Accessing collection '{COLLECTION_NAME}'...")
+  logger.info(f"📂 Accessing collection '{COLLECTION_NAME}'...")
   
   results = collection.get(include = ['documents', 'metadatas'])
   docs = results.get('documents', [])
   metas = results.get('metadatas', [])
   
   if not docs or not metas:
-    print("❌ No data found.")
+    logger.warning("❌ No data found.")
     return
 
-  print(f"✅ Retrieved {len(docs)} records. Phase 1: Identifying Variations...")
+  logger.info(f"✅ Retrieved {len(docs)} records. Phase 1: Identifying Variations...")
 
   # --- PHASE 1: Identify Candidates (All Variations) ---
   # candidates[src_lower] = set of (original_src, target_string)
@@ -65,7 +74,7 @@ def main():
       # Store every variation found, e.g. ('Browser', 'ブラウザ') AND ('Browser', 'ブラウザー')
       candidates[src_lower].add((src, tgt))
 
-  print(f"🔍 Found {len(candidates)} unique English terms. Phase 2: Counting Frequencies...")
+  logger.info(f"🔍 Found {len(candidates)} unique English terms. Phase 2: Counting Frequencies...")
 
   # --- PHASE 2: Global Frequency Scan ---
   # We count how often EACH variation appears in the full database
@@ -97,7 +106,7 @@ def main():
           'count': count
         })
 
-  print(f"📉 Phase 3: Pruning Superstrings...")
+  logger.info(f"📉 Phase 3: Pruning Superstrings...")
 
   # --- PHASE 3: Pruning (Removing 'Action ID' if 'Action' exists) ---
   # We only prune if the Source matches (substring) AND the Target matches (substring).
@@ -105,7 +114,7 @@ def main():
   final_map = defaultdict(list)
   
   # Sort by length of English source (shortest first) to prioritize base terms
-  tallied_terms.sort(key=lambda x: len(x['src']))
+  tallied_terms.sort(key = lambda x: len(x['src']))
   
   ignore_indices = set()
 
@@ -129,8 +138,10 @@ def main():
     if i not in ignore_indices:
       final_map[item['key']].append(item)
 
-  output_path = "/app/data/rag-analysis/db_derived_glossary.csv"
-  print(f"💾 Exporting glossary...")
+  RAG_ANALYSIS_DIR = os.environ.get("RAG_ANALYSIS_DIR", "/app/data/rag-analysis")
+  output_path = os.path.join(RAG_ANALYSIS_DIR, "db_derived_glossary.csv")
+  logger.info(f"🔧 Config: RAG_ANALYSIS_DIR = {RAG_ANALYSIS_DIR}")
+  logger.info(f"💾 Exporting glossary...")
 
   with open(output_path, 'w', newline = '', encoding = 'utf-8') as f:
     writer = csv.writer(f)
@@ -147,7 +158,7 @@ def main():
       # But for a glossary, showing the "Winner" is the priority.
       
       # Pick the variation with the highest count as the "Primary"
-      primary = max(variations, key=lambda x: x['count'])
+      primary = max(variations, key = lambda x: x['count'])
       total_count = sum(v['count'] for v in variations)
       
       # Consistency of the Primary translation
@@ -167,7 +178,7 @@ def main():
         "; ".join(alts)     # e.g., "ブラウザー (5)"
       ])
 
-  print(f"🎉 Done! Glossary saved to '{output_path}'.")
+  logger.info(f"🎉 Done! Glossary saved to '{output_path}'.")
 
 if __name__ == "__main__":
   main()

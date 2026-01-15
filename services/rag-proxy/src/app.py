@@ -8,6 +8,15 @@ import time
 import datetime
 import re
 from typing import List, Dict, Any, Tuple, Optional, Union
+import logging
+
+# --- Logging Configuration ---
+logging.basicConfig(
+  format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  datefmt = '%Y-%m-%d %H:%M:%S',
+  level = logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -17,11 +26,11 @@ _e5_ef = None
 def get_embedding_function() -> embedding_functions.SentenceTransformerEmbeddingFunction:
   global _e5_ef
   if _e5_ef is None:
-    print("⏳ Loading Embedding Model...", flush = True)
+    logger.info("⏳ Loading Embedding Model...")
     _e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
       model_name = "intfloat/multilingual-e5-large"
     )
-    print("✅ Embedding Model Loaded", flush = True)
+    logger.info("✅ Embedding Model Loaded")
   return _e5_ef
 
 # --- 2. Clients (Lazy & Cached) ---
@@ -51,23 +60,33 @@ def get_chroma_client() -> chromadb.HttpClient:
     )
   return _chroma_client
 
+# --- Configuration Paths ---
+SYSTEM_PROMPT_PATH = os.environ.get("SYSTEM_PROMPT_PATH", "/app/system_prompt.md")
+MODELS_CONFIG_PATH = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models.json")
+
 def get_system_prompt_from_md() -> str:
   """Retrieves the expert system prompt from the markdown file."""
-  path = "/app/system_prompt.md"
-  if os.path.exists(path):
-    with open(path, "r", encoding = "utf-8") as f:
+  if os.path.exists(SYSTEM_PROMPT_PATH):
+    with open(SYSTEM_PROMPT_PATH, "r", encoding = "utf-8") as f:
       content = f.read().strip()
       if content:
         return content
+  else:
+    logger.warning(f"⚠️ System prompt file not found at: {SYSTEM_PROMPT_PATH}")
   return "You are a professional translator for Drupal CMS."
 
 def get_models_config() -> List[Dict[str, Any]]:
   """Retrieves model configurations from the shared JSON file."""
-  config_path = "/app/config/models.json"
-  if os.path.exists(config_path):
-    with open(config_path, "r", encoding = "utf-8") as f:
+  if os.path.exists(MODELS_CONFIG_PATH):
+    with open(MODELS_CONFIG_PATH, "r", encoding = "utf-8") as f:
       return json.load(f).get("models", [])
+  else:
+    logger.warning(f"⚠️ Models config file not found at: {MODELS_CONFIG_PATH}")
   return []
+
+# Log configuration at startup
+logger.info(f"🔧 Config: SYSTEM_PROMPT_PATH = {SYSTEM_PROMPT_PATH}")
+logger.info(f"🔧 Config: MODELS_CONFIG_PATH = {MODELS_CONFIG_PATH}")
 
 # --- 3. Helper Functions ---
 
@@ -161,7 +180,7 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
             # Reject if no shared words unless distance is extremely low (synonym exception)
             if not has_shared_words and dist > 0.08:
               is_accepted = False
-              print(f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush = True)
+              logger.info(f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
             else:
               is_accepted = is_semantic_match
 
@@ -196,7 +215,7 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
 
             if not has_shared_words and dist > 0.08:
               is_accepted = False
-              print(f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)", flush = True)
+              logger.info(f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
             else:
               is_accepted = is_semantic_match
 
@@ -208,7 +227,7 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
               found_tm.add(f"Source: {src}\nTarget: {tgt}")
 
   except Exception as e:
-    print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
+    logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info = True)
     
   if found_glossary:
     rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
@@ -275,14 +294,14 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
     except Exception as e:
       rag_content = ""
       log_entry["rag_error"] = str(e)
-      print(f"⚠️ RAG Lookup skipped: {e}", flush = True)
+      logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info = True)
 
     # --- 3. CONSTRUCT PROMPT ---
     final_system_content = construct_system_prompt(data.get('system', ""), rag_content)
 
     # --- 4. STRUCTURED LOGGING ---
     log_entry["system_prompt_length"] = len(final_system_content)
-    print(json.dumps(log_entry, ensure_ascii = False), flush = True)
+    logger.info(json.dumps(log_entry, ensure_ascii = False))
 
     # --- 5. DRY RUN CHECK ---
     model_meta = next((m for m in get_models_config() if m["id"] == requested_model), None)
@@ -315,7 +334,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
     return jsonify(response.model_dump())
 
   except Exception as e:
-    print(f"❌ ERROR: {e}", flush = True)
+    logger.error(f"❌ ERROR: {e}", exc_info = True)
     return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

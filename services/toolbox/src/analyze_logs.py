@@ -11,6 +11,19 @@ import csv
 import statistics
 from collections import defaultdict
 import os
+import logging
+
+# --- Logging Configuration ---
+# Note: For this analysis script which outputs a report to stdout,
+# we configure logging to stderr so it doesn't interfere with potential piping,
+# although the user instruction said "Keep print() only if it is strictly necessary for final data output".
+# We will use logger for status (loading/processing) and print for the final stats table.
+logging.basicConfig(
+  format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  datefmt = '%Y-%m-%d %H:%M:%S',
+  level = logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 def main():
   if len(sys.argv) < 2:
@@ -20,22 +33,25 @@ def main():
   log_file = sys.argv[1]
   
   # Output paths
-  base_dir = "/app/data/rag-analysis"
+  RAG_ANALYSIS_DIR = os.environ.get("RAG_ANALYSIS_DIR", "/app/data/rag-analysis")
+  logger.info(f"🔧 Config: RAG_ANALYSIS_DIR = {RAG_ANALYSIS_DIR}")
+  
+  base_dir = RAG_ANALYSIS_DIR
   matches_csv = os.path.join(base_dir, "matches.csv")
   misses_csv = os.path.join(base_dir, "near_misses.csv")
 
   if not os.path.exists(log_file):
-    print(f"❌ Log file not found: {log_file}")
+    logger.error(f"❌ Log file not found: {log_file}")
     sys.exit(1)
 
-  print(f"📊 Analyzing {log_file}...")
+  logger.info(f"📊 Analyzing {log_file}...")
 
   all_entries = []
   rag_data = []
 
   # Read Log File
   try:
-    with open(log_file, 'r', encoding='utf-8') as f:
+    with open(log_file, 'r', encoding = 'utf-8') as f:
       for line in f:
         try:
           entry = json.loads(line)
@@ -45,14 +61,14 @@ def main():
         except json.JSONDecodeError:
           continue
   except Exception as e:
-    print(f"❌ Error reading log file: {e}")
+    logger.error(f"❌ Error reading log file: {e}", exc_info = True)
     sys.exit(1)
 
-  print(f"\n✅ Processed {len(all_entries)} translation requests.")
-  print(f"✅ Found {len(rag_data)} potential RAG matches.")
+  logger.info(f"✅ Processed {len(all_entries)} translation requests.")
+  logger.info(f"✅ Found {len(rag_data)} potential RAG matches.")
 
   if not rag_data:
-    print("⚠️ No RAG matches found to analyze.")
+    logger.warning("⚠️ No RAG matches found to analyze.")
     sys.exit(0)
 
   # Separate Matches and Misses
@@ -64,6 +80,7 @@ def main():
   for item in rag_data:
     stats[item['type']].append(item['dist'])
 
+  # --- REPORT OUTPUT (Keep as print for readability/piping) ---
   print("\n--- 📏 Distance Statistics ---")
   print(f"{'type':<10} {'count':<6} {'mean':<10} {'std':<10} {'min':<10} {'25%':<10} {'50%':<10} {'75%':<10} {'max':<10}")
   
@@ -75,7 +92,7 @@ def main():
     std_val = statistics.stdev(distances) if count > 1 else 0.0
     min_val = min(distances)
     max_val = max(distances)
-    quantiles = statistics.quantiles(distances, n=4) if count > 1 else [min_val, min_val, min_val]
+    quantiles = statistics.quantiles(distances, n = 4) if count > 1 else [min_val, min_val, min_val]
     
     print(f"{r_type:<10} {count:<6} {mean_val:<10.6f} {std_val:<10.6f} {min_val:<10.6f} {quantiles[0]:<10.6f} {quantiles[1]:<10.6f} {quantiles[2]:<10.6f} {max_val:<10.6f}")
 
@@ -95,26 +112,26 @@ def main():
     # Pre-check keys exists in data to avoid errors, defaulting to empty string
     fieldnames = ["type", "query", "src", "tgt", "dist", "accepted"]
     
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-      writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    with open(filename, 'w', newline = '', encoding = 'utf-8') as csvfile:
+      writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
       writer.writeheader()
       for row in data:
         writer.writerow({k: row.get(k, '') for k in fieldnames})
     return True
 
-  print("\n--- 💾 Exporting Data ---")
+  logger.info("💾 Exporting Data...")
   
   # Export Misses
   if export_csv(rejected_matches, misses_csv):
-    print(f"✅ Near misses saved to: {misses_csv}")
+    logger.info(f"✅ Near misses saved to: {misses_csv}")
   else:
-    print(f"ℹ️ No near misses to save.")
+    logger.info(f"ℹ️ No near misses to save.")
 
   # Export Matches
   if export_csv(accepted_matches, matches_csv):
-    print(f"✅ Accepted matches saved to: {matches_csv}")
+    logger.info(f"✅ Accepted matches saved to: {matches_csv}")
   else:
-    print(f"ℹ️ No accepted matches to save.")
+    logger.info(f"ℹ️ No accepted matches to save.")
 
 if __name__ == "__main__":
   main()
