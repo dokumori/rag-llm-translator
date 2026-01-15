@@ -1,3 +1,12 @@
+"""
+Unit Test: Translation Runner
+-----------------------------
+Tests the batch translation orchestrator in `services/toolbox/src/translate_runner.py`.
+Verifies file discovery, batching, and API interaction logic.
+
+Run Command:
+    docker compose run --rm toolbox python -m pytest /app/tests/unit/test_translate_runner.py
+"""
 import sys
 import os
 import unittest
@@ -90,6 +99,8 @@ class TestTranslateRunner(unittest.TestCase):
     
     result = translate_runner.execute_translation(cmd, env, max_retries=1)
     
+    # Assert success and verify it took 2 attempts (initial + 1 retry)
+    # The sleep mock confirms we waited between attempts.
     self.assertEqual(result.returncode, 0)
     self.assertEqual(mock_run.call_count, 2)
     mock_sleep.assert_called_once()
@@ -144,6 +155,7 @@ class TestTranslateRunner(unittest.TestCase):
     mock_glob.side_effect = glob_side_effect
     
     # Setup Execution Success
+    # Mock subprocess.run to return exit code 0 (success)
     mock_res = MagicMock()
     mock_res.returncode = 0
     mock_exec.return_value = mock_res

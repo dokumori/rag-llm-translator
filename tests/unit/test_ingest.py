@@ -1,9 +1,19 @@
+"""
+Unit Test: Ingestion Logic
+--------------------------
+Tests the glossary and TM ingestion functionality in `services/toolbox/src/ingest.py`.
+Verifies file parsing, batching, and error handling.
+
+Run Command:
+    docker compose run --rm toolbox python -m pytest /app/tests/unit/test_ingest.py
+"""
 import sys
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
 
 # Adjusting sys.path to allow importing from services/toolbox/src
+# This allows the test suite to find the 'ingest' module without installing it as a package.
 src_path = str(Path(__file__).parent.parent.parent / "services" / "toolbox" / "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
@@ -17,11 +27,16 @@ class TestIngest(unittest.TestCase):
 
     def test_generate_content_hash(self):
         """Verifies consistent MD5 hash generation."""
+        # We use hashing to identify unique content batches in the database.
         text = "passage: Hello World"
         hash1 = ingest.generate_content_hash(text)
         hash2 = ingest.generate_content_hash(text)
+        
+        # Consistent output for same input
         self.assertEqual(hash1, hash2)
-        self.assertEqual(len(hash1), 32)  # MD5 is 32 chars
+        # Verify MD5 length
+        self.assertEqual(len(hash1), 32)
+        # Different output for different input
         self.assertNotEqual(hash1, ingest.generate_content_hash("passage: Different"))
 
     def test_batch_generator(self):
@@ -53,11 +68,13 @@ class TestIngest(unittest.TestCase):
         mock_client = MagicMock()
         mock_ef = MagicMock()
         
+        # Trigger processing
         ingest.process_glossary(mock_client, mock_ef, Path("glossary.csv"))
 
         # Check deduplication: Apple should only have Apfel
         mock_ingest.assert_called_once()
         
+        # Verify the batching function was called with the Correct deduplicated data
         # Arguments: collection, ids, documents, metadatas, batch_size, label
         call_args = mock_ingest.call_args[0]
         
@@ -103,11 +120,13 @@ class TestIngest(unittest.TestCase):
         mock_po.__iter__.return_value = [entry_save, entry_save_dupe, entry_fuzzy]
         mock_polib.return_value = mock_po
 
+        # Execute processing on the mocked directory
         mock_client = MagicMock()
         ingest.process_tm(mock_client, MagicMock(), Path("tm_dir"))
 
         mock_ingest.assert_called_once()
         
+        # Verify arguments passed to existing batch ingestion logic
         # unpack arguments correctly. 
         # ingest.py sig: _ingest_batches(collection, ids, documents, metadatas, ...)
         call_args = mock_ingest.call_args[0]
@@ -159,6 +178,8 @@ class TestIngest(unittest.TestCase):
         self.assertEqual(mock_col.add.call_count, 3)
 
     # --- 5. Main Orchestration Tests ---
+    # These tests verify that CLI arguments like --glossary-only or --reset
+    # are correctly parsed and passed to the logic functions.
 
     @patch("ingest.argparse.ArgumentParser.parse_args")
     @patch("ingest.chromadb.HttpClient")

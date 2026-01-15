@@ -15,9 +15,8 @@ Tests cover:
   - Multiple variables in one line.
   - Idempotency (ensuring we don't add double spaces if they already exist).
 
-Usage:
-  Execute inside the 'toolbox' container:
-  $ python3 -m unittest /app/tests/unit/test_post_process.py
+Run Command:
+    docker compose run --rm toolbox python -m pytest /app/tests/unit/test_post_process.py
 """
 
 import unittest

@@ -1,3 +1,12 @@
+"""
+Unit Test: RAG Proxy App Logic
+------------------------------
+Tests the Flask routes and internal logic of `services/rag-proxy/src/app.py` in isolation.
+Uses pure mocking to verify request parsing, payload construction, and response formatting.
+
+Run Command:
+    docker compose exec rag-proxy pytest /app/tests/unit/test_rag_proxy.py
+"""
 import sys
 import os
 import pytest
@@ -108,6 +117,9 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     assert "target phrase" in content
     # Look for the glossary log entry
     glossary_log = next((l for l in logs if l['type'] == 'glossary'), None)
+    
+    # Assert that the match was ACCEPTED because distance (0.1) < threshold (0.25)
+    # and "target phrase" was successfully injected into the context.
     assert glossary_log is not None
     assert glossary_log['accepted'] is True
     assert glossary_log['dist'] == 0.1
@@ -132,8 +144,11 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     }
 
     query = ["my query"]
-    content, logs = app.perform_rag_lookup(query)
 
+    content, logs = app.perform_rag_lookup(query)
+    
+    # Assert "target phrase" is NOT in content (suppressed)
+    # and log shows accepted=False due to high distance (0.8).
     assert "target phrase" not in content
     assert logs[0]['accepted'] is False
     assert logs[0]['dist'] == 0.8
