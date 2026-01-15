@@ -241,7 +241,9 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
                 collection.add(ids=new_ids, documents=new_docs, metadatas=new_meta)
                 total_new += len(new_ids)
             except Exception as e:
-                logger.error(f"❌ Error adding batch to {label}: {e}")
+                logger.error(f"❌ Error adding batch to {label}: {e}", exc_info=True)
+                # Fail fast on write errors to avoid partial/corrupted state
+                raise e
 
         if (total_new + total_skipped) % 2000 == 0:
             logger.info(f"      ... Processed {total_new + total_skipped} items ({total_new} new, {total_skipped} skipped)")
