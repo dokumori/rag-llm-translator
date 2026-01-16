@@ -27,6 +27,7 @@ services:
     ports:
       - "5001:5000"
     environment:
+      - PYTHONUNBUFFERED=1
       - LLM_API_TOKEN=${LLM_API_TOKEN}
       - LLM_BASE_URL=${LLM_BASE_URL}
       - CHROMA_HOST=chroma
@@ -68,6 +69,7 @@ services:
     command: tail -f /dev/null
     user: "${UID}:${GID}"
     environment:
+      - PYTHONUNBUFFERED=1
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
