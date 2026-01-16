@@ -3,21 +3,18 @@
 This is a PoC for https://www.drupal.org/project/translation_llm. It is a tool that uses LLMs to semi-automate the translation process of Drupal codebase strings, while also ensuring consistency and accuracy through a RAG-based architecture.
 Human intervention is required for the quality check and approval for the strings to be accepted. The full automation of the translation process, therefore, is outside of the scope of this project.
 
-Since this is a PoC, it only supports one AI provider, amazee.ai who is generously providing their LLM resources for this project.
-
-More information on [amazee.ai](https://amazee.ai):
-- [30-day free trial](https://amazee.ai/trial)
-- [amazee.ai on drupal.org](https://www.drupal.org/project/ai_provider_amazeeio)
+This PoC currently supports AI providers that are compliant with the OpenAI API. 
 
 # How to use the llm translator
 
-To use the LLM translator, the following steps are required:
-- **Configure and build**: Set up the Docker environment and create the `.env` file.
-- **Prepare**: Place untranslated `.po` files and RAG data (TM/Glossary) in the data directory.
+- **Configure and build**: Run the setup script to create the .env file, then build the Docker environment.
+- **Prepare**: Place untranslated `.po` files and RAG data (TM and glossary) in the data directory.
 - **Ingest**: Populate the vector database with your RAG data.
 - **Translate**: Run the translation script to process your files.
 
-Follow the instructions below to set up the environment and run the translation process.
+It also comes with the tools to analyze the quality of the translations and extract glossary terms.
+
+Follow the instructions below to set up the environment and run the translation process:
 
 ## 1. Create the .env file
 
@@ -45,15 +42,18 @@ You can generate a .po file that only contains untranslated strings from a worki
 Place untranslated.po file under `data/translations/input`.
 
 ### Translation memory and glossary
-While the system works perfectly fine without a translation memory and glossary, it defeats the purpose of the RAG-based approach. For maintaining consistency and quality of the translation, it is highly recommended to provide them. Save these files under `data/tm_source`
+While the system works perfectly fine without a translation memory and glossary, it defeats the purpose of the RAG-based approach. For maintaining consistency and quality of the translation, it is highly recommended that you ingest them. 
+
+**Location**: Save these files under `data/tm_source`. 
 
 **Translation memory**: A .po file with translated strings.
   - You can download it from https://ftp.drupal.org/files/translations/all/drupal/ (this is more resource-friendly than using the export feature on l.d.o ;) )
+
 **Glossary**: a .csv file containing the original words in English and its translations in the target language
 - Name it as `glossary.csv`.
 - It must have the following columns:
-  - source: the original string e.g. `Node`
-  - target: the translated string e.g. `ノード`
+  - **source**: original strings e.g. `Node`
+  - **target**: translations e.g. `ノード`
 - 
 
 ## 4. Ingest the translation memory and glossary
@@ -70,6 +70,12 @@ rag-proxy  |  * Running on all addresses (0.0.0.0)
 rag-proxy  |  * Running on http://127.0.0.1:5000
 rag-proxy  |  * Running on http://172.20.0.3:5000
 rag-proxy  | Press CTRL+C to quit
+```
+
+By running the following command, you can check whether the collections and the items are present in the DB:
+
+``` bash
+docker compose exec toolbox python3 /app/src/check_db.py
 ```
 
 Then in the other window (or press ctrl+c, then), run the following command to ingest the translation memory and glossary:
