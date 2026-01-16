@@ -53,7 +53,8 @@ class TestTranslateRunner(unittest.TestCase):
     cmd = translate_runner.prepare_command(model, lang, folder)
     
     expected_cmd = [
-      "gpt-po-translator",
+      sys.executable,
+      "-m", "python_gpt_po.main",
       "--provider", "openai",
       "--model", model,
       "--folder", folder,

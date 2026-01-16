@@ -1,3 +1,4 @@
+import sys
 import os
 import subprocess
 import glob
@@ -39,7 +40,8 @@ def find_po_files(input_dir: str) -> List[str]:
 def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
   """Prepares the gpt-po-translator command arguments."""
   return [
-    "gpt-po-translator",
+    sys.executable,
+    "-m", "python_gpt_po.main",
     "--provider", "openai",
     "--model", model,
     "--folder", temp_folder,
