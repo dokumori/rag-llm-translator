@@ -34,8 +34,9 @@ def get_embedding_function() -> embedding_functions.SentenceTransformerEmbedding
   return _e5_ef
 
 # --- 2. Clients (Lazy & Cached) ---
-_amazee_api_key = os.environ.get("AMAZEE_API_KEY")
-_amazee_base_url = "https://llm.us104.amazee.ai/v1"
+# --- 2. Clients (Lazy & Cached) ---
+_llm_api_token = os.environ.get("LLM_API_TOKEN")
+_llm_base_url = os.environ.get("LLM_BASE_URL")
 
 _upstream_client = None
 _chroma_client = None
@@ -45,8 +46,8 @@ def get_upstream_client() -> OpenAI:
   global _upstream_client
   if _upstream_client is None:
     _upstream_client = OpenAI(
-      api_key = _amazee_api_key,
-      base_url = _amazee_base_url
+      api_key = _llm_api_token,
+      base_url = _llm_base_url
     )
   return _upstream_client
 
@@ -255,7 +256,7 @@ def list_models() -> Response:
   return jsonify({
     "object": "list",
     "data": [
-      {"id": m["id"], "object": "model", "owned_by": "amazee"} 
+      {"id": m["id"], "object": "model", "owned_by": "llm-provider"} 
       for m in config_models
     ]
   })

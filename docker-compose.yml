@@ -27,7 +27,8 @@ services:
     ports:
       - "5001:5000"
     environment:
-      - AMAZEE_API_KEY=${AMAZEE_API_TOKEN}
+      - LLM_API_TOKEN=${LLM_API_TOKEN}
+      - LLM_BASE_URL=${LLM_BASE_URL}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface

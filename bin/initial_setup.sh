@@ -4,8 +4,8 @@
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Prompt for credentials
-read -p "Enter AMAZEE_API_TOKEN: " AMAZEE_API_TOKEN
-read -p "Enter OPENAI_API_BASE: " OPENAI_API_BASE
+read -p "Enter LLM_API_TOKEN: " LLM_API_TOKEN
+read -p "Enter LLM_BASE_URL: " LLM_BASE_URL
 
 # Prompt for Target Language (default to 'ja')
 read -p "Enter TARGET_LANG (default: ja): " TARGET_LANG
@@ -27,8 +27,8 @@ mkdir -p "${PROJECT_ROOT}/data/chroma_db"
 echo "📝 Generating .env file..."
 cat > "${PROJECT_ROOT}/.env" << EOF
 # .env file - Generated on $(date)
-AMAZEE_API_TOKEN=${AMAZEE_API_TOKEN}
-OPENAI_API_BASE=${OPENAI_API_BASE}
+LLM_API_TOKEN=${LLM_API_TOKEN}
+LLM_BASE_URL=${LLM_BASE_URL}
 TARGET_LANG=${TARGET_LANG}
 CHROMA_PORT=8000
 
