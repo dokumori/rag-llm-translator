@@ -69,7 +69,7 @@ if ls "${OUTPUT_HOST_DIR}"/*.po 1> /dev/null 2>&1; then
     exit 1
   fi
   # Use toolbox to clean purely to avoid host permission issues
-  docker compose exec toolbox sh -c 'rm -rf /app/po/output/*'
+  docker compose exec toolbox sh -c 'rm -f /app/po/output/**/*.po'
 fi
 
 # 4. Execute Modular Translation Runner
