@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 
 # --- Helpers ---
 
+
 def generate_content_hash(text: str) -> str:
     """Generates a deterministic MD5 hash for the given text to use as a Document ID."""
     return hashlib.md5(text.encode('utf-8')).hexdigest()
+
 
 def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
     """Yields successive n-sized chunks from iterable."""
@@ -43,6 +45,7 @@ def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
         yield iterable[ndx:min(ndx + n, l)]
 
 # --- Glossary Processor ---
+
 
 def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, reset: bool = False) -> None:
     """
@@ -59,9 +62,11 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     if reset:
         try:
             client.delete_collection(COLLECTION_NAME)
-            logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
+            logger.info(
+                f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
         except Exception:
-            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
+            logger.info(
+                f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
 
     try:
         gloss_col = client.get_or_create_collection(
@@ -73,7 +78,8 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
         logger.error(f"❌ Failed to get/create glossary collection: {e}")
         return
 
-    unique_entries: Dict[str, str] = {} # Key: Clean Source, Value: Clean Target
+    # Key: Clean Source, Value: Clean Target
+    unique_entries: Dict[str, str] = {}
 
     try:
         # Use 'utf-8-sig' to handle the BOM (\ufeff) marker automatically
@@ -101,13 +107,14 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     for src, tgt in unique_entries.items():
         doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
         doc_id = generate_content_hash(doc_text)
-        
+
         ids.append(doc_id)
         documents.append(doc_text)
         metadatas.append({"target": tgt, "source_original": src})
 
     # Batch and Incremental Load
-    _ingest_batches(gloss_col, ids, documents, metadatas, batch_size=200, label="Glossary")
+    _ingest_batches(gloss_col, ids, documents, metadatas,
+                    batch_size=200, label="Glossary")
     logger.info("✅ Glossary Ingestion Complete.")
 
 
@@ -128,9 +135,11 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     if reset:
         try:
             client.delete_collection(COLLECTION_NAME)
-            logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
+            logger.info(
+                f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
         except Exception:
-            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
+            logger.info(
+                f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
 
     try:
         tm_col = client.get_or_create_collection(
@@ -145,7 +154,7 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     # ROBUST FILE FINDING
     # Use rglob for recursive finding and check both lowercase and uppercase extensions
     po_files = list(source_dir.rglob("*.po")) + list(source_dir.rglob("*.PO"))
-    po_files = list(set(po_files)) # Remove duplicates if any
+    po_files = list(set(po_files))  # Remove duplicates if any
 
     if not po_files:
         logger.warning(f"⚠️  Found 0 reference .po files in {source_dir}")
@@ -160,7 +169,8 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     else:
         logger.info(f"   🔍 Found {len(po_files)} reference .po files.")
 
-    unique_tm: Dict[str, Tuple[str, str]] = {} # Key: msgid, Value: (msgstr, filename)
+    # Key: msgid, Value: (msgstr, filename)
+    unique_tm: Dict[str, Tuple[str, str]] = {}
     logger.info("   ⏳ Reading and deduplicating PO entries...")
 
     for po_file in po_files:
@@ -179,7 +189,8 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
         except Exception as e:
             logger.warning(f"   ⚠️ Error reading file {po_file}: {e}")
 
-    logger.info(f"   🔹 Found {len(unique_tm)} unique TM entries after deduplication.")
+    logger.info(
+        f"   🔹 Found {len(unique_tm)} unique TM entries after deduplication.")
 
     # Prepare Data
     ids = []
@@ -187,7 +198,7 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     metadatas = []
 
     for src, (tgt, fname) in unique_tm.items():
-        doc_text = "passage: " + src # CRITICAL: Preserve Prefix
+        doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
         doc_id = generate_content_hash(doc_text)
 
         ids.append(doc_id)
@@ -195,7 +206,8 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
         metadatas.append({"target": tgt, "file": fname})
 
     # Batch and Incremental Load
-    _ingest_batches(tm_col, ids, documents, metadatas, batch_size=400, label="TM")
+    _ingest_batches(tm_col, ids, documents, metadatas,
+                    batch_size=400, label="TM")
     logger.info("✅ TM Ingestion Complete.")
 
 
@@ -205,21 +217,22 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
     """
     total_new = 0
     total_skipped = 0
-    
+
     logger.info(f"   🚀 Starting vector ingestion for {label}...")
 
     for ch_ids, ch_docs, ch_meta in zip(
-      batch_generator(ids, batch_size),
-      batch_generator(documents, batch_size),
-      batch_generator(metadatas, batch_size)
+        batch_generator(ids, batch_size),
+        batch_generator(documents, batch_size),
+        batch_generator(metadatas, batch_size)
     ):
-        
+
         # Incremental Check: Check which IDs already exist
         try:
-            existing_records = collection.get(ids = ch_ids, include = [])
+            existing_records = collection.get(ids=ch_ids, include=[])
             existing_ids = set(existing_records['ids'])
         except Exception as e:
-            logger.warning(f"Failed to check existence for batch, attempting upsert all. Error: {e}")
+            logger.warning(
+                f"Failed to check existence for batch, attempting upsert all. Error: {e}")
             existing_ids = set()
 
         # Filter for NEW items only
@@ -238,26 +251,34 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
         # Upsert ONLY new
         if new_ids:
             try:
-                collection.add(ids=new_ids, documents=new_docs, metadatas=new_meta)
+                collection.add(ids=new_ids, documents=new_docs,
+                               metadatas=new_meta)
                 total_new += len(new_ids)
             except Exception as e:
-                logger.error(f"❌ Error adding batch to {label}: {e}", exc_info=True)
+                logger.error(
+                    f"❌ Error adding batch to {label}: {e}", exc_info=True)
                 # Fail fast on write errors to avoid partial/corrupted state
                 raise e
 
         if (total_new + total_skipped) % 2000 == 0:
-            logger.info(f"      ... Processed {total_new + total_skipped} items ({total_new} new, {total_skipped} skipped)")
+            logger.info(
+                f"      ... Processed {total_new + total_skipped} items ({total_new} new, {total_skipped} skipped)")
 
-    logger.info(f"   🏁 {label} Summary: {total_new} inserted, {total_skipped} skipped (deduplicated).")
+    logger.info(
+        f"   🏁 {label} Summary: {total_new} inserted, {total_skipped} skipped (deduplicated).")
 
 
 # --- Main Orchestration ---
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest translation data into ChromaDB.")
-    parser.add_argument("--glossary-only", action="store_true", help="Only ingest the glossary CSV.")
-    parser.add_argument("--tm-only", action="store_true", help="Only ingest the .po files.")
-    parser.add_argument("--reset", action="store_true", help="Delete existing collections before ingestion (Cleanup dupes).")
+    parser = argparse.ArgumentParser(
+        description="Ingest translation data into ChromaDB.")
+    parser.add_argument("--glossary-only", action="store_true",
+                        help="Only ingest the glossary CSV.")
+    parser.add_argument("--tm-only", action="store_true",
+                        help="Only ingest the .po files.")
+    parser.add_argument("--reset", action="store_true",
+                        help="Delete existing collections before ingestion (Cleanup dupes).")
     args = parser.parse_args()
 
     run_glossary = True
@@ -276,7 +297,8 @@ def main() -> None:
     try:
         client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
     except Exception as e:
-        logger.critical(f"❌ Failed to connect to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}. Error: {e}")
+        logger.critical(
+            f"❌ Failed to connect to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}. Error: {e}")
         return
 
     logger.info(f"⏳ Loading Embedding Model ({MODEL_NAME})...")
@@ -290,11 +312,12 @@ def main() -> None:
 
     if run_glossary:
         process_glossary(client, e5_ef, GLOSSARY_FILE, reset=args.reset)
-    
+
     if run_tm:
         process_tm(client, e5_ef, TM_SOURCE_DIR, reset=args.reset)
 
     logger.info("🎉 Ingestion Pipeline Finished.")
+
 
 if __name__ == "__main__":
     main()

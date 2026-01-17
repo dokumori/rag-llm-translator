@@ -13,6 +13,8 @@ except Exception as e:
     sys.exit(1)
 
 # Function to test a collection
+
+
 def test_collection(name, query_text):
     print(f"\n🔎 --- Testing Collection: {name} ---")
     try:
@@ -43,6 +45,7 @@ def test_collection(name, query_text):
 
     except Exception as e:
         print(f"❌ Error querying {name}: {e}")
+
 
 # Run tests
 test_collection("drupal_glossary", "View")

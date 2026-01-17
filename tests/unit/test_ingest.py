@@ -7,6 +7,7 @@ Verifies file parsing, batching, and error handling.
 Run Command:
     docker compose run --rm toolbox python -m pytest /app/tests/unit/test_ingest.py
 """
+import ingest
 import sys
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
@@ -14,12 +15,13 @@ from pathlib import Path
 
 # Adjusting sys.path to allow importing from services/toolbox/src
 # This allows the test suite to find the 'ingest' module without installing it as a package.
-src_path = str(Path(__file__).parent.parent.parent / "services" / "toolbox" / "src")
+src_path = str(Path(__file__).parent.parent.parent /
+               "services" / "toolbox" / "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
 
 # Importing the module under test
-import ingest
+
 
 class TestIngest(unittest.TestCase):
 
@@ -31,56 +33,57 @@ class TestIngest(unittest.TestCase):
         text = "passage: Hello World"
         hash1 = ingest.generate_content_hash(text)
         hash2 = ingest.generate_content_hash(text)
-        
+
         # Consistent output for same input
         self.assertEqual(hash1, hash2)
         # Verify MD5 length
         self.assertEqual(len(hash1), 32)
         # Different output for different input
-        self.assertNotEqual(hash1, ingest.generate_content_hash("passage: Different"))
+        self.assertNotEqual(
+            hash1, ingest.generate_content_hash("passage: Different"))
 
     def test_batch_generator(self):
         """Verifies correct chunking of lists."""
         data = [1, 2, 3, 4, 5]
-        batches = list(ingest.batch_generator(data, n = 2))
+        batches = list(ingest.batch_generator(data, n=2))
         self.assertEqual(batches, [[1, 2], [3, 4], [5]])
-        
-        batches_single = list(ingest.batch_generator(data, n = 10))
+
+        batches_single = list(ingest.batch_generator(data, n=10))
         self.assertEqual(batches_single, [[1, 2, 3, 4, 5]])
 
     # --- 2. Glossary Processing Tests ---
 
     @patch("ingest.Path.exists")
     @patch("ingest.csv.DictReader")
-    @patch("ingest.Path.open", new_callable = mock_open)
+    @patch("ingest.Path.open", new_callable=mock_open)
     @patch("ingest._ingest_batches")
     def test_process_glossary_deduplication(self, mock_ingest, mock_file, mock_dict_reader, mock_exists):
         """Verifies first-occurrence deduplication and batching trigger."""
         mock_exists.return_value = True
-        
+
         # FIX: Return list of dicts to avoid 'string indices must be integers' error
         mock_dict_reader.return_value = [
             {'source': 'Apple', 'target': 'Apfel'},
             {'source': 'Apple', 'target': 'Alternative'},
             {'source': 'Orange', 'target': 'Apfelsine'}
         ]
-        
+
         mock_client = MagicMock()
         mock_ef = MagicMock()
-        
+
         # Trigger processing
         ingest.process_glossary(mock_client, mock_ef, Path("glossary.csv"))
 
         # Check deduplication: Apple should only have Apfel
         mock_ingest.assert_called_once()
-        
+
         # Verify the batching function was called with the Correct deduplicated data
         # Arguments: collection, ids, documents, metadatas, batch_size, label
         call_args = mock_ingest.call_args[0]
-        
+
         # FIX: Metadatas is at index 3, not 2
-        metadata = call_args[3] 
-        
+        metadata = call_args[3]
+
         self.assertEqual(len(metadata), 2)  # Apple, Orange
         self.assertEqual(metadata[0]['target'], 'Apfel')
         self.assertEqual(metadata[1]['target'], 'Apfelsine')
@@ -90,9 +93,10 @@ class TestIngest(unittest.TestCase):
         """Verifies graceful handling of missing glossary file."""
         mock_exists.return_value = False
         mock_client = MagicMock()
-        
-        with self.assertLogs("ingest", level = "ERROR") as log:
-            ingest.process_glossary(mock_client, MagicMock(), Path("missing.csv"))
+
+        with self.assertLogs("ingest", level="ERROR") as log:
+            ingest.process_glossary(
+                mock_client, MagicMock(), Path("missing.csv"))
             self.assertIn("Glossary file not found", log.output[0])
 
     # --- 3. Translation Memory Processing Tests ---
@@ -104,20 +108,21 @@ class TestIngest(unittest.TestCase):
     def test_process_tm_logic(self, mock_ingest, mock_polib, mock_rglob, mock_exists):
         """Verifies fuzzy filtering, msgid deduplication, and recursive search."""
         mock_exists.return_value = True
-        
-        # Implementation calls rglob twice (*.po and *.PO). 
+
+        # Implementation calls rglob twice (*.po and *.PO).
         # We need to return a list for both calls.
-        # Side effect can be used to return different lists for different calls, 
+        # Side effect can be used to return different lists for different calls,
         # or just return the same list since we strip duplicates anyway.
         mock_rglob.side_effect = [[Path("nested/test.po")], []]
-        
+
         # Mock PO entries
-        entry_save = MagicMock(msgid = "Save", msgstr = "Speichern", flags = [])
-        entry_save_dupe = MagicMock(msgid = "Save", msgstr = "Old", flags = [])
-        entry_fuzzy = MagicMock(msgid = "Fuzzy", msgstr = "Wait", flags = ["fuzzy"])
-        
+        entry_save = MagicMock(msgid="Save", msgstr="Speichern", flags=[])
+        entry_save_dupe = MagicMock(msgid="Save", msgstr="Old", flags=[])
+        entry_fuzzy = MagicMock(msgid="Fuzzy", msgstr="Wait", flags=["fuzzy"])
+
         mock_po = MagicMock()
-        mock_po.__iter__.return_value = [entry_save, entry_save_dupe, entry_fuzzy]
+        mock_po.__iter__.return_value = [
+            entry_save, entry_save_dupe, entry_fuzzy]
         mock_polib.return_value = mock_po
 
         # Execute processing on the mocked directory
@@ -125,16 +130,16 @@ class TestIngest(unittest.TestCase):
         ingest.process_tm(mock_client, MagicMock(), Path("tm_dir"))
 
         mock_ingest.assert_called_once()
-        
+
         # Verify arguments passed to existing batch ingestion logic
-        # unpack arguments correctly. 
+        # unpack arguments correctly.
         # ingest.py sig: _ingest_batches(collection, ids, documents, metadatas, ...)
         call_args = mock_ingest.call_args[0]
         # arg 0 is collection, arg 1 is ids, arg 2 is docs, arg 3 is metadata
         ids = call_args[1]
         docs = call_args[2]
         metadata = call_args[3]
-        
+
         self.assertEqual(len(docs), 1)
         # Verify document content matches expectation
         self.assertEqual(docs[0], "passage: Save")
@@ -147,16 +152,17 @@ class TestIngest(unittest.TestCase):
     def test_ingest_batches_incremental_skip(self):
         """Verifies that existing IDs are skipped and only new ones added."""
         mock_col = MagicMock()
-        
+
         # We have 3 items, ID2 already exists
         ids = ["id1", "id2", "id3"]
         docs = ["doc1", "doc2", "doc3"]
         meta = [{"t": 1}, {"t": 2}, {"t": 3}]
-        
+
         # Mock collection.get to say id2 exists
         mock_col.get.return_value = {"ids": ["id2"]}
 
-        ingest._ingest_batches(mock_col, ids, docs, meta, batch_size = 10, label = "Test")
+        ingest._ingest_batches(mock_col, ids, docs, meta,
+                               batch_size=10, label="Test")
 
         # Verify add was called only with id1 and id3
         mock_col.add.assert_called_once()
@@ -172,7 +178,8 @@ class TestIngest(unittest.TestCase):
         docs = [f"doc_{i}" for i in range(10)]
         meta = [{} for _ in range(10)]
 
-        ingest._ingest_batches(mock_col, ids, docs, meta, batch_size = 4, label = "Test")
+        ingest._ingest_batches(mock_col, ids, docs, meta,
+                               batch_size=4, label="Test")
 
         # 10 items / batch size 4 = 3 calls (4, 4, 2)
         self.assertEqual(mock_col.add.call_count, 3)
@@ -188,9 +195,10 @@ class TestIngest(unittest.TestCase):
     @patch("ingest.process_tm")
     def test_main_routing(self, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
         """Verifies CLI flags correctly route to processors."""
-        
+
         # Test Case 1: Glossary Only
-        mock_args.return_value = MagicMock(glossary_only = True, tm_only = False, reset = False)
+        mock_args.return_value = MagicMock(
+            glossary_only=True, tm_only=False, reset=False)
         ingest.main()
         mock_gloss.assert_called_once()
         mock_tm.assert_not_called()
@@ -199,7 +207,8 @@ class TestIngest(unittest.TestCase):
         mock_tm.reset_mock()
 
         # Test Case 2: TM Only
-        mock_args.return_value = MagicMock(glossary_only = False, tm_only = True, reset = False)
+        mock_args.return_value = MagicMock(
+            glossary_only=False, tm_only=True, reset=False)
         ingest.main()
         mock_gloss.assert_not_called()
         mock_tm.assert_called_once()
@@ -211,12 +220,14 @@ class TestIngest(unittest.TestCase):
     @patch("ingest.process_tm")
     def test_main_reset_flow(self, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
         """Verifies that reset flag is passed down."""
-        mock_args.return_value = MagicMock(glossary_only = False, tm_only = False, reset = True)
+        mock_args.return_value = MagicMock(
+            glossary_only=False, tm_only=False, reset=True)
         ingest.main()
-        
+
         # Check that reset=True was passed to both
         self.assertTrue(mock_gloss.call_args[1]['reset'])
         self.assertTrue(mock_tm.call_args[1]['reset'])
+
 
 if __name__ == "__main__":
     unittest.main()
