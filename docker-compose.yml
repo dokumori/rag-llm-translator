@@ -33,12 +33,15 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
-      - SYSTEM_PROMPT_PATH=/app/system_prompt.md
+      - PROMPTS_DIR=/app/config/prompts
       - MODELS_CONFIG_PATH=/app/config/models.json
+      - GLOSSARY_COLLECTION=app_glossary
+      - TM_COLLECTION=app_tm
     volumes:
-      - ./config/system_prompt.md:/app/system_prompt.md:ro
       - ./config/models.json:/app/config/models.json:ro
+      - ./config/prompts:/app/config/prompts:ro
       - ./data/cache:/app/data/cache
       - ./services/rag-proxy/src/app.py:/app/app.py
       - ./tests:/app/tests:ro

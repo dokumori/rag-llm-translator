@@ -186,6 +186,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     TM_THRESHOLD = 0.23
     GLOSSARY_THRESHOLD = 0.25
 
+    GLOSSARY_COLLECTION = os.environ.get("GLOSSARY_COLLECTION", "app_glossary")
+    TM_COLLECTION = os.environ.get("TM_COLLECTION", "app_tm")
+
     try:
         client = get_chroma_client()
         existing_collections = [c.name for c in client.list_collections()]
@@ -194,9 +197,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
         formatted_query = ["query: " + text.strip() for text in query_payload]
 
         # Process Glossary
-        if "app_glossary" in existing_collections:
+        if GLOSSARY_COLLECTION in existing_collections:
             gloss_col = client.get_collection(
-                "app_glossary",
+                GLOSSARY_COLLECTION,
                 embedding_function=get_embedding_function()
             )
             gloss_res = gloss_col.query(
@@ -233,9 +236,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                             found_glossary.add(f"- '{src}' -> '{tgt}'")
 
         # Process Translation Memory (TM)
-        if "app_tm" in existing_collections:
+        if TM_COLLECTION in existing_collections:
             tm_col = client.get_collection(
-                "app_tm",
+                TM_COLLECTION,
                 embedding_function=get_embedding_function()
             )
             tm_res = tm_col.query(query_texts=formatted_query, n_results=1)
@@ -347,7 +350,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
             # Non-critical, we proceed without RAG
 
         # --- 3. CONSTRUCT PROMPT ---
-        target_lang = data.get('target_lang', DEFAULT_LANG)
+        target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or DEFAULT_LANG
         final_system_content = construct_system_prompt(
             data.get('system', ""), rag_content, target_lang)
 
