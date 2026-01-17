@@ -37,11 +37,12 @@ def process_single_file(file_path):
     print(f"❌ Failed to process {file_path}: {e}")
 
 if __name__ == "__main__":
-  default_path = "/app/po/output"
-
+  # --- Configuration ---
+  POST_PROCESS_INPUT_DIR = os.environ.get("POST_PROCESS_INPUT_DIR", "/app/po/output")
+  
   if len(sys.argv) < 2:
-    print(f"⚠️ No path provided. Defaulting to: {default_path}")
-    input_path = default_path
+    print(f"⚠️ No path provided. Defaulting to: {POST_PROCESS_INPUT_DIR}")
+    input_path = POST_PROCESS_INPUT_DIR
   else:
     input_path = sys.argv[1]
 

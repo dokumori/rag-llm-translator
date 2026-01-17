@@ -4,12 +4,18 @@
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Prompt for credentials
-read -p "Enter AMAZEE_API_TOKEN: " AMAZEE_API_TOKEN
-read -p "Enter OPENAI_API_BASE: " OPENAI_API_BASE
+read -p "Enter LLM_API_TOKEN: " LLM_API_TOKEN
+read -p "Enter LLM_BASE_URL: " LLM_BASE_URL
 
 # Prompt for Target Language (default to 'ja')
 read -p "Enter TARGET_LANG (default: ja): " TARGET_LANG
 TARGET_LANG=${TARGET_LANG:-ja}
+
+# Prompt for Bulk Size
+echo "💡 Bulk Size: Smaller is better context/quality but more expensive (more total tokens used)."
+echo "   Larger is more cost-effective but may reduce context."
+read -p "Enter BULK_SIZE (default: 15): " BULK_SIZE
+BULK_SIZE=${BULK_SIZE:-15}
 
 # 1. Detect actual UID/GID to ensure the container matches the host user
 DETECTED_UID=$(id -u)
@@ -18,18 +24,18 @@ DETECTED_GID=$(id -g)
 # 2. Create required host directories (Executed on Host)
 echo "📁 Creating data directories..."
 mkdir -p "${PROJECT_ROOT}/data/cache"
-mkdir -p "${PROJECT_ROOT}/data/rag-analysis"
-mkdir -p "${PROJECT_ROOT}/data/glossary"
-mkdir -p "${PROJECT_ROOT}/data/translations"
 mkdir -p "${PROJECT_ROOT}/data/chroma_db"
+mkdir -p "${PROJECT_ROOT}/data/logs"
+mkdir -p "${PROJECT_ROOT}/data/rag-analysis"
 
 # 3. Create .env file with final values (No sed required)
 echo "📝 Generating .env file..."
 cat > "${PROJECT_ROOT}/.env" << EOF
-# .env file - Generated on $(date)
-AMAZEE_API_TOKEN=${AMAZEE_API_TOKEN}
-OPENAI_API_BASE=${OPENAI_API_BASE}
+# .env file - Generated on $(date '+%Y-%m-%d %H:%M')
+LLM_API_TOKEN=${LLM_API_TOKEN}
+LLM_BASE_URL=${LLM_BASE_URL}
 TARGET_LANG=${TARGET_LANG}
+BULK_SIZE=${BULK_SIZE}
 CHROMA_PORT=8000
 
 # User IDs for Docker Compose

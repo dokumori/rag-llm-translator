@@ -11,48 +11,85 @@ import csv
 import statistics
 from collections import defaultdict
 import os
+import logging
+
+# --- Logging Configuration ---
+# Note: For this analysis script which outputs a report to stdout,
+# we configure logging to stderr so it doesn't interfere with potential piping,
+# although the user instruction said "Keep print() only if it is strictly necessary for final data output".
+# We will use logger for status (loading/processing) and print for the final stats table.
+logging.basicConfig(
+  format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  datefmt = '%Y-%m-%d %H:%M:%S',
+  level = logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 def main():
   if len(sys.argv) < 2:
-    print("Usage: python3 analyze_logs.py <log_file>")
+    print("Usage: python3 analyse_logs.py <log_file>")
     sys.exit(1)
 
   log_file = sys.argv[1]
-  
+
   # Output paths
-  base_dir = "/app/data/rag-analysis"
+  RAG_ANALYSIS_DIR = os.environ.get("RAG_ANALYSIS_DIR", "/app/data/rag-analysis")
+  logger.info(f"🔧 Config: RAG_ANALYSIS_DIR = {RAG_ANALYSIS_DIR}")
+
+  base_dir = RAG_ANALYSIS_DIR
   matches_csv = os.path.join(base_dir, "matches.csv")
   misses_csv = os.path.join(base_dir, "near_misses.csv")
 
   if not os.path.exists(log_file):
-    print(f"❌ Log file not found: {log_file}")
+    logger.error(f"❌ Log file not found: {log_file}")
     sys.exit(1)
 
-  print(f"📊 Analyzing {log_file}...")
+  logger.info(f"📊 Analysing {log_file}...")
 
   all_entries = []
   rag_data = []
 
   # Read Log File
+  skipped_lines = 0
+  guardrail_rejections = 0
   try:
-    with open(log_file, 'r', encoding='utf-8') as f:
+    with open(log_file, 'r', encoding = 'utf-8') as f:
       for line in f:
+        # Check specifically for guardrail rejections (which are plain text logs)
+        if "Guardrail Rejection" in line:
+          guardrail_rejections += 1
+          continue
+
+        # Locate the start of the JSON payload
+        json_start = line.find('{')
+        if json_start == -1:
+          skipped_lines += 1
+          continue
+
         try:
-          entry = json.loads(line)
+          json_str = line[json_start:]
+          entry = json.loads(json_str)
+
+          # Only process if it looks like our structured log
           all_entries.append(entry)
           if 'rag_matches' in entry and entry['rag_matches']:
             rag_data.extend(entry['rag_matches'])
+
         except json.JSONDecodeError:
+          skipped_lines += 1
           continue
   except Exception as e:
-    print(f"❌ Error reading log file: {e}")
+    logger.error(f"❌ Error reading log file: {e}", exc_info = True)
     sys.exit(1)
 
-  print(f"\n✅ Processed {len(all_entries)} translation requests.")
-  print(f"✅ Found {len(rag_data)} potential RAG matches.")
+  logger.info(f"✅ Processed {len(all_entries)} translation requests.")
+  logger.info(f"✅ Found {len(rag_data)} potential RAG matches.")
+  logger.info(f"🛡️ Guardrail Rejections: {guardrail_rejections}")
+  if skipped_lines > 0:
+    logger.info(f"⚠️ Skipped {skipped_lines} lines (non-JSON metadata irrelevant to analysis).")
 
   if not rag_data:
-    print("⚠️ No RAG matches found to analyze.")
+    logger.warning("⚠️ No RAG matches found to analyse.")
     sys.exit(0)
 
   # Separate Matches and Misses
@@ -64,9 +101,10 @@ def main():
   for item in rag_data:
     stats[item['type']].append(item['dist'])
 
+  # --- REPORT OUTPUT (Keep as print for readability/piping) ---
   print("\n--- 📏 Distance Statistics ---")
   print(f"{'type':<10} {'count':<6} {'mean':<10} {'std':<10} {'min':<10} {'25%':<10} {'50%':<10} {'75%':<10} {'max':<10}")
-  
+
   for r_type, distances in stats.items():
     if not distances:
       continue
@@ -75,8 +113,8 @@ def main():
     std_val = statistics.stdev(distances) if count > 1 else 0.0
     min_val = min(distances)
     max_val = max(distances)
-    quantiles = statistics.quantiles(distances, n=4) if count > 1 else [min_val, min_val, min_val]
-    
+    quantiles = statistics.quantiles(distances, n = 4) if count > 1 else [min_val, min_val, min_val]
+
     print(f"{r_type:<10} {count:<6} {mean_val:<10.6f} {std_val:<10.6f} {min_val:<10.6f} {quantiles[0]:<10.6f} {quantiles[1]:<10.6f} {quantiles[2]:<10.6f} {max_val:<10.6f}")
 
   print("\n--- 🎯 Acceptance Rate ---")
@@ -88,33 +126,33 @@ def main():
     if not data:
       return False
     keys = ["timestamp", "type", "query", "src", "tgt", "dist", "accepted"]
-    # We need to ensure we grab the timestamp from the parent entry if not present, 
+    # We need to ensure we grab the timestamp from the parent entry if not present,
     # but strictly speaking, the flattened rag_data might lack context if not carefully constructed.
     # However, for this simple analysis, we'll dump what we have in the rag_data dictionaries.
-    
+
     # Pre-check keys exists in data to avoid errors, defaulting to empty string
     fieldnames = ["type", "query", "src", "tgt", "dist", "accepted"]
-    
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-      writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+    with open(filename, 'w', newline = '', encoding = 'utf-8') as csvfile:
+      writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
       writer.writeheader()
       for row in data:
         writer.writerow({k: row.get(k, '') for k in fieldnames})
     return True
 
-  print("\n--- 💾 Exporting Data ---")
-  
+  logger.info("💾 Exporting Data...")
+
   # Export Misses
   if export_csv(rejected_matches, misses_csv):
-    print(f"✅ Near misses saved to: {misses_csv}")
+    logger.info(f"✅ Near misses saved to: {misses_csv}")
   else:
-    print(f"ℹ️ No near misses to save.")
+    logger.info(f"ℹ️ No near misses to save.")
 
   # Export Matches
   if export_csv(accepted_matches, matches_csv):
-    print(f"✅ Accepted matches saved to: {matches_csv}")
+    logger.info(f"✅ Accepted matches saved to: {matches_csv}")
   else:
-    print(f"ℹ️ No accepted matches to save.")
+    logger.info(f"ℹ️ No accepted matches to save.")
 
 if __name__ == "__main__":
   main()

@@ -1,7 +1,0 @@
-chromadb
-pandas
-polib
-sentence-transformers
-gpt-po-translator
-tqdm
-

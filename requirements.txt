@@ -1,0 +1,11 @@
+# Verified shared dependencies for rag-proxy and toolbox services.
+chromadb == 1.4.0
+sentence-transformers == 5.1.2
+openai == 1.99.9
+Flask == 3.1.2
+polib == 1.2.0
+pandas == 2.3.3
+pytest == 8.3.4
+pytest-mock == 3.15.1
+gpt-po-translator == 2.0.1
+tqdm == 4.67.1

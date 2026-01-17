@@ -1,6 +1,6 @@
 #/bin/bash
 
-SOURCE_DIR="data/glossary"
+SOURCE_DIR="data/tm_source"
 PO_FILE="${SOURCE_DIR}/drupal-11.0.6.ja.po"
 PO_URL="https://ftp.drupal.org/files/translations/all/drupal/drupal-11.0.6.ja.po"
 

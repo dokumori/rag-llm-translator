@@ -20,24 +20,28 @@ services:
       start_period: 10s
 
   rag-proxy:
-    build: ./services/rag-proxy
+    build:
+      context: .
+      dockerfile: ./services/rag-proxy/Dockerfile
     container_name: rag-proxy
     ports:
       - "5001:5000"
     environment:
-      - AMAZEE_API_KEY=${AMAZEE_API_TOKEN}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - LLM_API_TOKEN=${LLM_API_TOKEN}
+      - LLM_BASE_URL=${LLM_BASE_URL}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
+      - SYSTEM_PROMPT_PATH=/app/system_prompt.md
+      - MODELS_CONFIG_PATH=/app/config/models.json
     volumes:
-      # Mount config so you can edit prompt without rebuilding
       - ./config/system_prompt.md:/app/system_prompt.md:ro
-      # Mount shared model configuration
       - ./config/models.json:/app/config/models.json:ro
-      # Map the cache directory
       - ./data/cache:/app/data/cache
-      # Restore code mount for hot-reloading/easy restarts
       - ./services/rag-proxy/src/app.py:/app/app.py
+      - ./tests:/app/tests:ro
     depends_on:
       chroma:
         # Ensures rag-proxy only starts after ChromaDB is ready to accept connections
@@ -54,28 +58,35 @@ services:
 
   toolbox:
     container_name: toolbox
-    build: ./services/toolbox
+    build:
+      context: .
+      dockerfile: ./services/toolbox/Dockerfile
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
     command: tail -f /dev/null
     user: "${UID}:${GID}"
     environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
       # Passed from .env to the container for translate_runner.py
       - TARGET_LANG=${TARGET_LANG}
+      - BULK_SIZE=${BULK_SIZE}
+      - TM_SOURCE_DIR=/app/tm_source
+      - RAG_ANALYSIS_DIR=/app/data/rag-analysis
+      - POST_PROCESS_INPUT_DIR=/app/po/output
+      - OPENAI_BASE_URL=http://rag-proxy:5000/v1
+      - PYTHONPATH=/app/src
     volumes:
-      # Mount shared model configuration
+      - ./services/rag-proxy/src:/app/services/rag-proxy/src:ro
       - ./config/models.json:/app/config/models.json:ro
-      # Map the toolbox source scripts
-      - ./services/toolbox/src:/app/src
-      # Map the data directories relative to the root
-      - ./data/glossary:/app/tm_source
+      - ./services/toolbox/src:/app/src:ro
+      - ./data/tm_source:/app/tm_source:ro
       - ./data/translations:/app/po
-      # Map the destination directory for RAG analysis results
       - ./data/rag-analysis:/app/data/rag-analysis
-      # Map the cache directory
       - ./data/cache:/app/data/cache
+      - ./tests:/app/tests:ro
     depends_on:
       chroma:
         # Prevents toolbox scripts from failing due to database connection errors during boot
