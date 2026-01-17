@@ -59,7 +59,7 @@ def test_rag_context_injection(client, mocker):
 
     # Mock List Collections
     mock_col_ref = MagicMock()
-    mock_col_ref.name = "drupal_glossary"
+    mock_col_ref.name = "app_glossary"
     mock_chroma_client.return_value.list_collections.return_value = [
         mock_col_ref]
 

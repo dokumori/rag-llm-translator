@@ -1,7 +1,7 @@
 #!/bin/bash
 # bin/check_ingest.sh
 
-# Ingests the glossary and TM files into ChromaDB
+# The script ingests the glossary and TM files into ChromaDB
 
 set -e
 

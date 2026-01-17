@@ -18,7 +18,7 @@ def check_db():
         print(f"❌ Error connecting to ChromaDB: {e}")
         sys.exit(1)
 
-    collections = ["drupal_glossary", "drupal_tm"]
+    collections = ["app_glossary", "app_tm"]
 
     for col_name in collections:
         print(f"\n🔍 Checking Collection: {col_name}")

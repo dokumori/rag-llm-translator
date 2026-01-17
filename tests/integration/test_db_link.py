@@ -171,7 +171,7 @@ def test_proxy_to_db_communication(app_client):
     # But we can try a request and even if it fails upstream (502), it proves RAG passed (or failed gracefully).
     # Actually, let's just assert we get *a* response (even error) but strictly check logs?
     # No, let's stick to /health for robust assertions and just ping /v1/models (which reads config)?
-    # The prompt asked to query 'drupal_tm' or 'drupal_glossary'.
+    # The prompt asked to query 'app_tm' or 'app_glossary'.
     # I will stick to the payload request.
 
     # If we use a model we know is dry run, like "claude-opus-4-5-20251101" from previous tests?

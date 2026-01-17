@@ -85,18 +85,18 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
 
     # Bug Fix: Properly mock collection names
     mock_glossary = MagicMock()
-    mock_glossary.name = "drupal_glossary"
+    mock_glossary.name = "app_glossary"
 
     mock_tm = MagicMock()
-    mock_tm.name = "drupal_tm"
+    mock_tm.name = "app_tm"
 
     mock_client.list_collections.return_value = [mock_glossary, mock_tm]
 
     # Mock get_collection to return the correct mock based on name
     def get_collection_side_effect(name, embedding_function=None):
-        if name == "drupal_glossary":
+        if name == "app_glossary":
             return mock_glossary
-        elif name == "drupal_tm":
+        elif name == "app_tm":
             return mock_tm
         return MagicMock()
 
@@ -139,7 +139,7 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     """Test Guardrail Rejection (High distance)."""
     mock_client = MagicMock()
     mock_glossary = MagicMock()
-    mock_glossary.name = "drupal_glossary"
+    mock_glossary.name = "app_glossary"
 
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary
@@ -169,7 +169,7 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
     """Test Hallucination Rejection (Low distance but ZERO word overlap)."""
     mock_client = MagicMock()
     mock_glossary = MagicMock()
-    mock_glossary.name = "drupal_glossary"
+    mock_glossary.name = "app_glossary"
 
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary
@@ -196,7 +196,7 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
     """Test Synonym Exception (Extremely low distance < 0.08, even with 0 overlap)."""
     mock_client = MagicMock()
     mock_glossary = MagicMock()
-    mock_glossary.name = "drupal_glossary"
+    mock_glossary.name = "app_glossary"
 
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary

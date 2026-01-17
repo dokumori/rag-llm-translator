@@ -17,7 +17,7 @@ Before running the analysis, you must:
    docker compose exec toolbox python3 /app/src/check_db.py
    ```
 2. If the vecotr DB is dempty, ingest the translation memory and glossary. For details, see [4. Ingest the translation memory and glossary](../README.md#4-ingest-the-translation-memory-and-glossary).
-  - Ensure both `drupal_tm` and `drupal_glossary` exist.
+  - Ensure both `app_tm` and `app_glossary` exist.
   If the count is zero or significantly lower than expected, the ingestion process (`ingest.py`) must be run again, or check if the source isn't corrupt.
 
 3. Run the translation process (dry-run is sufficient) so you will have the logs to analyse. For details, see [5. Run the translation process](../README.md#5-translate).

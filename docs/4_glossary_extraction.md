@@ -19,7 +19,7 @@ The `extract_glossary_from_db.py` script addresses this by generating a **draft 
 The script processes the database in four distinct phases to ensure the resulting glossary is clean and relevant.
 
 ### Phase 1: Identifying Candidates
-The script scans the `drupal_tm` collection in ChromaDB to find potential glossary terms.
+The script scans the `app_tm` collection in ChromaDB to find potential glossary terms.
 * **Selection Criteria:** It targets short strings (1 to 3 words) that are under 50 characters, as these are likely to be "terms" rather than full sentences.
 * **Variation Capture:** Every unique English-to-Japanese pair is captured. Even if "Browser" appears with three different Japanese translations, all are stored as candidates for further analysis.
 * **Normalisation:** The English source is normalised to lowercase for grouping, ensuring "Browser" and "browser" are treated as the same term.

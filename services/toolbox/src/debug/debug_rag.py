@@ -36,7 +36,7 @@ def main():
     ]
 
     # 3. Query Collections
-    collections_to_test = ["drupal_glossary", "drupal_tm"]
+    collections_to_test = ["app_glossary", "app_tm"]
 
     for col_name in collections_to_test:
         print(f"\n{'='*20} Testing Collection: {col_name} {'='*20}")

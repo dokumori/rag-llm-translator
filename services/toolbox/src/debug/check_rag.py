@@ -48,5 +48,5 @@ def test_collection(name, query_text):
 
 
 # Run tests
-test_collection("drupal_glossary", "View")
-test_collection("drupal_tm", "Clear the cache")
+test_collection("app_glossary", "View")
+test_collection("app_tm", "Clear the cache")

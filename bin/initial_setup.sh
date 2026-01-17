@@ -27,6 +27,7 @@ mkdir -p "${PROJECT_ROOT}/data/cache"
 mkdir -p "${PROJECT_ROOT}/data/chroma_db"
 mkdir -p "${PROJECT_ROOT}/data/logs"
 mkdir -p "${PROJECT_ROOT}/data/rag-analysis"
+mkdir -p "${PROJECT_ROOT}/config/prompts/custom"
 
 # 3. Create .env file with final values (No sed required)
 echo "📝 Generating .env file..."

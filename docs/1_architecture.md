@@ -13,7 +13,7 @@ flowchart TD
         A[glossary.csv] --> C{Deduplication}
         B[Existing .po files] --> C
         C -->|Embed with intfloat/multilingual-e5-large| D[(ChromaDB)]
-        D -- Collections --> E[drupal_glossary] & F[drupal_tm]
+        D -- Collections --> E[app_glossary] & F[app_tm]
     end
 
     subgraph Translation ["Stage 2: Translation (translate_runner.py)"]
@@ -42,8 +42,8 @@ The core of this system is **ChromaDB**, which stores vector representations of 
 ## 2. Stage 1: Ingestion
 The script `ingest.py` populates the database. It handles two types of data:
 
-1.  **Glossary (`drupal_glossary`):** Reads from `glossary.csv`. It cleans whitespace and deduplicates entries based on the source text.
-2.  **Translation Memory (`drupal_tm`):** Scans all `.po` files in the source directory. It extracts `msgid` (source) and `msgstr` (target), ensuring that fuzzy matches (draft translations) are excluded to maintain quality.
+1.  **Glossary (`app_glossary`):** Reads from `glossary.csv`. It cleans whitespace and deduplicates entries based on the source text.
+2.  **Translation Memory (`app_tm`):** Scans all `.po` files in the source directory. It extracts `msgid` (source) and `msgstr` (target), ensuring that fuzzy matches (draft translations) are excluded to maintain quality.
 
 ## 3. Stage 2: Translation Process
 The script `translate_runner.py` manages the translation workflow. It orchestrates the `gpt-po-translator` tool to process files securely and efficiently.

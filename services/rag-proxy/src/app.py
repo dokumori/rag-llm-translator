@@ -72,23 +72,41 @@ def get_chroma_client() -> chromadb.HttpClient:
 
 
 # --- Configuration Paths ---
-SYSTEM_PROMPT_PATH = os.environ.get(
-    "SYSTEM_PROMPT_PATH", "/app/system_prompt.md")
+PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "/app/config/prompts")
+DEFAULT_LANG = "ja"
+
+def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
+    """
+    Retrieves the expert system prompt dynamically based on the target language.
+    Priority:
+    1. Custom Override: /app/config/prompts/custom/{lang}.md
+    2. Language Default: /app/config/prompts/{lang}.md
+    3. Global Fallback: /app/config/prompts/generic.md
+    """
+    paths_to_check = [
+        os.path.join(PROMPTS_DIR, "custom", f"{target_lang}.md"),
+        os.path.join(PROMPTS_DIR, f"{target_lang}.md"),
+        os.path.join(PROMPTS_DIR, "generic.md")
+    ]
+
+    for path in paths_to_check:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        logger.info(f"📄 Loaded system prompt from: {path}")
+                        return content
+            except Exception as e:
+                logger.error(f"❌ Failed to read prompt file {path}: {e}")
+
+    logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
+    logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
+    return "You are a professional software translator."
+
+
 MODELS_CONFIG_PATH = os.environ.get(
     "MODELS_CONFIG_PATH", "/app/config/models.json")
-
-
-def get_system_prompt_from_md() -> str:
-    """Retrieves the expert system prompt from the markdown file."""
-    if os.path.exists(SYSTEM_PROMPT_PATH):
-        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if content:
-                return content
-    else:
-        logger.warning(
-            f"⚠️ System prompt file not found at: {SYSTEM_PROMPT_PATH}")
-    return "You are a professional translator for Drupal CMS."
 
 
 def get_models_config() -> List[Dict[str, Any]]:
@@ -103,7 +121,7 @@ def get_models_config() -> List[Dict[str, Any]]:
 
 
 # Log configuration at startup
-logger.info(f"🔧 Config: SYSTEM_PROMPT_PATH = {SYSTEM_PROMPT_PATH}")
+logger.info(f"🔧 Config: PROMPTS_DIR = {PROMPTS_DIR}")
 logger.info(f"🔧 Config: MODELS_CONFIG_PATH = {MODELS_CONFIG_PATH}")
 
 # --- 3. Helper Functions ---
@@ -176,9 +194,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
         formatted_query = ["query: " + text.strip() for text in query_payload]
 
         # Process Glossary
-        if "drupal_glossary" in existing_collections:
+        if "app_glossary" in existing_collections:
             gloss_col = client.get_collection(
-                "drupal_glossary",
+                "app_glossary",
                 embedding_function=get_embedding_function()
             )
             gloss_res = gloss_col.query(
@@ -215,9 +233,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                             found_glossary.add(f"- '{src}' -> '{tgt}'")
 
         # Process Translation Memory (TM)
-        if "drupal_tm" in existing_collections:
+        if "app_tm" in existing_collections:
             tm_col = client.get_collection(
-                "drupal_tm",
+                "app_tm",
                 embedding_function=get_embedding_function()
             )
             tm_res = tm_col.query(query_texts=formatted_query, n_results=1)
@@ -264,9 +282,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     return rag_content, matches_log
 
 
-def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str) -> str:
+def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str, target_lang: str) -> str:
     """Combines instructions, RAG context, and original system message."""
-    expert_instructions = get_system_prompt_from_md()
+    expert_instructions = get_system_prompt_from_md(target_lang)
 
     original_system = original_system_data
     if isinstance(original_system, list):
@@ -329,8 +347,9 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
             # Non-critical, we proceed without RAG
 
         # --- 3. CONSTRUCT PROMPT ---
+        target_lang = data.get('target_lang', DEFAULT_LANG)
         final_system_content = construct_system_prompt(
-            data.get('system', ""), rag_content)
+            data.get('system', ""), rag_content, target_lang)
 
         # --- 4. STRUCTURED LOGGING ---
         log_entry["system_prompt_length"] = len(final_system_content)

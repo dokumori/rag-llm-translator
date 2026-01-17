@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
-COLLECTION_NAME = "drupal_tm"
+COLLECTION_NAME = "app_tm"
 
 
 def is_substring_match(term_src, term_tgt, record_src, record_tgt):

@@ -81,6 +81,7 @@ services:
     volumes:
       - ./services/rag-proxy/src:/app/services/rag-proxy/src:ro
       - ./config/models.json:/app/config/models.json:ro
+      - ./config/prompts:/app/config/prompts:ro
       - ./services/toolbox/src:/app/src:ro
       - ./data/tm_source:/app/tm_source:ro
       - ./data/translations:/app/po
