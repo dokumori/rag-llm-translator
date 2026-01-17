@@ -195,10 +195,9 @@ def main():
     if is_docker:
         logger.info(
             "🎉 Done! Since you are running in Docker, the file is available on your host at:")
-        logger.info("   👉 ./data/rag-analysis/db_derived_glossary.csv")
+        logger.info("   📄 ./data/rag-analysis/db_derived_glossary.csv")
     else:
         logger.info(f"🎉 Done! Glossary saved to '{output_path}'.")
-
 
 if __name__ == "__main__":
     main()
