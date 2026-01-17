@@ -1,6 +1,6 @@
 # Translation Quality Analysis
 
-To ensure high-quality translations, it is important to monitor the performance of the Retrieval-Augmented Generation (RAG) system. The script `analyze_logs.py` is provided to evaluate the system's accuracy and the relevance of the retrieved data.
+To ensure high-quality translations, it is important to monitor the performance of the Retrieval-Augmented Generation (RAG) system. The script `analyse_logs.py` is provided to evaluate the system's accuracy and the relevance of the retrieved data.
 
 ## Notes on cost vs quality
 
@@ -21,9 +21,9 @@ Before running the analysis, you must:
   If the count is zero or significantly lower than expected, the ingestion process (`ingest.py`) must be run again, or check if the source isn't corrupt.
 
 3. Run the translation process (dry-run is sufficient) so you will have the logs to analyse. For details, see [5. Run the translation process](../README.md#5-translate).
-4. Analyze the logs.
+4. Analyse the logs.
   ```bash
-  bash bin/analyze.sh
+  bash bin/analyse.sh
   ```
 
 ## Distance Metrics
