@@ -16,6 +16,11 @@ logging.basicConfig(
   datefmt = '%Y-%m-%d %H:%M:%S',
   level = logging.INFO
 )
+# Silence chatty libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -98,7 +103,7 @@ def parse_input_payload(source_text: str) -> List[str]:
   """
   query_payload: List[str] = []
   start_indices = [i for i, char in enumerate(source_text) if char == '[']
-  
+
   for idx in reversed(start_indices):
     try:
       # Check 1: Try parsing from this bracket to the very end
@@ -132,19 +137,19 @@ def parse_input_payload(source_text: str) -> List[str]:
       cleaned_payload.append(item.split(delimiter)[-1])
     else:
       cleaned_payload.append(item)
-      
+
   return cleaned_payload
 
 def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, Any]]]:
   """
-  Queries ChromaDB, applies Guardrail logic (Glossary/TM), and returns 
+  Queries ChromaDB, applies Guardrail logic (Glossary/TM), and returns
   the XML formatted context string and the list of match logs.
   """
   rag_content = ""
   matches_log: List[Dict[str, Any]] = []
   found_glossary: set = set()
   found_tm: set = set()
-  
+
   # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
   TM_THRESHOLD = 0.23
   GLOSSARY_THRESHOLD = 0.25
@@ -159,7 +164,7 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     # Process Glossary
     if "drupal_glossary" in existing_collections:
       gloss_col = client.get_collection(
-        "drupal_glossary", 
+        "drupal_glossary",
         embedding_function = get_embedding_function()
       )
       gloss_res = gloss_col.query(query_texts = formatted_query, n_results = 1)
@@ -195,7 +200,7 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     # Process Translation Memory (TM)
     if "drupal_tm" in existing_collections:
       tm_col = client.get_collection(
-        "drupal_tm", 
+        "drupal_tm",
         embedding_function = get_embedding_function()
       )
       tm_res = tm_col.query(query_texts = formatted_query, n_results = 1)
@@ -229,18 +234,18 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
 
   except Exception as e:
     logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info = True)
-    
+
   if found_glossary:
     rag_content += "\n<glossary_matches>\n" + "\n".join(found_glossary) + "\n</glossary_matches>\n"
   if found_tm:
     rag_content += "\n<tm_matches>\n" + "\n".join(found_tm) + "\n</tm_matches>\n"
-    
+
   return rag_content, matches_log
 
 def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str) -> str:
   """Combines instructions, RAG context, and original system message."""
   expert_instructions = get_system_prompt_from_md()
-  
+
   original_system = original_system_data
   if isinstance(original_system, list):
     original_system = " ".join([s.get('text', '') for s in original_system if 'text' in s])
@@ -256,7 +261,7 @@ def list_models() -> Response:
   return jsonify({
     "object": "list",
     "data": [
-      {"id": m["id"], "object": "model", "owned_by": "llm-provider"} 
+      {"id": m["id"], "object": "model", "owned_by": "llm-provider"}
       for m in config_models
     ]
   })
