@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def main():
   if len(sys.argv) < 2:
-    print("Usage: python3 analyze_logs.py <log_file>")
+    print("Usage: python3 analyse_logs.py <log_file>")
     sys.exit(1)
 
   log_file = sys.argv[1]
@@ -44,7 +44,7 @@ def main():
     logger.error(f"❌ Log file not found: {log_file}")
     sys.exit(1)
 
-  logger.info(f"📊 Analyzing {log_file}...")
+  logger.info(f"📊 Analysing {log_file}...")
 
   all_entries = []
   rag_data = []
@@ -82,7 +82,7 @@ def main():
     logger.warning(f"⚠️ Skipped {skipped_lines} lines (could not parse JSON).")
 
   if not rag_data:
-    logger.warning("⚠️ No RAG matches found to analyze.")
+    logger.warning("⚠️ No RAG matches found to analyse.")
     sys.exit(0)
 
   # Separate Matches and Misses

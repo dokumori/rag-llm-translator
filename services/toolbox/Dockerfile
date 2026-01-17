@@ -24,6 +24,9 @@ ENV PYTHONUNBUFFERED=1
 # Copy installed dependencies from builder
 COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
 
+# Create logs directory
+RUN mkdir -p /app/data/logs && chmod 777 /app/data/logs
+
 # We copy src to /app/src so imports work cleanly
 COPY services/toolbox/src/ ./src/
 

@@ -2,9 +2,9 @@
 set -e
 
 # Define paths
-LOG_FILE_HOST="services/toolbox/src/translation.jsonl"
-LOG_FILE_CONTAINER="/app/src/translation.jsonl"
-ANALYZER_SCRIPT="/app/src/analyze_logs.py"
+LOG_FILE_HOST="data/logs/translation.jsonl"
+LOG_FILE_CONTAINER="/app/data/logs/translation.jsonl"
+ANALYSER_SCRIPT="/app/src/analyse_logs.py"
 MISSES_CSV_HOST="data/rag-analysis/near_misses.csv"
 MATCHES_CSV_HOST="data/rag-analysis/matches.csv"
 MISSES_CSV_CONTAINER="/app/data/rag-analysis/near_misses.csv"
@@ -13,9 +13,9 @@ MATCHES_CSV_CONTAINER="/app/data/rag-analysis/matches.csv"
 # 1. Clean up OLD reports so we don't get false positives
 rm -f "$MISSES_CSV_HOST" "$MATCHES_CSV_HOST"
 
-# 2. Capture Logs (Disable color codes to fix parsing issues)
+# 2. Capture Logs (Disable colour codes to fix parsing issues)
 echo "📊 Capturing logs from rag-proxy..."
-mkdir -p services/toolbox/src
+mkdir -p data/logs
 docker compose logs --no-color --no-log-prefix rag-proxy > "$LOG_FILE_HOST"
 
 # 3. Check if logs are empty
@@ -26,11 +26,12 @@ fi
 
 # 4. Send logs to toolbox
 echo "🚚 Sending logs to toolbox container..."
+docker compose exec -u 0 toolbox mkdir -p /app/data/logs
 docker compose cp "$LOG_FILE_HOST" toolbox:"$LOG_FILE_CONTAINER"
 
 # 5. Run Analysis
 echo "🚀 Running analysis inside toolbox..."
-docker compose exec toolbox python3 "$ANALYZER_SCRIPT" "$LOG_FILE_CONTAINER"
+docker compose exec toolbox python3 "$ANALYSER_SCRIPT" "$LOG_FILE_CONTAINER"
 
 # 6. Retrieve Reports
 echo "📥 Retrieving reports..."
