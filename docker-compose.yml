@@ -28,6 +28,7 @@ services:
       - "5001:5000"
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
       - LLM_API_TOKEN=${LLM_API_TOKEN}
       - LLM_BASE_URL=${LLM_BASE_URL}
       - CHROMA_HOST=chroma
@@ -65,6 +66,7 @@ services:
     user: "${UID}:${GID}"
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
@@ -77,6 +79,7 @@ services:
       - OPENAI_BASE_URL=http://rag-proxy:5000/v1
       - PYTHONPATH=/app/src
     volumes:
+      - ./services/rag-proxy/src:/app/services/rag-proxy/src:ro
       - ./config/models.json:/app/config/models.json:ro
       - ./services/toolbox/src:/app/src:ro
       - ./data/tm_source:/app/tm_source:ro
