@@ -2,6 +2,14 @@
 
 The purpose of this script is to restore translation consistency, which often diminishes over time as projects evolve and multiple contributors (or LLM versions) participate. This tool helps developers grasp variations in terminology by extracting 1–3 word terms from the Translation Memory and identifying the most frequent "primary" translations. Beyond standardisation, it serves as a diagnostic tool to identify outdated phrasing and provides a data-driven foundation for a formal project glossary, ensuring a high-quality, unified user experience.
 
+## Usage
+Run this script to audit your database consistency or to create a baseline for a new `glossary.csv`:
+
+**Command:**
+```bash
+docker compose exec toolbox python3 /app/src/extract_glossary_from_db.py
+```
+
 ## Overview
 As Drupal translations are performed continuously over many years, terminology consistency often diminishes. Different translators—or different versions of an LLM—may translate the same English technical term in slightly different ways. For example, variations might occur between **"ブラウザ"** and **"ブラウザー"** for "Browser."
 
@@ -50,10 +58,3 @@ The surviving terms are aggregated and exported to `/app/data/rag-analysis/db_de
 
 ---
 
-## Usage
-Run this script to audit your database consistency or to create a baseline for a new `glossary.csv`:
-
-**Command:**
-```bash
-docker compose exec toolbox python3 /app/src/extract_glossary_from_db.py
-```
