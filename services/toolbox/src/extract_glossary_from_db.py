@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 CHROMA_HOST = os.getenv("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
-COLLECTION_NAME = "drupal_tm"
+COLLECTION_NAME = "app_tm"
 
 
 def is_substring_match(term_src, term_tgt, record_src, record_tgt):
@@ -189,8 +189,15 @@ def main():
                 "; ".join(alts)     # e.g., "ブラウザー (5)"
             ])
 
-    logger.info(f"🎉 Done! Glossary saved to '{output_path}'.")
+    # Logic to replace the final logger.info calls:
+    is_docker = os.path.exists('/.dockerenv')
 
+    if is_docker:
+        logger.info(
+            "🎉 Done! Since you are running in Docker, the file is available on your host at:")
+        logger.info("   📄 ./data/rag-analysis/db_derived_glossary.csv")
+    else:
+        logger.info(f"🎉 Done! Glossary saved to '{output_path}'.")
 
 if __name__ == "__main__":
     main()

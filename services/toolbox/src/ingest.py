@@ -52,7 +52,7 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     Reads, cleans, deduplicates, and incrementally ingests glossary terms.
     If reset is True, deletes existing collection first.
     """
-    COLLECTION_NAME = "drupal_glossary"
+    COLLECTION_NAME = os.getenv("GLOSSARY_COLLECTION", "app_glossary")
     logger.info(f"📚 Processing Glossary from {source_path}...")
 
     if not source_path.exists():
@@ -125,7 +125,7 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     Recursively finds PO files, deduplicates by msgid, and incrementally ingests.
     If reset is True, deletes existing collection first.
     """
-    COLLECTION_NAME = "drupal_tm"
+    COLLECTION_NAME = os.getenv("TM_COLLECTION", "app_tm")
     logger.info(f"💾 Processing Translation Memory from {source_dir}...")
 
     if not source_dir.exists():

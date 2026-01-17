@@ -72,3 +72,7 @@ data/
 *.po
 *.pot
 .tmp
+
+# Ignore custom system prompt overrides
+config/prompts/custom/*.md
+!config/prompts/custom/.gitkeep
