@@ -15,13 +15,15 @@ import json
 
 # Ensure we can import app
 sys.path.append("/app")
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../services/rag-proxy/src')))
+sys.path.append(os.path.abspath(os.path.join(
+    os.path.dirname(__file__), '../../services/rag-proxy/src')))
 
 # Patch external dependencies BEFORE importing app to prevent side effects
 with patch('chromadb.HttpClient'), \
-     patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'), \
-     patch('openai.OpenAI'):
+        patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'), \
+        patch('openai.OpenAI'):
     import app
+
 
 @pytest.fixture
 def client():
@@ -31,11 +33,13 @@ def client():
 
 # --- Part 1: parse_input_payload Tests ---
 
+
 def test_parse_input_payload_happy_path():
     """Test standard list input."""
     source_text = '["Hello", "World"]'
     result = app.parse_input_payload(source_text)
     assert result == ["Hello", "World"]
+
 
 def test_parse_input_payload_sliding_window_noise():
     """Test extracting JSON array from noisy text."""
@@ -43,21 +47,24 @@ def test_parse_input_payload_sliding_window_noise():
     result = app.parse_input_payload(source_text)
     assert result == ["Item 1", "Item 2"]
 
+
 def test_parse_input_payload_nested_brackets():
     """Test extraction with multiple brackets, should find the last valid array."""
     # Logic in app.py iterates reversed(start_indices).
     # It tries to parse from each '[' to the end.
-    
+
     # Case: valid array at end
     source_text = 'ignore [ this ] and [ "Valid" ]'
     result = app.parse_input_payload(source_text)
     assert result == ["Valid"]
+
 
 def test_parse_input_payload_broken_json_fallback():
     """Test fallback to treating input as single string if JSON fails."""
     source_text = 'Just a normal sentence.'
     result = app.parse_input_payload(source_text)
     assert result == ["Just a normal sentence."]
+
 
 def test_parse_input_payload_delimiter_stripping():
     """Test removal of 'Text to translate:' prefix."""
@@ -68,22 +75,23 @@ def test_parse_input_payload_delimiter_stripping():
 
 # --- Part 2: perform_rag_lookup Tests ---
 
+
 @patch('app.get_chroma_client')
 @patch('app.get_embedding_function')
 def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     """Test Guardrail Acceptance (Low distance, semantic match)."""
     # Setup Mocks
     mock_client = MagicMock()
-    
+
     # Bug Fix: Properly mock collection names
     mock_glossary = MagicMock()
     mock_glossary.name = "drupal_glossary"
-    
+
     mock_tm = MagicMock()
     mock_tm.name = "drupal_tm"
-    
+
     mock_client.list_collections.return_value = [mock_glossary, mock_tm]
-    
+
     # Mock get_collection to return the correct mock based on name
     def get_collection_side_effect(name, embedding_function=None):
         if name == "drupal_glossary":
@@ -91,10 +99,10 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
         elif name == "drupal_tm":
             return mock_tm
         return MagicMock()
-    
+
     mock_client.get_collection.side_effect = get_collection_side_effect
     mock_get_chroma.return_value = mock_client
-    
+
     # Mock Query Response
     # Dist 0.1 < 0.25 (Threshold) -> Should Accept
     # Bug Fix: Correct nested list structure for results
@@ -103,7 +111,7 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
         'distances': [[0.1]],
         'metadatas': [[{'target': 'target phrase'}]]
     }
-    
+
     # Mock TM response (empty for this test to focus on glossary)
     mock_tm.query.return_value = {
         'documents': [[]],
@@ -117,12 +125,13 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     assert "target phrase" in content
     # Look for the glossary log entry
     glossary_log = next((l for l in logs if l['type'] == 'glossary'), None)
-    
+
     # Assert that the match was ACCEPTED because distance (0.1) < threshold (0.25)
     # and "target phrase" was successfully injected into the context.
     assert glossary_log is not None
     assert glossary_log['accepted'] is True
     assert glossary_log['dist'] == 0.1
+
 
 @patch('app.get_chroma_client')
 @patch('app.get_embedding_function')
@@ -131,11 +140,11 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     mock_client = MagicMock()
     mock_glossary = MagicMock()
     mock_glossary.name = "drupal_glossary"
-    
+
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary
     mock_get_chroma.return_value = mock_client
-    
+
     # Dist 0.8 > 0.25 -> Should Reject
     mock_glossary.query.return_value = {
         'documents': [['passage: something else']],
@@ -146,12 +155,13 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     query = ["my query"]
 
     content, logs = app.perform_rag_lookup(query)
-    
+
     # Assert "target phrase" is NOT in content (suppressed)
     # and log shows accepted=False due to high distance (0.8).
     assert "target phrase" not in content
     assert logs[0]['accepted'] is False
     assert logs[0]['dist'] == 0.8
+
 
 @patch('app.get_chroma_client')
 @patch('app.get_embedding_function')
@@ -160,11 +170,11 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
     mock_client = MagicMock()
     mock_glossary = MagicMock()
     mock_glossary.name = "drupal_glossary"
-    
+
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary
     mock_get_chroma.return_value = mock_client
-    
+
     # Dist 0.2 < 0.25 (Looks good) BUT 'apple' vs 'banana' has 0 overlap.
     # Should reject unless dist < 0.08
     mock_glossary.query.return_value = {
@@ -179,6 +189,7 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
     assert logs[0]['accepted'] is False
     # Verify the log message printed? We can't easily assert print, but we check status.
 
+
 @patch('app.get_chroma_client')
 @patch('app.get_embedding_function')
 def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
@@ -186,11 +197,11 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
     mock_client = MagicMock()
     mock_glossary = MagicMock()
     mock_glossary.name = "drupal_glossary"
-    
+
     mock_client.list_collections.return_value = [mock_glossary]
     mock_client.get_collection.return_value = mock_glossary
     mock_get_chroma.return_value = mock_client
-    
+
     # Dist 0.05 < 0.08 -> Should Accept even with no overlap
     mock_glossary.query.return_value = {
         'documents': [['passage: hi']],
@@ -198,27 +209,30 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
         'metadatas': [[{'target': 'hello'}]]
     }
 
-    query = ["greeting"] # 'greeting' vs 'hi' no word overlap
+    query = ["greeting"]  # 'greeting' vs 'hi' no word overlap
     content, logs = app.perform_rag_lookup(query)
 
     assert logs[0]['accepted'] is True
 
 # --- Part 3: handle_translation Tests ---
 
+
 @patch('app.get_models_config')
 def test_handle_translation_dry_run(mock_get_config, client):
     """Test Dry Run Mode."""
-    mock_get_config.return_value = [{"id": "dry-run-model", "is_dry_run": True}]
-    
+    mock_get_config.return_value = [
+        {"id": "dry-run-model", "is_dry_run": True}]
+
     payload = {
         "model": "dry-run-model",
         "messages": [{"role": "user", "content": '["Test"]'}]
     }
-    
+
     response = client.post('/v1/chat/completions', json=payload)
     assert response.status_code == 200
     data = response.get_json()
     assert "[DRY RUN] Test" in data['choices'][0]['message']['content']
+
 
 @patch('app.get_upstream_client')
 @patch('app.parse_input_payload')
@@ -229,7 +243,7 @@ def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_ge
     mock_config.return_value = [{"id": "real-model"}]
     mock_parse.return_value = ["Parsed Query"]
     mock_rag.return_value = ("<tm_matches>...</tm_matches>", [])
-    
+
     # Mock OpenAI Response
     mock_openai = MagicMock()
     mock_completion = MagicMock()
@@ -245,12 +259,13 @@ def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_ge
     }
 
     response = client.post('/v1/chat/completions', json=payload)
-    
+
     assert response.status_code == 200
-    assert "Translated Text" in response.get_json()['choices'][0]['message']['content']
-    
+    assert "Translated Text" in response.get_json(
+    )['choices'][0]['message']['content']
+
     # Verify System Prompt Construction
     call_args = mock_openai.chat.completions.create.call_args
     messages_arg = call_args[1]['messages']
     system_msg = messages_arg[0]['content']
-    assert "<tm_matches>" in system_msg # RAG content injected
+    assert "<tm_matches>" in system_msg  # RAG content injected
