@@ -12,7 +12,7 @@ This PoC currently supports AI providers that are compliant with the OpenAI API.
 - **Ingest**: Populate the vector database with your RAG data.
 - **Translate**: Run the translation script to process your files.
 
-It also comes with the tools to analyze the quality of the translations and extract glossary terms.
+It also comes with the tools to analyse the quality of the translations and extract glossary terms.
 
 Follow the instructions below to set up the environment and run the translation process:
 
