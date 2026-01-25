@@ -1,0 +1,26 @@
+# Instructions for the AI
+
+Adhere to the following rules:
+
+## Your behaviour
+- Never omit any existing code or comment, unless it is absolutely necessary or makes sense.
+- Leave comments to explain the logic, especially for complex code.
+
+## Code quality
+- Follow best practices for the languages, libraries and frameworks used, **except where specified below**.
+- Avoid using deprecated functions or features.
+- Use type hints and annotations where appropriate (especially in Python).
+- Use descriptive variable and function names.
+- Use consistent naming conventions.
+- **Check for Hard-coding:** When values are hard-coded, check other files to see if they should be defined as a shared constant, environment variable, or configuration setting.
+- **Logging:** Use the Python `logging` module for all operational output. Avoid `print()` except for CLI output.
+- **Error Handling:** Prioritize stability. Wrap external operations (I/O, Network, DB) in `try/except` blocks and log errors rather than crashing.
+
+## Writing style
+- Use British English. This includes names and comments.
+
+## Coding standards
+- **Indentation:** For python, adhere to PEP8.
+ For other languages, follow the most common , industry-standard conventions for respective languages.
+- **Formatting:** Remove all unnecessary whitespaces (e.g., trailing whitespaces, spaces in blank lines).
+- **Shell Scripts:** Write POSIX-compliant shell scripts (`#!/bin/sh`) to ensure compatibility across Alpine, Debian, and macOS. Also follow https://google.github.io/styleguide/shellguide.html.

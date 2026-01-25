@@ -1,0 +1,113 @@
+services:
+  chroma:
+    container_name: chroma
+    image: chromadb/chroma:1.4.1
+    environment:
+      - CHROMA_PATH=/data
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - app_network
+    ports:
+      - "${CHROMA_PORT}:8000"
+    volumes:
+      - chroma_data:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "grep -q '00000000:1F40 00000000:0000 0A' /proc/net/tcp || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rag-proxy:
+    build:
+      context: .
+      dockerfile: ./services/rag-proxy/Dockerfile
+    container_name: rag-proxy
+    environment:
+      - PYTHONPATH=/app/src:/app/shared
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - LLM_API_TOKEN=${LLM_API_TOKEN}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - HF_HOME=/app/data/cache/huggingface
+      - PROMPTS_DIR=/app/config/prompts
+      - MODELS_CONFIG_PATH=/app/config/models.json
+      - GLOSSARY_COLLECTION=app_glossary
+      - TM_COLLECTION=app_tm
+      # RAG tuning parameters
+      - TM_THRESHOLD=${TM_THRESHOLD}
+      - GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
+      - RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./config/models.json:/app/config/models.json:ro
+      - ./config/prompts:/app/config/prompts:ro
+      - ./services/rag-proxy/src:/app/src
+      - ./services/shared/src:/app/shared:ro
+      - ./tests:/app/tests:ro
+    depends_on:
+      chroma:
+        # Ensures rag-proxy only starts after ChromaDB is ready to accept connections
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "grep -q '00000000:1388 00000000:0000 0A' /proc/net/tcp || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app_network
+    user: "${UID}:${GID}"
+
+  toolbox:
+    container_name: toolbox
+    build:
+      context: .
+      dockerfile: ./services/toolbox/Dockerfile
+    # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
+    command: tail -f /dev/null
+    environment:
+      - BULK_SIZE=${BULK_SIZE}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - HF_HOME=/app/data/cache/huggingface
+      - TM_SOURCE_DIR=/app/tm_source
+      - RAG_ANALYSIS_DIR=/app/data/rag-analysis
+      - OPENAI_BASE_URL=http://rag-proxy:5000/v1
+      - POST_PROCESS_INPUT_DIR=/app/po/output
+      - POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED:-false}
+      - POST_PROCESS_PLUGINS=${POST_PROCESS_PLUGINS}
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app/src:/app/shared:/app/services/rag-proxy/src
+      - PYTHONUNBUFFERED=1
+      - TARGET_LANG=${TARGET_LANG}
+    networks:
+      - app_network
+    user: "${UID}:${GID}"
+    volumes:
+      - ./config/models.json:/app/config/models.json:ro
+      - ./config/prompts:/app/config/prompts:ro
+      - ./data/rag-analysis:/app/data/rag-analysis
+      - ./data/logs:/app/data/logs
+      - ./data/tm_source:/app/tm_source:ro
+      - ./data/translations:/app/po
+      - ./services/rag-proxy/src:/app/services/rag-proxy/src:ro
+      - ./services/toolbox/src:/app/src:ro
+      - ./services/shared/src:/app/shared:ro
+      - ./tests:/app/tests:ro
+    depends_on:
+      chroma:
+        # Prevents toolbox scripts from failing due to database connection errors during boot
+        condition: service_healthy
+      rag-proxy:
+        condition: service_healthy
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  chroma_data:

@@ -1,0 +1,19 @@
+# Git history
+.git
+
+# Vector Database
+chroma_data
+
+# Python Cache
+**/__pycache__
+**/*.pyc
+
+# Environment Secrets
+.env
+
+# Input Data
+tm_source
+po
+
+# Other stuff
+**/*.log
