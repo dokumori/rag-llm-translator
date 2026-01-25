@@ -40,7 +40,7 @@ bash bin/initial_setup.sh
 
 Run:
 ```bash
-docker compose build && docker compose up -d
+docker compose up -d --build
 ```
 
 ## 3. Place the files
