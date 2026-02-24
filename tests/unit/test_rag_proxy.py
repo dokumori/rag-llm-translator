@@ -271,6 +271,59 @@ def test_prompt_fallback_logic():
         args, _ = mock_file.call_args
         assert args[0].endswith("generic.md")
 
+def test_prompt_caching():
+    """
+    Verify that get_system_prompt_from_md uses @functools.lru_cache to prevent 
+    redundant disk I/O when the same language prompt is requested multiple times.
+    """
+    # 1. Clear the cache before the test to ensure a clean state
+    app.get_system_prompt_from_md.cache_clear()
+    
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", mock_open(read_data="Cached Content")) as mock_file:
+         
+        # 2. First call: The cache is empty, so it must read from the disk (call open())
+        res1 = app.get_system_prompt_from_md("es")
+        
+        # 3. Second call: The arguments ("es") are identical, so it should return 
+        # the value from memory WITHOUT calling open() again.
+        res2 = app.get_system_prompt_from_md("es")
+        
+        assert res1 == "Cached Content"
+        assert res2 == "Cached Content"
+        
+        # 4. Verify that despite two function calls, the file was only opened once.
+        # (The production logic checks 3 paths, but breaks after finding the first one 
+        # that exists, which is custom/es.md since os.path.exists is mocked True).
+        assert mock_file.call_count == 1
+        
+        # 5. Third call: A different argument ("de") means a cache miss. 
+        # It must hit the disk again.
+        res3 = app.get_system_prompt_from_md("de")
+        assert mock_file.call_count == 2
+
+def test_models_config_caching():
+    """
+    Verify that get_models_config caches disk reads to prevent parsing the 
+    models.json file on every single translation request.
+    """
+    # 1. Clear cache to isolate the test
+    app.get_models_config.cache_clear()
+    
+    mock_json = '{"models": [{"id": "test-model"}]}'
+    with patch("os.path.exists", return_value=True), \
+         patch("builtins.open", mock_open(read_data=mock_json)) as mock_file:
+         
+        # 2. Call the function twice sequentially.
+        res1 = app.get_models_config()
+        res2 = app.get_models_config()
+        
+        assert len(res1) == 1
+        assert res1[0]["id"] == "test-model"
+        
+        # 3. Assert that the underlying JSON file was only opened and read ONCE.
+        assert mock_file.call_count == 1
+
 
 # --- Part 3: handle_translation Tests ---
 

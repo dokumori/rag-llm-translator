@@ -9,6 +9,7 @@ import datetime
 import re
 from typing import List, Dict, Any, Tuple, Optional, Union
 import logging
+import functools
 from core.config import Config
 
 # --- Logging Configuration ---
@@ -44,9 +45,9 @@ def get_upstream_client() -> OpenAI:
 
 
 # --- Configuration Paths ---
-# --- Configuration Paths ---
 DEFAULT_LANG = Config.TARGET_LANG
 
+@functools.lru_cache(maxsize=32)
 def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
     """
     Retrieves the expert system prompt dynamically based on the target language.
@@ -75,8 +76,13 @@ def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
     logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
     return "You are a professional software translator."
 
+@functools.lru_cache(maxsize=1)
 def get_models_config() -> List[Dict[str, Any]]:
-    """Retrieves model configurations from the shared JSON file."""
+    """
+    Retrieves model configurations from the shared JSON file defined in Config.MODELS_CONFIG_PATH.
+    This allows the application to dynamically load supported models without code changes.
+    """
+    # Check if the configuration file exists before attempting to read it
     if os.path.exists(Config.MODELS_CONFIG_PATH):
         with open(Config.MODELS_CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f).get("models", [])
@@ -90,7 +96,6 @@ def get_models_config() -> List[Dict[str, Any]]:
 Config.log_config()
 
 # --- 3. Helper Functions ---
-
 
 def parse_input_payload(source_text: str) -> List[str]:
     """
