@@ -1,6 +1,4 @@
 from flask import Flask, request, jsonify, Response
-import chromadb
-from chromadb.utils import embedding_functions
 from openai import OpenAI
 import os
 import json
