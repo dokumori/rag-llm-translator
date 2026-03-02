@@ -27,7 +27,7 @@ app = Flask(__name__)
 
 from infrastructure import get_chroma_client, get_embedding_function
 
-# --- 2. Clients (Lazy & Cached) ---
+# --- Clients (Lazy & Cached) ---
 _upstream_client = None
 
 
@@ -93,7 +93,7 @@ def get_models_config() -> List[Dict[str, Any]]:
 # Log configuration at startup
 Config.log_config()
 
-# --- 3. Helper Functions ---
+# --- Helper Functions ---
 
 def parse_input_payload(source_text: str) -> List[str]:
     """
@@ -151,11 +151,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     found_tm: set = set()
 
     # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
-    # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
     TM_THRESHOLD = Config.TM_THRESHOLD
     GLOSSARY_THRESHOLD = Config.GLOSSARY_THRESHOLD
     RAG_STRICT_DISTANCE_THRESHOLD = Config.RAG_STRICT_DISTANCE_THRESHOLD
-
     GLOSSARY_COLLECTION = Config.GLOSSARY_COLLECTION
     TM_COLLECTION = Config.TM_COLLECTION
 
@@ -266,8 +264,7 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
 
     return f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
-# --- 4. Routes ---
-
+# --- Routes ---
 
 @app.route('/v1/models', methods=['GET'])
 def list_models() -> Response:
