@@ -72,7 +72,7 @@ def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
                 logger.error(f"❌ Failed to read prompt file {path}: {e}")
 
     logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
-    return "You are a professional software translator."
+    return "Ensure the translation sounds natural and professional in the target language. Adhere to Microsoft Localization Style Guide."
 
 @functools.lru_cache(maxsize=1)
 def get_models_config() -> List[Dict[str, Any]]:
