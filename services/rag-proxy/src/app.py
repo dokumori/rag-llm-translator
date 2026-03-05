@@ -286,7 +286,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
     try:
         data = request.json
         messages = data.get('messages', [])
-        requested_model = data.get('model', "deepseek-r1-v1").strip()
+        requested_model = (data.get('model') or "claude-opus-4-5-20251101").strip()
 
         log_entry: Dict[str, Any] = {
             "timestamp": datetime.datetime.utcnow().isoformat(),
@@ -334,7 +334,14 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
         # --- 5. DRY RUN CHECK ---
         model_meta = next((m for m in get_models_config()
                           if m["id"] == requested_model), None)
-        if model_meta and model_meta.get("is_dry_run"):
+                          
+        # Force dry run if:
+        #   - the model is marked as dry_run
+        #   - the model is not given
+        #   - entirely unknown
+        is_dry_run = model_meta.get("is_dry_run") if model_meta else True
+
+        if is_dry_run:
             log_entry["action"] = "dry_run"
             mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
             content_return = json.dumps(mock_translations, ensure_ascii=False)

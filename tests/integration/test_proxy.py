@@ -26,7 +26,6 @@ embed_patcher = patch(
 MockEmbedding = embed_patcher.start()
 
 # Now it is safe to import app
-# Now it is safe to import app
 try:
     from app import app
 except ImportError:
@@ -158,6 +157,89 @@ def test_dry_run_safety(client, mocker):
     data = json.loads(response.data)
     assert data.get('id') == 'dry-run'
     print("✅ CHECK PASSED: Response ID indicated 'dry-run'.")
+
+
+def test_default_model_is_dry_run(client, mocker):
+    """
+    Test that if no model is provided, the system defaults to the dry-run model.
+    """
+    mock_upstream_client = mocker.patch('app.get_upstream_client')
+    mocker.patch('app.get_chroma_client')
+
+    print("\n----------------------------------------------------------------------")
+    print("🧪 TEST: Default Model (Missing ID) Safety")
+
+    # Payload with NO 'model' key
+    payload = {
+        "messages": [{"role": "user", "content": "Test missing model ID"}]
+    }
+
+    response = client.post('/v1/chat/completions',
+                           data=json.dumps(payload),
+                           content_type='application/json')
+
+    # Should NOT hit upstream because default should now be a dry-run model
+    mock_upstream_client.return_value.chat.completions.create.assert_not_called()
+    
+    data = json.loads(response.data)
+    assert data.get('id') == 'dry-run', f"Expected id='dry-run', got {data.get('id')}"
+    print("✅ CHECK PASSED: Request with missing model ID correctly defaulted to Dry Run.")
+
+
+def test_unknown_model_is_dry_run(client, mocker):
+    """
+    Test that if an unknown model is provided, the system defaults to the dry-run behavior.
+    """
+    mock_upstream_client = mocker.patch('app.get_upstream_client')
+    mocker.patch('app.get_chroma_client')
+
+    print("\n----------------------------------------------------------------------")
+    print("🧪 TEST: Unknown Model Safety")
+
+    # Payload with an unknown 'model' key
+    payload = {
+        "model": "this-model-does-not-exist",
+        "messages": [{"role": "user", "content": "Test unknown model"}]
+    }
+
+    response = client.post('/v1/chat/completions',
+                           data=json.dumps(payload),
+                           content_type='application/json')
+
+    # Should NOT hit upstream because unknown models default to dry run
+    mock_upstream_client.return_value.chat.completions.create.assert_not_called()
+    
+    data = json.loads(response.data)
+    assert data.get('id') == 'dry-run', f"Expected id='dry-run', got {data.get('id')}"
+    print("✅ CHECK PASSED: Request with unknown model ID correctly defaulted to Dry Run.")
+
+
+def test_empty_model_is_dry_run(client, mocker):
+    """
+    Test that if an empty model is provided, the system defaults to the dry-run behavior.
+    """
+    mock_upstream_client = mocker.patch('app.get_upstream_client')
+    mocker.patch('app.get_chroma_client')
+
+    print("\n----------------------------------------------------------------------")
+    print("🧪 TEST: Empty Model Safety")
+
+    # Payload with an empty 'model' key
+    payload = {
+        "model": "",
+        "messages": [{"role": "user", "content": "Test empty model"}]
+    }
+
+    response = client.post('/v1/chat/completions',
+                           data=json.dumps(payload),
+                           content_type='application/json')
+
+    # Should NOT hit upstream because empty models default to dry run
+    mock_upstream_client.return_value.chat.completions.create.assert_not_called()
+    
+    data = json.loads(response.data)
+    assert data.get('id') == 'dry-run', f"Expected id='dry-run', got {data.get('id')}"
+    print("✅ CHECK PASSED: Request with empty model ID correctly defaulted to Dry Run.")
 
 
 def test_health_check(client, mocker):
