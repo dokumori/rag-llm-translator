@@ -33,12 +33,6 @@ def get_env_config() -> Dict[str, str]:
 
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
 
-    # Pass optional target language to proxy via standard Header convention (converted to env var by some clients)
-    # The python-gpt-po tool might not natively support custom headers, but if it uses httpx/requests
-    # and we can trick it or if we are using a custom client wrapper, this helps.
-    # ACTUAL FIX: The user requested adding this env var.
-    env["HTTP_X_TARGET_LANG"] = os.environ.get("TARGET_LANG", "ja")
-
     return env
 
 
