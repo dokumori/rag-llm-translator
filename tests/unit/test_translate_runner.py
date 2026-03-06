@@ -124,26 +124,25 @@ class TestTranslateRunner(unittest.TestCase):
         cmd = ["echo", "test"]
         env = {}
 
-        with self.assertRaises(Exception) as context:
-            translate_runner.execute_translation(cmd, env, max_retries=1)
+        result = translate_runner.execute_translation(cmd, env, max_retries=1)
 
-        self.assertIn("Command failed", str(context.exception))
+        self.assertEqual(result.returncode, 1)
         self.assertEqual(mock_run.call_count, 2)  # Initial + 1 retry
 
     # --- Tests for Workflow & Isolation Logic ---
 
     @patch('translate_runner.os.makedirs')
     @patch('translate_runner.shutil.copy2')
-    @patch('translate_runner.os.remove')
     @patch('translate_runner.os.path.exists')
-    # Mock glob for find_files AND temp cleanup
+    @patch('translate_runner.os.path.isfile')
+    @patch('translate_runner.os.path.getsize')
     @patch('translate_runner.glob.glob')
     @patch('translate_runner.execute_translation')
     @patch('translate_runner.tempfile.TemporaryDirectory')
-    def test_run_translation_workflow_isolation_and_success(self, mock_temp, mock_exec, mock_glob, mock_exists, mock_remove, mock_copy, mock_mkdirs):
+    def test_run_translation_workflow_isolation_and_success(self, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy, mock_mkdirs):
         """
         Verify isolation logic:
-        1. Clears temp dir (via os.remove).
+        1. Context manager creates temp dir.
         2. Copies src -> temp.
         3. Runs command.
         4. Copies temp -> dest (on success).
@@ -170,15 +169,14 @@ class TestTranslateRunner(unittest.TestCase):
         mock_exec.return_value = mock_res
 
         # Setup File Existence (Output file check)
-        mock_exists.return_value = True
+        mock_exists.side_effect = lambda p: p in ('/tmp/mock_work/file1.po', '/input/file1.po')
+        mock_isfile.side_effect = lambda p: p == '/tmp/mock_work/file1.po'
+        mock_getsize.side_effect = lambda p: 100 if p == '/tmp/mock_work/file1.po' else 0
 
         # Execute
         translate_runner.run_translation_workflow("model", "/input", "/output")
 
-        # Verify 1: Cleared Temp
-        mock_remove.assert_called_with('/tmp/mock_work/garbage.txt')
-
-        # Verify 2: Copy to Temp
+        # Verify 1: Copy to Temp
         mock_copy.assert_any_call('/input/file1.po', '/tmp/mock_work/file1.po')
 
         # Verify 3: Copy to Final Destination (Result was 0)
@@ -187,12 +185,13 @@ class TestTranslateRunner(unittest.TestCase):
 
     @patch('translate_runner.shutil.copy2')
     @patch('translate_runner.os.path.exists')
+    @patch('translate_runner.os.path.isfile')
+    @patch('translate_runner.os.path.getsize')
     @patch('translate_runner.glob.glob')
     @patch('translate_runner.execute_translation')
     @patch('translate_runner.tempfile.TemporaryDirectory')
     @patch('translate_runner.os.makedirs')
-    @patch('translate_runner.os.remove')  # Just to prevent erorrs
-    def test_run_translation_workflow_missing_output(self, mock_remove, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_exists, mock_copy):
+    def test_run_translation_workflow_missing_output(self, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
         """Test case where tool succeeds (exit 0) but output file is missing."""
         mock_ctx = MagicMock()
         mock_ctx.__enter__.return_value = "/tmp/mock_work"
@@ -209,7 +208,9 @@ class TestTranslateRunner(unittest.TestCase):
         # Condition: Source file exists? Yes. Output file exists? No.
         # The code calls os.path.exists(temp_file_path) for the output check.
         # It assumes src exists implicitly via glob.
-        mock_exists.return_value = False  # Output file missing
+        mock_exists.side_effect = lambda p: p == '/input/file1.po'  # Output file missing
+        mock_isfile.side_effect = lambda p: p == '/input/file1.po'
+        mock_getsize.side_effect = lambda p: 100 if p == '/input/file1.po' else 0
 
         # Execute
         translate_runner.run_translation_workflow("model", "/input", "/output")

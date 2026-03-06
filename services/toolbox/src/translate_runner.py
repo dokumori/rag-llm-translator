@@ -65,6 +65,10 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
 
     while attempt <= max_retries:
         try:
+            # Clear previous attempt state
+            last_exception = None
+            last_result = None
+
             # capture_output = True allows capturing stdout/stderr for logging
             result = subprocess.run(
                 cmd,
@@ -72,6 +76,8 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
                 capture_output=True,
                 text=True
             )
+            
+            last_result = result
 
             if result.returncode == 0:
                 return result
@@ -81,8 +87,10 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
             logger.warning(f"STDERR: {result.stderr}")
 
         except Exception as e:
-            logger.error(f"Attempt {attempt + 1} raised exception: {e}")
+            # Clear previous attempt state
+            last_result = None
             last_exception = e
+            logger.error(f"Attempt {attempt + 1} raised exception: {e}")
 
         attempt += 1
         if attempt <= max_retries:
@@ -90,7 +98,10 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
             logger.info(f"Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
 
-    if last_exception:
+    # Return the last failed result if we have one, otherwise raise the system error
+    if last_result is not None:
+        return last_result
+    elif last_exception:
         raise last_exception
     else:
         raise Exception(f"Command failed after {max_retries} retries.")
@@ -126,64 +137,63 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
     logger.info(f"📁 Output will be written to: {output_base_dir}")
 
     # 3. Process Loop with Tempfile Context
-    # We use a TemporaryDirectory to cleanly isolate each file processing
-    try:
-        with tempfile.TemporaryDirectory() as temp_work_dir:
-            logger.info(f"Created temporary workspace at {temp_work_dir}")
+    for index, src_file in enumerate(po_files, 1):
+        rel_path = os.path.relpath(src_file, input_base_dir)
+        filename = os.path.basename(src_file)
+        final_dest_file = os.path.join(output_base_dir, rel_path)
 
-            for index, src_file in enumerate(po_files, 1):
-                rel_path = os.path.relpath(src_file, input_base_dir)
-                filename = os.path.basename(src_file)
-                final_dest_file = os.path.join(output_base_dir, rel_path)
+        # Ensure final destination sub-directory exists
+        os.makedirs(os.path.dirname(final_dest_file), exist_ok=True)
 
-                # Ensure final destination sub-directory exists
-                os.makedirs(os.path.dirname(final_dest_file), exist_ok=True)
+        logger.info(
+            f"[{index}/{total_files}] 📦 Processing: {rel_path}")
 
-                logger.info(
-                    f"[{index}/{total_files}] 📦 Processing: {rel_path}")
+        try:
+            # We use a TemporaryDirectory to cleanly isolate each file processing
+            with tempfile.TemporaryDirectory() as temp_work_dir:
 
-                try:
-                    # A. ISOLATION STEP: Clear temp (should be empty, but good practice if reusing dir in loop logic)
-                    # Since we reuse the SAME temp dir for performance (avoiding creating/destroying 1000 dirs),
-                    # we must manually clear it.
-                    for f in glob.glob(os.path.join(temp_work_dir, "*")):
-                        os.remove(f)
+                temp_file_path = os.path.join(temp_work_dir, filename)
+                shutil.copy2(src_file, temp_file_path)
 
-                    temp_file_path = os.path.join(temp_work_dir, filename)
-                    shutil.copy2(src_file, temp_file_path)
+                # B. PREPARE COMMAND
+                cmd = prepare_command(model, target_lang, temp_work_dir)
 
-                    # B. PREPARE COMMAND
-                    cmd = prepare_command(model, target_lang, temp_work_dir)
+                # C. EXECUTE
+                result = execute_translation(cmd, env)
 
-                    # C. EXECUTE
-                    result = execute_translation(cmd, env)
-
-                    # D. HANDLE RESULT
-                    if result.returncode == 0:
-                        if os.path.exists(temp_file_path):
+                # D. HANDLE RESULT
+                if result.returncode == 0:
+                    if not os.path.exists(temp_file_path):
+                        logger.error(
+                            f"   ❌ Error: Output file {filename} missing from {temp_work_dir} after successful run.")
+                        failure_count += 1
+                        continue
+                    elif not os.path.isfile(temp_file_path):
+                        logger.error(f"   ❌ Error: Output path is not a file: {temp_file_path}")
+                        failure_count += 1
+                        continue
+                    elif os.path.getsize(temp_file_path) == 0:
+                        logger.error(f"   ❌ Error: Output file is empty: {temp_file_path}")
+                        failure_count += 1
+                        continue
+                    else:
+                        try:
                             shutil.copy2(temp_file_path, final_dest_file)
                             logger.info(f"   ✅ Saved to: {final_dest_file}")
                             success_count += 1
-                        else:
-                            logger.warning(
-                                f"   ⚠️ Error: Output file missing in temp dir: {filename}")
-                            logger.error(
-                                f"File {filename} missing from {temp_work_dir} after successful run.")
+                        except (PermissionError, OSError) as e:
+                            logger.error(f"   ❌ Error copying file to destination {final_dest_file}: {e}")
                             failure_count += 1
-                    else:
-                        logger.error(
-                            f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})")
-                        failure_count += 1
-
-                except Exception as e:
-                    logger.critical(
-                        f"   ❌ Critical Error on {rel_path}: {e}", exc_info=True)
+                            continue
+                else:
+                    logger.error(
+                        f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})")
                     failure_count += 1
 
-    except Exception as e:
-        logger.critical(
-            f"Failed to create or manage temporary directory: {e}", exc_info=True)
-        return
+        except Exception as e:
+            logger.critical(
+                f"   ❌ Critical Error on {rel_path}: {e}", exc_info=True)
+            failure_count += 1
 
     # 4. Summary
     logger.info("=" * 30)
