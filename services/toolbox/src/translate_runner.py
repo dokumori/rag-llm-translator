@@ -7,7 +7,7 @@ import argparse
 import logging
 import tempfile
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 
 # --- Logging Configuration ---
 logging.basicConfig(
