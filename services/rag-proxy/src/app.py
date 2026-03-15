@@ -1,6 +1,4 @@
 from flask import Flask, request, jsonify, Response
-import chromadb
-from chromadb.utils import embedding_functions
 from openai import OpenAI
 import os
 import json
@@ -9,6 +7,7 @@ import datetime
 import re
 from typing import List, Dict, Any, Tuple, Optional, Union
 import logging
+import functools
 from core.config import Config
 
 # --- Logging Configuration ---
@@ -28,7 +27,7 @@ app = Flask(__name__)
 
 from infrastructure import get_chroma_client, get_embedding_function
 
-# --- 2. Clients (Lazy & Cached) ---
+# --- Clients (Lazy & Cached) ---
 _upstream_client = None
 
 
@@ -44,9 +43,9 @@ def get_upstream_client() -> OpenAI:
 
 
 # --- Configuration Paths ---
-# --- Configuration Paths ---
 DEFAULT_LANG = Config.TARGET_LANG
 
+@functools.lru_cache(maxsize=32)
 def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
     """
     Retrieves the expert system prompt dynamically based on the target language.
@@ -73,10 +72,15 @@ def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
                 logger.error(f"❌ Failed to read prompt file {path}: {e}")
 
     logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
-    return "You are a professional software translator."
+    return "Ensure the translation sounds natural and professional in the target language. Adhere to Microsoft Localization Style Guide."
 
+@functools.lru_cache(maxsize=1)
 def get_models_config() -> List[Dict[str, Any]]:
-    """Retrieves model configurations from the shared JSON file."""
+    """
+    Retrieves model configurations from the shared JSON file defined in Config.MODELS_CONFIG_PATH.
+    This allows the application to dynamically load supported models without code changes.
+    """
+    # Check if the configuration file exists before attempting to read it
     if os.path.exists(Config.MODELS_CONFIG_PATH):
         with open(Config.MODELS_CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f).get("models", [])
@@ -89,8 +93,7 @@ def get_models_config() -> List[Dict[str, Any]]:
 # Log configuration at startup
 Config.log_config()
 
-# --- 3. Helper Functions ---
-
+# --- Helper Functions ---
 
 def parse_input_payload(source_text: str) -> List[str]:
     """
@@ -148,11 +151,9 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
     found_tm: set = set()
 
     # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
-    # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
     TM_THRESHOLD = Config.TM_THRESHOLD
     GLOSSARY_THRESHOLD = Config.GLOSSARY_THRESHOLD
     RAG_STRICT_DISTANCE_THRESHOLD = Config.RAG_STRICT_DISTANCE_THRESHOLD
-
     GLOSSARY_COLLECTION = Config.GLOSSARY_COLLECTION
     TM_COLLECTION = Config.TM_COLLECTION
 
@@ -263,8 +264,7 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
 
     return f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
-# --- 4. Routes ---
-
+# --- Routes ---
 
 @app.route('/v1/models', methods=['GET'])
 def list_models() -> Response:
@@ -286,7 +286,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
     try:
         data = request.json
         messages = data.get('messages', [])
-        requested_model = data.get('model', "deepseek-r1-v1").strip()
+        requested_model = (data.get('model') or "claude-opus-4-5-20251101").strip()
 
         log_entry: Dict[str, Any] = {
             "timestamp": datetime.datetime.utcnow().isoformat(),
@@ -334,7 +334,14 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
         # --- 5. DRY RUN CHECK ---
         model_meta = next((m for m in get_models_config()
                           if m["id"] == requested_model), None)
-        if model_meta and model_meta.get("is_dry_run"):
+                          
+        # Force dry run if:
+        #   - the model is marked as dry_run
+        #   - the model is not given
+        #   - entirely unknown
+        is_dry_run = model_meta.get("is_dry_run") if model_meta else True
+
+        if is_dry_run:
             log_entry["action"] = "dry_run"
             mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
             content_return = json.dumps(mock_translations, ensure_ascii=False)
