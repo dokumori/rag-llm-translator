@@ -11,13 +11,23 @@
       "is_dry_run": false
     },
     {
+      "id": "claude-sonnet-4-20250514-v1",
+      "name": "Claude Sonnet 4",
+      "is_dry_run": false
+    },
+    {
       "id": "claude-opus-4-20250514-v1",
       "name": "Claude Opus 4",
       "is_dry_run": false
     },
     {
-      "id": "claude-sonnet-4-20250514-v1",
-      "name": "Claude Sonnet 4",
+      "id": "claude-4-6-sonnet",
+      "name": "Claude 4.6 Sonnet",
+      "is_dry_run": false
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
       "is_dry_run": false
     },
     {
@@ -26,8 +36,13 @@
       "is_dry_run": false
     },
     {
-      "id": "deepseek-r1-v1",
-      "name": "DeepSeek R1",
+      "id": "llama4-maverick-17b-instruct-v1",
+      "name": "Llama 4 Maverick (17B-Instruct-v1)",
+      "is_dry_run": false
+    },
+    {
+      "id": "kimi-k2.5",
+      "name": "Kimi K2.5",
       "is_dry_run": false
     },
     {
