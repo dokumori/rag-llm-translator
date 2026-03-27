@@ -22,13 +22,18 @@ MAX_RETRIES = 2
 BULK_SIZE = os.environ.get("BULK_SIZE", "15")
 
 
-def get_env_config() -> Dict[str, str]:
+def get_env_config(skip_rag: bool = False) -> Dict[str, str]:
     """Returns the environment configuration for the translation tool."""
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = "dummy"
 
     # Allow override via environment variable, default to http://rag-proxy:5000/v1
     base_url = os.environ.get("OPENAI_BASE_URL", "http://rag-proxy:5000/v1")
+    
+    if skip_rag:
+        # Append /skip_rag to path directly instead of a query parameter which breaks /models resolution
+        base_url = f"{base_url.rstrip('/')}/skip_rag"
+
     env["OPENAI_BASE_URL"] = base_url
 
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
@@ -107,7 +112,7 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
         raise Exception(f"Command failed after {max_retries} retries.")
 
 
-def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str) -> None:
+def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, skip_rag: bool = False) -> None:
     """
     Main orchestration function for the translation workflow.
     """
@@ -132,7 +137,7 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
     success_count = 0
     failure_count = 0
 
-    env = get_env_config()
+    env = get_env_config(skip_rag=skip_rag)
 
     logger.info(f"📁 Output will be written to: {output_base_dir}")
 
@@ -209,7 +214,8 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="LLM Model ID")
     parser.add_argument("--input", required=True, help="Input directory")
     parser.add_argument("--output", required=True, help="Output directory")
+    parser.add_argument("--skip-rag", action="store_true", help="Bypass RAG semantic lookup entirely")
 
     args = parser.parse_args()
 
-    run_translation_workflow(args.model, args.input, args.output)
+    run_translation_workflow(args.model, args.input, args.output, skip_rag=args.skip_rag)

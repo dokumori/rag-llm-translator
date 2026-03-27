@@ -47,6 +47,28 @@ if [ "$IS_DRY_RUN" = "true" ]; then
 else
   echo "🚀 LIVE RUN: Using $SELECTED_MODEL"
 fi
+
+# 1.5 RAG Mode Selection
+echo "----------------------------------------------------------------"
+echo "Select Evaluation Mode:"
+rag_options=("With RAG (Default context injection)" "Without RAG (skip-rag flag)")
+PS3="Enter the number of your choice: "
+
+select rag_opt in "${rag_options[@]}"
+do
+  if [ "$REPLY" -eq 1 ]; then
+    SKIP_RAG_FLAG=""
+    echo "🧠 Mode: WITH RAG"
+    break
+  elif [ "$REPLY" -eq 2 ]; then
+    SKIP_RAG_FLAG="--skip-rag"
+    echo "⏩ Mode: WITHOUT RAG (skip-rag)"
+    break
+  else
+    echo "❌ Invalid option. Please try again."
+  fi
+done
+
 echo "----------------------------------------------------------------"
 
 # 2. Metadata Validation (Pre-flight check)
@@ -80,7 +102,8 @@ docker compose exec \
   toolbox python3 -u /app/src/translate_runner.py \
   --model "$SELECTED_MODEL" \
   --input "/app/po/input" \
-  --output "/app/po/output"
+  --output "/app/po/output" \
+  $SKIP_RAG_FLAG
 
 # 5. Post-Processing
 echo "✨ Running Post-Process..."

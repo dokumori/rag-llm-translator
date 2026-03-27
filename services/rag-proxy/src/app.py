@@ -267,6 +267,7 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
 # --- Routes ---
 
 @app.route('/v1/models', methods=['GET'])
+@app.route('/v1/skip_rag/models', methods=['GET'])
 def list_models() -> Response:
     """Returns a dynamic list of models from configuration."""
     config_models = get_models_config()
@@ -280,6 +281,7 @@ def list_models() -> Response:
 
 
 @app.route('/v1/chat/completions', methods=['POST'])
+@app.route('/v1/skip_rag/chat/completions', methods=['POST'])
 def handle_translation() -> Union[Response, Tuple[Response, int]]:
     """Main endpoint for handling translation requests."""
     start_time = time.time()
@@ -307,14 +309,21 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
         log_entry["batch_size"] = len(query_payload)
 
         # --- 2. RAG LOOKUP ---
-        try:
-            rag_content, rag_matches = perform_rag_lookup(query_payload)
-            log_entry["rag_matches"] = rag_matches
-        except Exception as e:
-            rag_content = ""
-            log_entry["rag_error"] = str(e)
-            logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info=True)
-            # Non-critical, we proceed without RAG
+        skip_rag = 'skip_rag' in request.path or str(request.args.get('skip_rag', '')).lower() == 'true'
+        rag_content = ""
+        rag_matches = []
+        
+        if not skip_rag:
+            try:
+                rag_content, rag_matches = perform_rag_lookup(query_payload)
+                log_entry["rag_matches"] = rag_matches
+            except Exception as e:
+                log_entry["rag_error"] = str(e)
+                logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info=True)
+                # Non-critical, we proceed without RAG
+        else:
+            logger.info("⏩ Skipping RAG lookup as requested (`skip_rag` is true)")
+            rag_content = "\n<!-- RAG Lookup Skipped -->\n"
 
         # --- 3. CONSTRUCT PROMPT ---
         target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or DEFAULT_LANG
@@ -364,9 +373,27 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
                 temperature=0,
                 max_tokens=data.get('max_tokens', 1000)
             )
+            
+            # --- API ERROR CHECKS ---
+            for choice in response.choices:
+                if choice.finish_reason in ["safety", "content_filter"]:
+                    logger.warning(f"🚨 GUARDRAIL BLOCKED TRANSLATION! Finish Reason: {choice.finish_reason}")
+                elif not choice.message.content:
+                    logger.warning(f"🚨 LLM RETURNED EMPTY STRING! Finish Reason: {choice.finish_reason}")
+            
+            raw_content = response.choices[0].message.content or ""
+            sneak_peek = raw_content[:150].strip().replace('\n', ' ')
+            logger.info(f"raw_output_sneak_peek: {sneak_peek}")
+            # -----------------------------
+
             log_entry["processing_time"] = time.time() - start_time
             return jsonify(response.model_dump())
         except Exception as e:
+            if hasattr(e, 'response'):
+                code = getattr(e.response, 'status_code', 'Unknown')
+                text = getattr(e.response, 'text', 'Unknown')
+                logger.error(f"❌ API Error Code: {code}")
+                logger.error(f"❌ API Error Body: {text}")
             logger.error(f"❌ Translation provider error: {e}", exc_info=True)
             return jsonify({"error": "Translation provider unavailable"}), 502
 
