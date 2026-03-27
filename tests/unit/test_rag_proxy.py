@@ -413,3 +413,90 @@ def test_perform_rag_lookup_custom_thresholds(mock_get_ef, mock_get_chroma):
         # Should be rejected because 0.2 > 0.1
         assert logs[0]['accepted'] is False
         assert logs[0]['dist'] == 0.2
+
+
+# --- Part 5: Stemming Guardrail Tests ---
+
+class TestSimpleStem:
+    """Unit tests for the simple_stem morphological helper."""
+
+    def test_ing_suffix(self):
+        assert app.simple_stem("publishing") == "publish"
+
+    def test_ed_suffix(self):
+        assert app.simple_stem("published") == "publish"
+
+    def test_s_suffix(self):
+        assert app.simple_stem("publishes") == "publish"
+
+    def test_er_suffix(self):
+        assert app.simple_stem("publisher") == "publish"
+
+    def test_tion_suffix(self):
+        assert app.simple_stem("publication") == "public"
+
+    def test_ment_suffix(self):
+        assert app.simple_stem("management") == "manag"
+
+    def test_short_word_unchanged(self):
+        """Words where stripping would leave fewer than 3 chars should be unchanged."""
+        assert app.simple_stem("ed") == "ed"
+        assert app.simple_stem("ing") == "ing"
+
+    def test_no_suffix(self):
+        assert app.simple_stem("publish") == "publish"
+        assert app.simple_stem("cat") == "cat"
+
+
+class TestHasSharedStems:
+    """Unit tests for the has_shared_stems guardrail helper."""
+
+    def test_exact_match(self):
+        assert app.has_shared_stems("publish", "publish") is True
+
+    def test_stem_match_ing(self):
+        assert app.has_shared_stems("publishing", "Publish") is True
+
+    def test_stem_match_ed(self):
+        assert app.has_shared_stems("published", "Publishing") is True
+
+    def test_no_match(self):
+        assert app.has_shared_stems("apple", "banana") is False
+
+    def test_partial_sentence(self):
+        assert app.has_shared_stems("publishing/unpublishing.", "Unpublish") is True
+
+    def test_partial_sentence2(self):
+        assert app.has_shared_stems("publishing/unpublishing.", "Published") is True
+
+    def test_case_insensitive(self):
+        assert app.has_shared_stems("PUBLISHING", "publish") is True
+
+
+@patch('app.get_chroma_client')
+@patch('app.get_embedding_function')
+def test_perform_rag_lookup_stem_match_acceptance(mock_get_ef, mock_get_chroma):
+    """Test that the guardrail accepts 'publishing' vs 'Publish' via stem matching."""
+    mock_client = MagicMock()
+    mock_glossary = MagicMock()
+    mock_glossary.name = "app_glossary"
+
+    mock_client.list_collections.return_value = [mock_glossary]
+    mock_client.get_collection.return_value = mock_glossary
+    mock_get_chroma.return_value = mock_client
+
+    # Dist 0.10 < 0.25 (threshold) AND stems match -> Should Accept
+    mock_glossary.query.return_value = {
+        'documents': [['passage: Publish']],
+        'distances': [[0.10]],
+        'metadatas': [[{'target': '掲載する'}]]
+    }
+
+    query = ["publishing"]
+    content, logs = app.perform_rag_lookup(query)
+
+    glossary_log = next((l for l in logs if l['type'] == 'glossary'), None)
+    assert glossary_log is not None
+    assert glossary_log['accepted'] is True
+    assert "掲載する" in content
+

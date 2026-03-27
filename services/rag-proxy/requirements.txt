@@ -3,3 +3,4 @@ chromadb==1.4.1
 sentence-transformers==3.0.1
 transformers==4.46.3
 openai==1.59.3
+snowballstemmer==2.2.0

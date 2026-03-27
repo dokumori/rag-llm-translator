@@ -8,7 +8,11 @@ import re
 from typing import List, Dict, Any, Tuple, Optional, Union
 import logging
 import functools
+import snowballstemmer
 from core.config import Config
+
+# Initialize stemmer globally
+_stemmer = snowballstemmer.stemmer('english')
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -139,6 +143,40 @@ def parse_input_payload(source_text: str) -> List[str]:
 
     return cleaned_payload
 
+def simple_stem(word: str) -> str:
+    """Stems an English word using the Snowball (Porter2) algorithm."""
+    return _stemmer.stemWord(word)
+
+# Minimal stop words list to prevent TM guardrail bypass
+STOP_WORDS = {
+    "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", 
+    "by", "with", "of", "in", "is", "are", "was", "were", "be", "been", "being",
+    "it", "this", "that", "these", "those", "we", "you", "they", "he", "she", "as"
+}
+
+def has_shared_stems(text_a: str, text_b: str) -> bool:
+    """
+    Checks whether two strings share at least one meaningful word stem,
+    ignoring common stop words.
+    """
+    words_a = {w for w in re.findall(r'\w+', text_a.lower()) if w not in STOP_WORDS}
+    words_b = {w for w in re.findall(r'\w+', text_b.lower()) if w not in STOP_WORDS}
+
+    if not words_a or not words_b:
+        return False
+
+    # Fast path: exact word match
+    if words_a.intersection(words_b):
+        return True
+
+    # Slow path: compare stems
+    stems_a = {simple_stem(w) for w in words_a}
+    stems_b = {simple_stem(w) for w in words_b}
+    
+    return len(stems_a.intersection(stems_b)) > 0
+
+
+
 
 def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, Any]]]:
     """
@@ -180,13 +218,8 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                         tgt = gloss_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (GLOSSARY) ---
-                        query_words = set(re.findall(
-                            r'\w+', query_payload[i].lower()))
-                        src_words = set(re.findall(r'\w+', src.lower()))
-                        overlap = query_words.intersection(src_words)
-
                         is_semantic_match = dist < GLOSSARY_THRESHOLD
-                        has_shared_words = len(overlap) > 0
+                        has_shared_words = has_shared_stems(query_payload[i], src)
 
                         # Reject if no shared words unless distance is extremely low (synonym exception)
                         if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
@@ -218,13 +251,8 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                         tgt = tm_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (TM) ---
-                        query_words = set(re.findall(
-                            r'\w+', query_payload[i].lower()))
-                        src_words = set(re.findall(r'\w+', src.lower()))
-                        overlap = query_words.intersection(src_words)
-
                         is_semantic_match = dist < TM_THRESHOLD
-                        has_shared_words = len(overlap) > 0
+                        has_shared_words = has_shared_stems(query_payload[i], src)
 
                         if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
                             is_accepted = False
