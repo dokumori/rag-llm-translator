@@ -24,9 +24,9 @@ class TestTranslateRunner(unittest.TestCase):
 
     @patch('translate_runner.glob.glob')
     def test_find_po_files(self, mock_glob):
-        """Test finding .po files recursively."""
+        """Test finding .po files at top level."""
         # Setup mock return
-        mock_files = ['/input/file1.po', '/input/sub/file2.po']
+        mock_files = ['/input/file1.po', '/input/file2.po']
         mock_glob.return_value = mock_files
 
         # Execute
@@ -34,7 +34,7 @@ class TestTranslateRunner(unittest.TestCase):
 
         # Verify
         mock_glob.assert_called_once_with(
-            os.path.join('/input', "**/*.po"), recursive=True)
+            os.path.join('/input', "*.po"))
         self.assertEqual(result, mock_files)
 
     @patch('translate_runner.glob.glob')
@@ -43,6 +43,16 @@ class TestTranslateRunner(unittest.TestCase):
         mock_glob.return_value = []
         result = translate_runner.find_po_files('/input')
         self.assertEqual(result, [])
+
+    @patch('translate_runner.glob.glob')
+    def test_find_po_files_ignores_subdirectories(self, mock_glob):
+        """Explicitly verify that subdirectories are ignored by the flat glob."""
+        # Setup mock return as if glob found files in subdirs (which it shouldn't with *.po)
+        # But we want to verify the pattern passed to glob
+        translate_runner.find_po_files('/input')
+        
+        # Verify the pattern is flat
+        mock_glob.assert_called_once_with(os.path.join('/input', "*.po"))
 
     # --- Tests for prepare_command ---
 
@@ -139,7 +149,8 @@ class TestTranslateRunner(unittest.TestCase):
     @patch('translate_runner.glob.glob')
     @patch('translate_runner.execute_translation')
     @patch('translate_runner.tempfile.TemporaryDirectory')
-    def test_run_translation_workflow_isolation_and_success(self, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy, mock_mkdirs):
+    @patch('translate_runner.load_models_config')
+    def test_run_translation_workflow_isolation_and_success(self, mock_load, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy, mock_mkdirs):
         """
         Verify isolation logic:
         1. Context manager creates temp dir.
@@ -162,6 +173,9 @@ class TestTranslateRunner(unittest.TestCase):
             return []
         mock_glob.side_effect = glob_side_effect
 
+        # Setup Mock Config (Non-dry run)
+        mock_load.return_value = [{"id": "model", "is_dry_run": False}]
+
         # Setup Execution Success
         # Mock subprocess.run to return exit code 0 (success)
         mock_res = MagicMock()
@@ -174,14 +188,14 @@ class TestTranslateRunner(unittest.TestCase):
         mock_getsize.side_effect = lambda p: 100 if p == '/tmp/mock_work/file1.po' else 0
 
         # Execute
-        translate_runner.run_translation_workflow("model", "/input", "/output")
+        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
 
         # Verify 1: Copy to Temp
         mock_copy.assert_any_call('/input/file1.po', '/tmp/mock_work/file1.po')
 
         # Verify 3: Copy to Final Destination (Result was 0)
         mock_copy.assert_any_call(
-            '/tmp/mock_work/file1.po', '/output/file1.po')
+            '/tmp/mock_work/file1.po', '/output/file1_slug_mode_time.po')
 
     @patch('translate_runner.shutil.copy2')
     @patch('translate_runner.os.path.exists')
@@ -191,7 +205,8 @@ class TestTranslateRunner(unittest.TestCase):
     @patch('translate_runner.execute_translation')
     @patch('translate_runner.tempfile.TemporaryDirectory')
     @patch('translate_runner.os.makedirs')
-    def test_run_translation_workflow_missing_output(self, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
+    @patch('translate_runner.load_models_config')
+    def test_run_translation_workflow_missing_output(self, mock_load, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
         """Test case where tool succeeds (exit 0) but output file is missing."""
         mock_ctx = MagicMock()
         mock_ctx.__enter__.return_value = "/tmp/mock_work"
@@ -200,6 +215,9 @@ class TestTranslateRunner(unittest.TestCase):
         # Only return input file, empty list for cleanup glob
         mock_glob.side_effect = lambda p, **k: [
             '/input/file1.po'] if 'input' in p else []
+
+        # Setup Mock Config
+        mock_load.return_value = [{"id": "model", "is_dry_run": False}]
 
         mock_res = MagicMock()
         mock_res.returncode = 0
@@ -213,7 +231,7 @@ class TestTranslateRunner(unittest.TestCase):
         mock_getsize.side_effect = lambda p: 100 if p == '/input/file1.po' else 0
 
         # Execute
-        translate_runner.run_translation_workflow("model", "/input", "/output")
+        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
 
         # Verify: NO copy to output
         # Check all copy calls, ensure none target /output
@@ -222,6 +240,43 @@ class TestTranslateRunner(unittest.TestCase):
             dest = args[1]
             self.assertNotIn(
                 '/output', dest, "Should not copy to output if file is missing")
+
+    @patch('translate_runner.shutil.copy2')
+    @patch('translate_runner.os.path.exists')
+    @patch('translate_runner.os.path.isfile')
+    @patch('translate_runner.os.path.getsize')
+    @patch('translate_runner.glob.glob')
+    @patch('translate_runner.execute_translation')
+    @patch('translate_runner.tempfile.TemporaryDirectory')
+    @patch('translate_runner.os.makedirs')
+    @patch('translate_runner.load_models_config')
+    @patch('translate_runner.logger.info')
+    def test_run_translation_workflow_dry_run_logging(self, mock_log_info, mock_load, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
+        """Verify that dry-run mode triggers the correct log message."""
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__.return_value = "/tmp/mock_work"
+        mock_temp.return_value = mock_ctx
+
+        mock_glob.side_effect = lambda p, **k: ['/input/file1.po'] if 'input' in p else []
+        
+        # Setup Mock Config (Dry run)
+        mock_load.return_value = [{"id": "model", "is_dry_run": True}]
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_exec.return_value = mock_res
+        
+        mock_exists.return_value = True
+        mock_isfile.return_value = True
+        mock_getsize.return_value = 100
+
+        # Execute
+        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
+
+        # Verify: Check if the log message contains "Dry Run Mode"
+        # We look for the call that happens after finding files
+        found_dry_run_log = any("Dry Run Mode" in call_args[0][0] for call_args in mock_log_info.call_args_list)
+        self.assertTrue(found_dry_run_log, "Should have logged starting in Dry Run Mode")
 
 
 if __name__ == '__main__':

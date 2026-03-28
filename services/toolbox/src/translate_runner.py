@@ -8,6 +8,7 @@ import logging
 import tempfile
 import time
 from typing import List, Dict
+from core.config import load_models_config
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -42,8 +43,8 @@ def get_env_config(skip_rag: bool = False) -> Dict[str, str]:
 
 
 def find_po_files(input_dir: str) -> List[str]:
-    """Recursively finds all .po files in the input directory."""
-    return glob.glob(os.path.join(input_dir, "**/*.po"), recursive=True)
+    """Finds all .po files in the input directory (top level only)."""
+    return glob.glob(os.path.join(input_dir, "*.po"))
 
 
 def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
@@ -112,7 +113,7 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
         raise Exception(f"Command failed after {max_retries} retries.")
 
 
-def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, skip_rag: bool = False) -> None:
+def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False) -> None:
     """
     Main orchestration function for the translation workflow.
     """
@@ -131,8 +132,21 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
         return
 
     total_files = len(po_files)
-    logger.info(
-        f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...")
+    # Check if this model is marked as a dry run in the models config
+    is_dry_run = False
+    try:
+        models_list = load_models_config()
+        for m in models_list:
+            if m["id"] == model:
+                is_dry_run = bool(m.get("is_dry_run", False))
+                break
+    except Exception as e:
+        logger.warning(f"Could not read models config to check dry_run flag: {e}")
+
+    if is_dry_run:
+        logger.info(f"🚀 Found {total_files} files. Starting translation in Dry Run Mode for '{target_lang}'...")
+    else:
+        logger.info(f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...")
 
     success_count = 0
     failure_count = 0
@@ -143,15 +157,16 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
 
     # 3. Process Loop with Tempfile Context
     for index, src_file in enumerate(po_files, 1):
-        rel_path = os.path.relpath(src_file, input_base_dir)
         filename = os.path.basename(src_file)
-        final_dest_file = os.path.join(output_base_dir, rel_path)
-
-        # Ensure final destination sub-directory exists
-        os.makedirs(os.path.dirname(final_dest_file), exist_ok=True)
+        
+        # Construct new filename
+        basename_no_ext, ext = os.path.splitext(filename)
+        new_filename = f"{basename_no_ext}_{model_slug}_{rag_mode}_{timestamp}{ext}"
+        
+        final_dest_file = os.path.join(output_base_dir, new_filename)
 
         logger.info(
-            f"[{index}/{total_files}] 📦 Processing: {rel_path}")
+            f"[{index}/{total_files}] 📦 Processing: {filename}")
 
         try:
             # We use a TemporaryDirectory to cleanly isolate each file processing
@@ -192,12 +207,12 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
                             continue
                 else:
                     logger.error(
-                        f"   ❌ Tool execution failed for {rel_path} (Exit Code: {result.returncode})")
+                        f"   ❌ Tool execution failed for {filename} (Exit Code: {result.returncode})")
                     failure_count += 1
 
         except Exception as e:
             logger.critical(
-                f"   ❌ Critical Error on {rel_path}: {e}", exc_info=True)
+                f"   ❌ Critical Error on {filename}: {e}", exc_info=True)
             failure_count += 1
 
     # 4. Summary
@@ -214,8 +229,11 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="LLM Model ID")
     parser.add_argument("--input", required=True, help="Input directory")
     parser.add_argument("--output", required=True, help="Output directory")
+    parser.add_argument("--model-slug", required=True, help="Model slug for numbering")
+    parser.add_argument("--rag-mode", required=True, help="RAG mode label")
+    parser.add_argument("--timestamp", required=True, help="Run timestamp")
     parser.add_argument("--skip-rag", action="store_true", help="Bypass RAG semantic lookup entirely")
 
     args = parser.parse_args()
 
-    run_translation_workflow(args.model, args.input, args.output, skip_rag=args.skip_rag)
+    run_translation_workflow(args.model, args.input, args.output, args.model_slug, args.rag_mode, args.timestamp, skip_rag=args.skip_rag)

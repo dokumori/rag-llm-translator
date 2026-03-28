@@ -117,17 +117,38 @@ for po_file in "$INPUT_HOST_DIR"/*.po; do
   fi
 done
 
-# 3. Output Directory Cleanup
-if ls "${OUTPUT_HOST_DIR}"/*.po 1> /dev/null 2>&1; then
-  echo "⚠️  WARNING: Output directory contains existing files."
-  read -p "   Overwrite them? (y/N): " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo "❌ Operation cancelled."
-    exit 1
-  fi
-  # Use toolbox to clean purely to avoid host permission issues
-  docker compose exec toolbox sh -c 'rm -f /app/po/output/**/*.po'
+# 3. Prepare Naming Metadata
+if [ "$IS_DRY_RUN" = "true" ]; then
+  MODEL_SLUG="dry-run"
+else
+  # Convert to lowercase and replace spaces with dashes safely
+  MODEL_SLUG=$(echo "$SELECTED_MODEL" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\{2,\}/-/g' | sed 's/^-//;s/-$//')
 fi
+
+if [ -n "$SKIP_RAG_FLAG" ]; then
+  RAG_MODE="norag"
+else
+  RAG_MODE="rag"
+fi
+
+# 3.5 Pre-flight Check for conflicting files
+echo "🔍 Checking for output conflicts..."
+CONFLICTS_FOUND=0
+while read -r input_file; do
+  REL_PATH="${input_file#$INPUT_HOST_DIR/}"
+  if [ -f "${OUTPUT_HOST_DIR}/${REL_PATH}" ]; then
+    echo "   ❌ Conflict found: ${OUTPUT_HOST_DIR}/${REL_PATH} already exists."
+    CONFLICTS_FOUND=1
+  fi
+done < <(find "$INPUT_HOST_DIR" -maxdepth 1 -type f -name "*.po" 2>/dev/null || true)
+
+if [ "$CONFLICTS_FOUND" -eq 1 ]; then
+  echo "❌ Error: Found existing .po files in the output directory with the same exact names as the input files."
+  echo "   Please clear or rename these files before running the translation."
+  exit 1
+fi
+
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # 4. Execute Modular Translation Runner
 echo "📦 Starting Modular Translation Runner..."
@@ -138,11 +159,16 @@ docker compose exec \
   --model "$SELECTED_MODEL" \
   --input "/app/po/input" \
   --output "/app/po/output" \
+  --model-slug "$MODEL_SLUG" \
+  --rag-mode "$RAG_MODE" \
+  --timestamp "$TIMESTAMP" \
   $SKIP_RAG_FLAG
 
 # 5. Post-Processing
 echo "✨ Running Post-Process..."
 docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
+
+
 
 echo "----------------------------------------------------------------"
 echo "✅ Translation Workflow Complete!"

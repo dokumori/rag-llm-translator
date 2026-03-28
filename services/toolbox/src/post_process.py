@@ -125,7 +125,7 @@ def main():
     if os.path.isfile(input_path):
         files_to_process.append(input_path)
     elif os.path.isdir(input_path):
-        # Find all .po files in the folder
+        # Find all .po files in the folder (top level only)
         search_pattern = os.path.join(input_path, "*.po")
         files_to_process = glob.glob(search_pattern)
     else:

@@ -84,9 +84,10 @@ class TestCorePostProcess(unittest.TestCase):
             args, _ = mock_print.call_args
             self.assertIn("Post-processing is disabled", args[0])
 
+    @patch('post_process.check_plugin_conflicts')
     @patch('post_process.load_plugin')
     @patch('post_process.process_single_file')
-    def test_plugin_loading(self, mock_process, mock_load):
+    def test_plugin_loading(self, mock_process, mock_load, mock_conflicts):
         """Test that plugins are loaded based on env var."""
         with patch.dict(os.environ, {
             "POST_PROCESSING_ENABLED": "true",
@@ -113,6 +114,35 @@ class TestCorePostProcess(unittest.TestCase):
                     args, _ = mock_process.call_args
                     # args[0] is file, args[1] is loaded_plugins list
                     self.assertEqual(args[1], [mock_plugin])
+
+    @patch('post_process.check_plugin_conflicts')
+    @patch('post_process.load_plugin')
+    @patch('post_process.process_single_file')
+    @patch('post_process.glob.glob')
+    @patch('os.path.isdir')
+    @patch('os.path.isfile')
+    def test_flat_discovery(self, mock_isfile, mock_isdir, mock_glob, mock_process, mock_load, mock_conflicts):
+        """Test that the script finds .po files at top level of directory."""
+        # Setup mocks: /tmp is a dir, /tmp/file1.po is a file
+        mock_isdir.side_effect = lambda p: p == "/tmp"
+        mock_isfile.side_effect = lambda p: p in ["/tmp/file1.po", "/tmp/file2.po"]
+        
+        mock_glob.return_value = ['/tmp/file1.po', '/tmp/file2.po']
+        mock_load.return_value = MagicMock()
+
+        with patch.dict(os.environ, {
+            "POST_PROCESSING_ENABLED": "true",
+            "POST_PROCESS_PLUGINS": "test_plugin",
+            "POST_PROCESS_INPUT_DIR": "/tmp"
+        }):
+            with patch.object(sys, 'argv', ["script", "/tmp"]):
+                post_process.main()
+                
+                # Verify glob was called without recursive=True
+                mock_glob.assert_called_once_with(os.path.join("/tmp", "*.po"))
+                
+                # Verify both files were processed
+                self.assertEqual(mock_process.call_count, 2)
 
 
 class TestWaouSpacingPlugin(unittest.TestCase):
