@@ -33,7 +33,8 @@ services:
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
       - PROMPTS_DIR=/app/config/prompts
-      - MODELS_CONFIG_PATH=/app/config/models.json
+      - MODELS_CONFIG_PATH=/app/config/models/models.json
+      - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
       - GLOSSARY_COLLECTION=app_glossary
       - TM_COLLECTION=app_tm
       # RAG tuning parameters
@@ -43,8 +44,7 @@ services:
     ports:
       - "5001:5000"
     volumes:
-      - ./config/models.json:/app/config/models.json:ro
-      - ./config/prompts:/app/config/prompts:ro
+      - ./config:/app/config:ro
       - ./services/rag-proxy/src:/app/src
       - ./services/shared/src:/app/shared:ro
       - ./tests:/app/tests:ro
@@ -85,13 +85,14 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app/src:/app/shared:/app/services/rag-proxy/src
       - PYTHONUNBUFFERED=1
+      - MODELS_CONFIG_PATH=/app/config/models/models.json
+      - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
       - TARGET_LANG=${TARGET_LANG}
     networks:
       - app_network
     user: "${UID}:${GID}"
     volumes:
-      - ./config/models.json:/app/config/models.json:ro
-      - ./config/prompts:/app/config/prompts:ro
+      - ./config:/app/config:ro
       - ./data/rag-analysis:/app/data/rag-analysis
       - ./data/logs:/app/data/logs
       - ./data/tm_source:/app/tm_source:ro

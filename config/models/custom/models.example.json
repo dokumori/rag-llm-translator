@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy this file to config/models/custom/models.json to override or add models.",
+  "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended.",
+  "models": [
+    {
+      "id": "my-custom-model-id",
+      "name": "My Custom Model",
+      "is_dry_run": false
+    }
+  ]
+}

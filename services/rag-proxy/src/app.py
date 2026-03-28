@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional, Union
 import logging
 import functools
 import snowballstemmer
-from core.config import Config
+from core.config import Config, load_models_config
 
 # Initialize stemmer globally
 _stemmer = snowballstemmer.stemmer('english')
@@ -81,17 +81,10 @@ def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
 @functools.lru_cache(maxsize=1)
 def get_models_config() -> List[Dict[str, Any]]:
     """
-    Retrieves model configurations from the shared JSON file defined in Config.MODELS_CONFIG_PATH.
-    This allows the application to dynamically load supported models without code changes.
+    Retrieves model configurations from the shared JSON file, with custom override support.
+    Uses load_models_config() to merge config/models/models.json with config/models/custom/models.json.
     """
-    # Check if the configuration file exists before attempting to read it
-    if os.path.exists(Config.MODELS_CONFIG_PATH):
-        with open(Config.MODELS_CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f).get("models", [])
-    else:
-        logger.warning(
-            f"⚠️ Models config file not found at: {Config.MODELS_CONFIG_PATH}")
-    return []
+    return load_models_config()
 
 
 # Log configuration at startup

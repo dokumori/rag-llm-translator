@@ -13,9 +13,44 @@ echo "----------------------------------------------------------------"
 echo "RAG LLM Translation Quality Evaluation (LLM-as-a-Judge)"
 echo "----------------------------------------------------------------"
 
-MODELS_JSON="config/models.json"
+# Ensure we are running from project root
+cd "$(dirname "$0")/.."
+
+MODELS_JSON="config/models/models.json"
+CUSTOM_MODELS_JSON="config/models/custom/models.json"  # (Optional) override file
+
+# Safety check for required system models
+if [ ! -f "$MODELS_JSON" ]; then
+  echo "❌ Error: System models configuration not found at $MODELS_JSON"
+  echo "   Please ensure you are running this from the project root."
+  exit 1
+fi
+
 WITH_RAG_DIR="data/translations/eval/with_rag"
 WITHOUT_RAG_DIR="data/translations/eval/without_rag"
+
+# Helper: load models with custom override support
+load_merged_models() {
+  python3 -c "
+import json, os
+base = json.load(open('$MODELS_JSON')).get('models', [])
+custom_path = '$CUSTOM_MODELS_JSON'
+if custom_path and os.path.exists(custom_path):
+    custom = json.load(open(custom_path)).get('models', [])
+    dry_run = next((m for m in custom if m.get('is_dry_run')), next((m for m in base if m.get('is_dry_run')), None))
+    # Ensure dry run model is always at the end
+    models = [m for m in custom if not m.get('is_dry_run')] + ([dry_run] if dry_run else [])
+else:
+    # Move any dry run model in base to the end
+    models = [m for m in base if not m.get('is_dry_run')] + [m for m in base if m.get('is_dry_run')]
+
+for m in models:
+    # Add (dry run) suffix to name if missing and it is a dry run model
+    if m.get('is_dry_run') and '(dry run)' not in m.get('name', '').lower():
+        m['name'] = f\"{m['name']} (dry run)\"
+    print(json.dumps(m))
+"
+}
 
 # Ensure directories exist
 mkdir -p "$WITH_RAG_DIR"
@@ -58,13 +93,14 @@ echo "Select the Judge Model:"
 menu_options=()
 while IFS= read -r line; do
   menu_options+=("$line")
-done < <(python3 -c "import json; [print(m['name']) for m in json.load(open('$MODELS_JSON'))['models']]")
+done < <(load_merged_models | python3 -c "import sys, json; [print(json.loads(l)['name']) for l in sys.stdin]")
 PS3="Enter the number of your choice (Judge Model): "
 
 select opt in "${menu_options[@]}"
 do
   if [ -n "$opt" ]; then
-    SELECTED_MODEL=$(python3 -c "import json; m = [m for m in json.load(open('$MODELS_JSON'))['models'] if m['name'] == '$opt'][0]; print(m['id'])")
+    SELECTED_MODEL=$(load_merged_models | python3 -c "import sys, json; [print(json.loads(l)['id']) for l in sys.stdin if json.loads(l)['name'] == '$opt']" | head -1)
+    IS_DRY_RUN=$(load_merged_models | python3 -c "import sys, json; [print(str(json.loads(l)['is_dry_run']).lower()) for l in sys.stdin if json.loads(l)['name'] == '$opt']" | head -1)
     break
   else
     echo "❌ Invalid option. Please try again."
@@ -72,7 +108,11 @@ do
 done
 
 echo ""
-echo "⚖️  JUDGE MODEL: $SELECTED_MODEL"
+if [ "$IS_DRY_RUN" = "true" ]; then
+  echo "⚖️  JUDGE MODEL: Dry Run Mode"
+else
+  echo "⚖️  JUDGE MODEL: $opt"
+fi
 echo "----------------------------------------------------------------"
 
 # 2. Limit Selection & Statistical Sampling

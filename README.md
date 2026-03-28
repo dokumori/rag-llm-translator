@@ -84,7 +84,15 @@ You can provide project-specific translation instructions by placing a custom sy
 - **Naming Convention**: `{langcode}.md` (for example, `nl.md`, `es.md` etc).
 - **Effect**: If present, this markdown file will be used as the base expertise instruction for the LLM when translating into the target language, overriding the default prompts provided with the system.
 
-## 4. Ingest the translation memory and glossary
+## 4. Custom Model Configuration (Optional)
+You override the list of existing LLM models by providing a custom model configuration file.
+
+- **Location**: `config/models/custom/models.json`
+- **Setup**: Copy `config/models/custom/models.example.json` to `config/models/custom/models.json` and add your model definitions.
+- **Effect**: If present, the system will load models from this file. The default `dry-run` model is automatically preserved to ensure testing capability.
+
+
+## 5. Ingest the translation memory and glossary
 
 In the terminal, run the ingestion command:
 
@@ -99,7 +107,7 @@ The presence of collections and items in the database can be verified by executi
 docker compose exec toolbox python3 /app/src/check_db.py
 ```
 
-## 5. Translate!
+## 6. Translate!
 
 Finally, run the following command to start the translation process:
 
@@ -119,3 +127,4 @@ The following documents provide detailed information about the project's technic
 - [**Post-Processing Framework**](docs/2_post_processing.md): Details on the extensible post-processing pipeline that supports both default and custom plugins for cleaning and formatting translated strings.
 - [**RAG Performance Analysis**](docs/3_RAG_performance_analysis.md): A guide on monitoring RAG performance, interpreting distance metrics, and tuning thresholds for optimal accuracy.
 - [**Glossary Extraction & Audit**](docs/4_glossary_extraction.md): Translation consistency can diminish over time. This tool extracts 1–3 word terms from the existing Translation Memory to generate a draft glossary. It identifies the most frequent translations and highlights usage variations, facilitating terminology consistency audits and building a data-driven foundation for a unified user experience.
+- [**Translation Evaluation**](docs/5_translation_evaluation.md): Details on how to evaluate the quality of RAG-based translations by comparing two files (one with RAG context and another without) using an LLM as an independent judge.
