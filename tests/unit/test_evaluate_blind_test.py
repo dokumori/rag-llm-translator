@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Ensure we can import evaluate_blind_test (for local non-docker runs)
-local_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "services", "toolbox", "src"))
+local_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "services", "toolbox", "src"))
 if os.path.exists(local_src_path):
     sys.path.append(local_src_path)
 
@@ -130,7 +130,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         # Scores for A (without_rag) should be mapped to without_rag_*, and B (with_rag) to with_rag_*.
         mock_response.choices[0].message.content = (
             '```json\n'
-            '{"Better_Translation": "A", "Score_A": {"Context_Adherence": 4, "Accuracy_Fluency": 4, "Reason": "Good baseline"}, "Score_B": {"Context_Adherence": 2, "Accuracy_Fluency": 2, "Reason": "Poor"}}\n'
+            '{"Better_Translation": "A", "Score_A": {"Context_Adherence": 4, "Accuracy_Fluency": 4, "Reason": "Good Non-RAG"}, "Score_B": {"Context_Adherence": 2, "Accuracy_Fluency": 2, "Reason": "Poor"}}\n'
             '```'
         )
         mock_client_instance.chat.completions.create.return_value = mock_response
