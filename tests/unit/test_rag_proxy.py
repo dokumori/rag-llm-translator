@@ -311,7 +311,11 @@ def test_models_config_caching():
     app.get_models_config.cache_clear()
     
     mock_json = '{"models": [{"id": "test-model"}]}'
-    with patch("os.path.exists", return_value=True), \
+    # Only return True for the base models path; return False for the custom
+    # override path so that load_models_config opens the file exactly once.
+    def _exists_side_effect(path):
+        return not path.endswith("custom/models.json")
+    with patch("os.path.exists", side_effect=_exists_side_effect), \
          patch("builtins.open", mock_open(read_data=mock_json)) as mock_file:
          
         # 2. Call the function twice sequentially.

@@ -19,6 +19,7 @@ import argparse
 from typing import List, Dict, Any, Tuple
 import datetime
 from openai import OpenAI
+from core.config import load_models_config
 
 # Attempt to import tools for getting context from db
 try:
@@ -115,8 +116,8 @@ def format_file_info(file_paths: List[str]) -> str:
         info.append(f"{fname} (in {dname}/)")
     return ", ".join(info)
 
-def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str) -> Dict[str, Any]:
-    """Calls the Judge LLM to evaluate the pair."""
+def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False) -> Dict[str, Any]:
+    """Calls the Judge LLM to evaluate the pair, or returns mock data on dry run."""
     source_text = sample["source"]
     
     # 1. Re-Retrieve Context from ChromaDB
@@ -129,7 +130,25 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         logger.warning(f"Could not retrieve RAG context for evaluation: {e}")
         return None
         
-    # 2. Randomize A and B
+    # 2. Dry Run: return a mock result without making an API call
+    if dry_run:
+        winner = random.choice(["with_rag", "without_rag", "tie"])
+        logger.info(f"   🔬 [DRY RUN] Skipping API call for '{source_text[:30]}...'. Mock winner: {winner.upper()}")
+        return {
+            "source": source_text,
+            "rag_context": rag_context,
+            "with_rag_translation": sample["with_rag"],
+            "without_rag_translation": sample["without_rag"],
+            "winner": winner,
+            "with_rag_context": 3.0,
+            "with_rag_fluency": 3.0,
+            "with_rag_reason": "[DRY RUN] No API call made.",
+            "without_rag_context": 3.0,
+            "without_rag_fluency": 3.0,
+            "without_rag_reason": "[DRY RUN] No API call made.",
+        }
+
+    # 3. Randomize A and B
     is_with_rag_a = random.choice([True, False])
     
     if is_with_rag_a:
@@ -139,7 +158,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         trans_a = sample["without_rag"]
         trans_b = sample["with_rag"]
 
-    # 3. Format Prompt
+    # 4. Format Prompt
     system_prompt = prompt_template.replace(
         "{source_text}", source_text
     ).replace(
@@ -150,7 +169,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         "{translation_b}", trans_b
     )
 
-    # 4. Call Model
+    # 5. Call Model
     logger.info(f"   🤖 Sending '{source_text[:30]}...' to Judge for evaluation...")
     
     # Write verbose prompt to Docker daemon ONLY
@@ -193,7 +212,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
             
         evaluation = json.loads(response_text)
         
-        # 5. Resolve Winner
+        # 6. Resolve Winner
         better = str(evaluation.get("Better_Translation", "Tie")).strip().upper()
         if better == "A":
             winner = "with_rag" if is_with_rag_a else "without_rag"
@@ -204,7 +223,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
             
         logger.info(f"   ✅ Received Response. Winner: {winner.upper()}")
             
-        # 6. Extract raw scores back to their translated files
+        # 7. Extract raw scores back to their translated files
         scores = {
             "with_rag_context": evaluation["Score_A"]["Context_Adherence"] if is_with_rag_a else evaluation["Score_B"]["Context_Adherence"],
             "with_rag_fluency": evaluation["Score_A"]["Accuracy_Fluency"] if is_with_rag_a else evaluation["Score_B"]["Accuracy_Fluency"],
@@ -256,10 +275,27 @@ def main():
         logger.info(f"🎲 Randomly shuffling strings, looking to evaluate up to {target_evals} valid translations...")
         random.shuffle(paired_data)
 
+    # Check if this model is marked as a dry run in the models config
+    is_dry_run = False
+    try:
+        models_list = load_models_config()
+        for m in models_list:
+            if m["id"] == args.model:
+                is_dry_run = bool(m.get("is_dry_run", False))
+                break
+    except Exception as e:
+        logger.warning(f"Could not read models config to check dry_run flag: {e}")
+
+    if is_dry_run:
+        logger.info("🔬 DRY RUN MODE: No API calls will be made. Mock results will be returned.")
+
     prompt_template = get_judge_prompt_template()
     results = []
 
-    logger.info(f"🤖 Starting Evaluation using model: {args.model}")
+    if is_dry_run:
+        logger.info("🤖 Starting Evaluation in Dry Run Mode")
+    else:
+        logger.info(f"🤖 Starting Evaluation using model: {args.model}")
 
     # Create a single shared OpenAI client for all evaluations
     client = OpenAI(
@@ -278,7 +314,7 @@ def main():
             break
             
         logger.info(f"⏳ Evaluating [{successful_evals + 1}/{target_str}] (Attempt {idx}/{len(paired_data)})...")
-        eval_result = evaluate_translation(client, args.model, sample, prompt_template)
+        eval_result = evaluate_translation(client, args.model, sample, prompt_template, dry_run=is_dry_run)
         if eval_result:
             results.append(eval_result)
             successful_evals += 1
@@ -301,19 +337,17 @@ def main():
     # Load Model Metadata for display
     judge_name = args.model
     try:
-        models_path = "/app/config/models.json"
-        if os.path.exists(models_path):
-            with open(models_path, "r", encoding="utf-8") as f:
-                models_data = json.load(f)
-                for m in models_data.get("models", []):
-                    if m["id"] == args.model:
-                        judge_name = m["name"]
-                        break
+        models_list = load_models_config()
+        for m in models_list:
+            if m["id"] == args.model:
+                judge_name = m["name"]
+                break
     except Exception:
         pass
 
     # Build Report Content
-    completion_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.datetime.now()
+    completion_time = now.strftime("%Y-%m-%d %H:%M")
 
     with_rag_info = format_file_info(with_rag_files)
     without_rag_info = format_file_info(without_rag_files)
@@ -323,7 +357,7 @@ def main():
         "🏆 EVALUATION RESULTS SUMMARY",
         f"Completed: {completion_time}",
         "=========================================",
-        f"JUDGE MODEL ⚖️ : {judge_name} ({args.model})",
+        f"JUDGE MODEL ⚖️ : Dry Run Mode" if is_dry_run else f"JUDGE MODEL ⚖️ : {judge_name} ({args.model})",
         f"Total Evaluated: {len(results)}",
         f"Wins (With RAG): {wins_with_rag}",
         f"Wins (Without RAG): {wins_without_rag}",
@@ -347,13 +381,15 @@ def main():
         logger.info(line)
 
     # 7. Write Output Files
-    now = datetime.datetime.now()
     # Normalize path first to handle a possible trailing slash on --with-rag-dir
     output_dir = os.path.dirname(args.with_rag_dir.rstrip("/"))
 
+    # Build a filename-safe model slug
+    model_slug = "dry-run" if is_dry_run else judge_name.lower().replace(" ", "-")
+
     # Write to CSV
-    csv_timestamp = now.strftime("%Y%m%d_%H%M%S")
-    output_report = os.path.join(output_dir, f"evaluation_report_{csv_timestamp}.csv")
+    timestamp = now.strftime("%Y-%m-%d_%H-%M")
+    output_report = os.path.join(output_dir, f"evaluation_report_{timestamp}_{model_slug}.csv")
     
     with open(output_report, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
@@ -363,8 +399,7 @@ def main():
     logger.info(f"📁 Detailed CSV report saved to {output_report}")
 
     # Write to Text Summary
-    txt_timestamp = now.strftime("%Y-%m-%d %H-%M")
-    txt_report = os.path.join(output_dir, f"evaluation-result-{txt_timestamp}.txt")
+    txt_report = os.path.join(output_dir, f"evaluation-result-{timestamp}_{model_slug}.txt")
     
     with open(txt_report, 'w', encoding='utf-8') as f:
         f.write("\n".join(report_content))
