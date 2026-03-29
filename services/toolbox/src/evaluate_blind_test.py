@@ -324,13 +324,16 @@ def main():
         logger.error("All evaluations failed.")
         sys.exit(1)
         
+    # Win counts
     wins_with_rag = sum(1 for r in results if r["winner"] == "with_rag")
     wins_without_rag = sum(1 for r in results if r["winner"] == "without_rag")
     ties = sum(1 for r in results if r["winner"] == "tie")
     
+    # Average context adherence
     avg_ctx_with = sum(float(r["with_rag_context"]) for r in results) / len(results)
     avg_ctx_without = sum(float(r["without_rag_context"]) for r in results) / len(results)
     
+    # Average accuracy and fluency
     avg_fluency_with = sum(float(r["with_rag_fluency"]) for r in results) / len(results)
     avg_fluency_without = sum(float(r["without_rag_fluency"]) for r in results) / len(results)
 
@@ -352,6 +355,33 @@ def main():
     with_rag_info = format_file_info(with_rag_files)
     without_rag_info = format_file_info(without_rag_files)
 
+    # Calculate comparative metrics
+    wins_total_decisions = wins_with_rag + wins_without_rag
+    # Win Ratio: How many times RAG won for every 1 time the baseline won
+    win_ratio = wins_with_rag / wins_without_rag if wins_without_rag > 0 else float('inf')
+    # Relative Win Rate: Percentage of non-tie cases won by RAG
+    relative_win_rate = (wins_with_rag / wins_total_decisions * 100) if wins_total_decisions > 0 else 0
+    # Net Improvement (Delta): Difference in win-rate across the entire sample (including ties)
+    net_win_rate = (wins_with_rag - wins_without_rag) / len(results) * 100
+    # Win Lead: percentage more 'Wins' than the baseline
+    win_lead = ((wins_with_rag - wins_without_rag) / wins_without_rag * 100) if wins_without_rag > 0 else (100.0 if wins_with_rag > 0 else 0.0)
+
+    # Raw Score Improvement (Context Adherence)
+    # Measures the percentage increase in the average absolute score
+    score_improvement = ((avg_ctx_with - avg_ctx_without) / avg_ctx_without * 100) if avg_ctx_without > 0 else 0
+
+    # Contextual Error Reduction (Gap to perfection of 5.0)
+    # Measures how much of the remaining 'error gap' was closed by RAG
+    gap_without = 5.0 - avg_ctx_without
+    gap_with = 5.0 - avg_ctx_with
+    contextual_error_reduction = ((gap_without - gap_with) / gap_without * 100) if gap_without > 0 else 0
+
+    # Sub-optimal Rate Reduction (Score < 4.0)
+    # Reduction in translations that require manual polish or have minor context issues
+    suboptimal_with = sum(1 for r in results if float(r["with_rag_context"]) < 4.0)
+    suboptimal_without = sum(1 for r in results if float(r["without_rag_context"]) < 4.0)
+    suboptimal_reduction = ((suboptimal_without - suboptimal_with) / suboptimal_without * 100) if suboptimal_without > 0 else 0
+
     report_content = [
         "=========================================",
         "🏆 EVALUATION RESULTS SUMMARY",
@@ -367,13 +397,24 @@ def main():
         f"  - With RAG: {with_rag_info}",
         f"  - Without RAG: {without_rag_info}",
         "-----------------------------------------",
+        "Comparative Metrics (vs Non-RAG):",
+        f"  - Win Ratio: {win_ratio:.2f}x (RAG is {win_ratio:.1f}x more likely to win)",
+        f"  - Relative Win Rate: {relative_win_rate:.1f}% (Preference in decided cases)",
+        f"  - Win Lead: {win_lead:+.1f}% (More 'Best' translations produced)",
+        f"  - Contextual Error Reduction: {contextual_error_reduction:.1f}% (Closing the gap to perfection)",
+        f"  - Sub-optimal Rate Reduction: {suboptimal_reduction:+.1f}% (Reduction in scores < 4.0)",
+        f"  - Net Improvement (Delta): {net_win_rate:+.1f}% (Total win-rate difference)",
+        f"  - Score Improvement: {score_improvement:+.1f}% (Average context score boost)",
+        "-----------------------------------------",
         "Average Context Adherence Score (Max 5):",
         f"  - With RAG: {avg_ctx_with:.2f}",
         f"  - Without RAG: {avg_ctx_without:.2f}",
         "Average Accuracy & Fluency Score (Max 5):",
         f"  - With RAG: {avg_fluency_with:.2f}",
         f"  - Without RAG: {avg_fluency_without:.2f}",
-        "========================================="
+        "=========================================",
+        "For a detailed explanation of the evaluation methodology, see:",
+        "docs/5_translation_evaluation.md"
     ]
 
     # Print Report to Console
