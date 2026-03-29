@@ -247,79 +247,28 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         logger.error(f"Evaluation failed for string: {source_text[:50]}... Error: {e}")
         return None
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate translations with LLM-as-a-Judge")
-    parser.add_argument("--model", required=True, help="LLM Model ID for the judge")
-    parser.add_argument("--with-rag-dir", required=True, help="Directory containing with-RAG translations")
-    parser.add_argument("--without-rag-dir", required=True, help="Directory containing without-RAG translations")
-    parser.add_argument("--limit", type=int, default=0, help="Number of strings to evaluate (0 for all)")
-    args = parser.parse_args()
-
-    # Reset Base URL to hit provider directly if using standard OpenAI instead of local proxy
-    if "OPENAI_BASE_URL" in os.environ:
-        if "rag-proxy" in os.environ["OPENAI_BASE_URL"]:
-            del os.environ["OPENAI_BASE_URL"]
-
-    logger.info("🔍 Loading translation pairs...")
-    paired_data, with_rag_files, without_rag_files = pair_translations(args.with_rag_dir, args.without_rag_dir)
-    
-    if not paired_data:
-        logger.error("No valid translation pairs found matching source strings across both directories.")
-        sys.exit(1)
-        
-    logger.info(f"📊 Found {len(paired_data)} overlapping translated strings.")
-    
-    target_evals = min(args.limit, len(paired_data)) if args.limit > 0 else len(paired_data)
-
-    if args.limit > 0:
-        logger.info(f"🎲 Randomly shuffling strings, looking to evaluate up to {target_evals} valid translations...")
-        random.shuffle(paired_data)
-
-    # Check if this model is marked as a dry run in the models config
-    is_dry_run = False
-    try:
-        models_list = load_models_config()
-        for m in models_list:
-            if m["id"] == args.model:
-                is_dry_run = bool(m.get("is_dry_run", False))
-                break
-    except Exception as e:
-        logger.warning(f"Could not read models config to check dry_run flag: {e}")
-
-    if is_dry_run:
-        logger.info("🔬 DRY RUN MODE: No API calls will be made. Mock results will be returned.")
-
-    prompt_template = get_judge_prompt_template()
-    results = []
-
-    if is_dry_run:
-        logger.info("🤖 Starting Evaluation in Dry Run Mode")
-    else:
-        logger.info(f"🤖 Starting Evaluation using model: {args.model}")
-
-    # Create a single shared OpenAI client for all evaluations
-    client = OpenAI(
-        # Pass 'dummy' to prevent it from crashing if the token is missing
-        api_key=os.environ.get("LLM_API_TOKEN", "dummy"),
-        base_url=os.environ.get("LLM_BASE_URL")
-    )
-
+def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool) -> List[Dict[str, Any]]:
+    """Runs the primary evaluation loop, calling the judge LLM for each sample."""
+    target_evals = min(limit, len(paired_data)) if limit > 0 else len(paired_data)
+    target_str = str(target_evals) if limit > 0 else "ALL"
     successful_evals = 0
-
-    target_str = str(target_evals) if args.limit > 0 else "ALL"
+    results = []
 
     # Main evaluation loop to send each translation pair to the LLM
     for idx, sample in enumerate(paired_data, 1):
-        if args.limit > 0 and successful_evals >= target_evals:
+        if limit > 0 and successful_evals >= target_evals:
             break
             
         logger.info(f"⏳ Evaluating [{successful_evals + 1}/{target_str}] (Attempt {idx}/{len(paired_data)})...")
-        eval_result = evaluate_translation(client, args.model, sample, prompt_template, dry_run=is_dry_run)
+        eval_result = evaluate_translation(client, model, sample, prompt_template, dry_run=is_dry_run)
         if eval_result:
             results.append(eval_result)
             successful_evals += 1
+            
+    return results
 
-    # Calculate Aggregates
+def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Computes all aggregate and comparative metrics from the evaluation results."""
     if not results:
         logger.error("All evaluations failed.")
         sys.exit(1)
@@ -336,24 +285,6 @@ def main():
     # Average accuracy and fluency
     avg_fluency_with = sum(float(r["with_rag_fluency"]) for r in results) / len(results)
     avg_fluency_without = sum(float(r["without_rag_fluency"]) for r in results) / len(results)
-
-    # Load Model Metadata for display
-    judge_name = args.model
-    try:
-        models_list = load_models_config()
-        for m in models_list:
-            if m["id"] == args.model:
-                judge_name = m["name"]
-                break
-    except Exception:
-        pass
-
-    # Build Report Content
-    now = datetime.datetime.now()
-    completion_time = now.strftime("%Y-%m-%d %H:%M")
-
-    with_rag_info = format_file_info(with_rag_files)
-    without_rag_info = format_file_info(without_rag_files)
 
     # Calculate comparative metrics
     wins_total_decisions = wins_with_rag + wins_without_rag
@@ -382,36 +313,59 @@ def main():
     suboptimal_without = sum(1 for r in results if float(r["without_rag_context"]) < 4.0)
     suboptimal_reduction = ((suboptimal_without - suboptimal_with) / suboptimal_without * 100) if suboptimal_without > 0 else 0
 
+    return {
+        "wins_with_rag": wins_with_rag,
+        "wins_without_rag": wins_without_rag,
+        "ties": ties,
+        "avg_ctx_with": avg_ctx_with,
+        "avg_ctx_without": avg_ctx_without,
+        "avg_fluency_with": avg_fluency_with,
+        "avg_fluency_without": avg_fluency_without,
+        "win_ratio": win_ratio,
+        "relative_win_rate": relative_win_rate,
+        "net_win_rate": net_win_rate,
+        "win_lead": win_lead,
+        "score_improvement": score_improvement,
+        "contextual_error_reduction": contextual_error_reduction,
+        "suboptimal_reduction": suboptimal_reduction,
+        "total_evaluated": len(results)
+    }
+
+def save_reports(output_dir: str, model_slug: str, results: List[Dict[str, Any]], metrics: Dict[str, Any], judge_name: str, model_id: str, with_rag_info: str, without_rag_info: str, is_dry_run: bool):
+    """Generates the report, prints it, and saves it to CSV and text files."""
+    now = datetime.datetime.now()
+    completion_time = now.strftime("%Y-%m-%d %H:%M")
+
     report_content = [
         "=========================================",
         "🏆 EVALUATION RESULTS SUMMARY",
         f"Completed: {completion_time}",
         "=========================================",
-        f"JUDGE MODEL ⚖️ : Dry Run Mode" if is_dry_run else f"JUDGE MODEL ⚖️ : {judge_name} ({args.model})",
-        f"Total Evaluated: {len(results)}",
-        f"Wins (With RAG): {wins_with_rag}",
-        f"Wins (Without RAG): {wins_without_rag}",
-        f"Ties: {ties}",
+        f"JUDGE MODEL ⚖️ : Dry Run Mode" if is_dry_run else f"JUDGE MODEL ⚖️ : {judge_name} ({model_id})",
+        f"Total Evaluated: {metrics['total_evaluated']}",
+        f"Wins (With RAG): {metrics['wins_with_rag']}",
+        f"Wins (Without RAG): {metrics['wins_without_rag']}",
+        f"Ties: {metrics['ties']}",
         "-----------------------------------------",
         "Files Compared:",
         f"  - With RAG: {with_rag_info}",
         f"  - Without RAG: {without_rag_info}",
         "-----------------------------------------",
         "Comparative Metrics (vs Non-RAG):",
-        f"  - Win Ratio: {win_ratio:.2f}x (RAG is {win_ratio:.1f}x more likely to win)",
-        f"  - Relative Win Rate: {relative_win_rate:.1f}% (Preference in decided cases)",
-        f"  - Win Lead: {win_lead:+.1f}% (More 'Best' translations produced)",
-        f"  - Contextual Error Reduction: {contextual_error_reduction:.1f}% (Closing the gap to perfection)",
-        f"  - Sub-optimal Rate Reduction: {suboptimal_reduction:+.1f}% (Reduction in scores < 4.0)",
-        f"  - Net Improvement (Delta): {net_win_rate:+.1f}% (Total win-rate difference)",
-        f"  - Score Improvement: {score_improvement:+.1f}% (Average context score boost)",
+        f"  - Win Ratio: {metrics['win_ratio']:.2f}x (RAG is {metrics['win_ratio']:.1f}x more likely to win)",
+        f"  - Relative Win Rate: {metrics['relative_win_rate']:.1f}% (Preference in decided cases)",
+        f"  - Win Lead: {metrics['win_lead']:+.1f}% (More 'Best' translations produced)",
+        f"  - Contextual Error Reduction: {metrics['contextual_error_reduction']:.1f}% (Closing the gap to perfection)",
+        f"  - Sub-optimal Rate Reduction: {metrics['suboptimal_reduction']:+.1f}% (Reduction in scores < 4.0)",
+        f"  - Net Improvement (Delta): {metrics['net_win_rate']:+.1f}% (Total win-rate difference)",
+        f"  - Score Improvement: {metrics['score_improvement']:+.1f}% (Average context score boost)",
         "-----------------------------------------",
         "Average Context Adherence Score (Max 5):",
-        f"  - With RAG: {avg_ctx_with:.2f}",
-        f"  - Without RAG: {avg_ctx_without:.2f}",
+        f"  - With RAG: {metrics['avg_ctx_with']:.2f}",
+        f"  - Without RAG: {metrics['avg_ctx_without']:.2f}",
         "Average Accuracy & Fluency Score (Max 5):",
-        f"  - With RAG: {avg_fluency_with:.2f}",
-        f"  - Without RAG: {avg_fluency_without:.2f}",
+        f"  - With RAG: {metrics['avg_fluency_with']:.2f}",
+        f"  - Without RAG: {metrics['avg_fluency_without']:.2f}",
         "=========================================",
         "For a detailed explanation of the evaluation methodology, see:",
         "docs/5_translation_evaluation.md"
@@ -421,17 +375,11 @@ def main():
     for line in report_content:
         logger.info(line)
 
-    # 7. Write Output Files
-    # Normalize path first to handle a possible trailing slash on --with-rag-dir
-    output_dir = os.path.dirname(args.with_rag_dir.rstrip("/"))
-
-    # Build a filename-safe model slug
-    model_slug = "dry-run" if is_dry_run else judge_name.lower().replace(" ", "-")
-
-    # Write to CSV
+    # Write Output Files
     timestamp = now.strftime("%Y-%m-%d_%H-%M")
-    output_report = os.path.join(output_dir, f"evaluation_report_{timestamp}_{model_slug}.csv")
     
+    # Write to CSV
+    output_report = os.path.join(output_dir, f"evaluation_report_{timestamp}_{model_slug}.csv")
     with open(output_report, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
@@ -441,11 +389,76 @@ def main():
 
     # Write to Text Summary
     txt_report = os.path.join(output_dir, f"evaluation-result-{timestamp}_{model_slug}.txt")
-    
     with open(txt_report, 'w', encoding='utf-8') as f:
         f.write("\n".join(report_content))
         
     logger.info(f"📄 Summary text report saved to {txt_report}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate translations with LLM-as-a-Judge")
+    parser.add_argument("--model", required=True, help="LLM Model ID for the judge")
+    parser.add_argument("--with-rag-dir", required=True, help="Directory containing with-RAG translations")
+    parser.add_argument("--without-rag-dir", required=True, help="Directory containing without-RAG translations")
+    parser.add_argument("--limit", type=int, default=0, help="Number of strings to evaluate (0 for all)")
+    args = parser.parse_args()
+
+    # Reset Base URL to hit provider directly if using standard OpenAI instead of local proxy
+    if "OPENAI_BASE_URL" in os.environ:
+        if "rag-proxy" in os.environ["OPENAI_BASE_URL"]:
+            del os.environ["OPENAI_BASE_URL"]
+
+    logger.info("🔍 Loading translation pairs...")
+    paired_data, with_rag_files, without_rag_files = pair_translations(args.with_rag_dir, args.without_rag_dir)
+    
+    if not paired_data:
+        logger.error("No valid translation pairs found matching source strings across both directories.")
+        sys.exit(1)
+        
+    logger.info(f"📊 Found {len(paired_data)} overlapping translated strings.")
+
+    if args.limit > 0:
+        target_evals = min(args.limit, len(paired_data))
+        logger.info(f"🎲 Randomly shuffling strings, looking to evaluate up to {target_evals} valid translations...")
+        random.shuffle(paired_data)
+
+    # Check if this model is marked as a dry run in the models config
+    is_dry_run = False
+    judge_name = args.model
+    try:
+        models_list = load_models_config()
+        for m in models_list:
+            if m["id"] == args.model:
+                is_dry_run = bool(m.get("is_dry_run", False))
+                judge_name = m.get("name", args.model)
+                break
+    except Exception as e:
+        logger.warning(f"Could not read models config to check dry_run flag: {e}")
+
+    if is_dry_run:
+        logger.info("🔬 DRY RUN MODE: No API calls will be made. Mock results will be returned.")
+        logger.info("🤖 Starting Evaluation in Dry Run Mode")
+    else:
+        logger.info(f"🤖 Starting Evaluation using model: {args.model}")
+
+    prompt_template = get_judge_prompt_template()
+
+    # Create a single shared OpenAI client for all evaluations
+    client = OpenAI(
+        # Pass 'dummy' to prevent it from crashing if the token is missing
+        api_key=os.environ.get("LLM_API_TOKEN", "dummy"),
+        base_url=os.environ.get("LLM_BASE_URL")
+    )
+
+    results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run)
+    metrics = calculate_metrics(results)
+    
+    with_rag_info = format_file_info(with_rag_files)
+    without_rag_info = format_file_info(without_rag_files)
+    
+    output_dir = os.path.dirname(args.with_rag_dir.rstrip("/"))
+    model_slug = "dry-run" if is_dry_run else judge_name.lower().replace(" ", "-")
+    
+    save_reports(output_dir, model_slug, results, metrics, judge_name, args.model, with_rag_info, without_rag_info, is_dry_run)
 
 if __name__ == "__main__":
     main()

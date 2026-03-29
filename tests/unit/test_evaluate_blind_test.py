@@ -8,7 +8,7 @@ local_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "
 if os.path.exists(local_src_path):
     sys.path.append(local_src_path)
 
-from evaluate_blind_test import load_po_translations, pair_translations, evaluate_translation
+from evaluate_blind_test import load_po_translations, pair_translations, evaluate_translation, calculate_metrics, run_evaluation_loop
 
 class TestEvaluateBlindTest(unittest.TestCase):
     
@@ -170,6 +170,83 @@ class TestEvaluateBlindTest(unittest.TestCase):
         
         # Assertion
         self.assertIsNone(result)
+
+    def test_calculate_metrics_balanced(self):
+        """Test math for a 50/50 split."""
+        results = [
+            {"winner": "with_rag", "with_rag_context": 5, "without_rag_context": 4, "with_rag_fluency": 5, "without_rag_fluency": 4},
+            {"winner": "without_rag", "with_rag_context": 3, "without_rag_context": 5, "with_rag_fluency": 3, "without_rag_fluency": 5},
+            {"winner": "tie", "with_rag_context": 4, "without_rag_context": 4, "with_rag_fluency": 4, "without_rag_fluency": 4}
+        ]
+        metrics = calculate_metrics(results)
+        self.assertEqual(metrics["wins_with_rag"], 1)
+        self.assertEqual(metrics["wins_without_rag"], 1)
+        self.assertEqual(metrics["ties"], 1)
+        self.assertEqual(metrics["win_ratio"], 1.0)
+        self.assertEqual(metrics["net_win_rate"], 0.0)
+        self.assertEqual(metrics["win_lead"], 0.0)
+
+    def test_calculate_metrics_rag_dominance(self):
+        """Test handling of 100% RAG wins."""
+        results = [
+            {"winner": "with_rag", "with_rag_context": 5, "without_rag_context": 2, "with_rag_fluency": 5, "without_rag_fluency": 2},
+            {"winner": "with_rag", "with_rag_context": 4, "without_rag_context": 3, "with_rag_fluency": 4, "without_rag_fluency": 3}
+        ]
+        metrics = calculate_metrics(results)
+        self.assertEqual(metrics["wins_with_rag"], 2)
+        self.assertEqual(metrics["wins_without_rag"], 0)
+        self.assertEqual(metrics["win_ratio"], float('inf'))
+        self.assertEqual(metrics["relative_win_rate"], 100.0)
+        self.assertEqual(metrics["net_win_rate"], 100.0)
+        self.assertEqual(metrics["win_lead"], 100.0)
+
+    def test_calculate_metrics_score_improvements(self):
+        """Verify Contextual Error Reduction and Sub-optimal Rate Reduction logic."""
+        results = [
+            {"winner": "with_rag", "with_rag_context": 4.0, "without_rag_context": 3.0, "with_rag_fluency": 4.0, "without_rag_fluency": 3.0}
+        ]
+        metrics = calculate_metrics(results)
+        
+        # gap_without = 5.0 - 3.0 = 2.0
+        # gap_with = 5.0 - 4.0 = 1.0
+        # contextual_error_reduction = (2.0 - 1.0) / 2.0 * 100 = 50.0%
+        self.assertEqual(metrics["contextual_error_reduction"], 50.0)
+        
+        # suboptimal_without = 1 (since 3.0 < 4.0)
+        # suboptimal_with = 0 (since 4.0 >= 4.0)
+        # suboptimal_reduction = (1 - 0) / 1 * 100 = 100.0%
+        self.assertEqual(metrics["suboptimal_reduction"], 100.0)
+
+    @patch("evaluate_blind_test.evaluate_translation")
+    @patch("evaluate_blind_test.logger.info")
+    def test_run_evaluation_loop_limit(self, mock_logger, mock_evaluate):
+        """Verify the loop respects the --limit argument."""
+        # Setup mock to return a generic result dict
+        mock_evaluate.return_value = {"winner": "with_rag"}
+        
+        # We have 5 samples, but limit is 2
+        paired_data = [{"source": f"txt{i}", "with_rag": f"A{i}", "without_rag": f"B{i}"} for i in range(5)]
+        client = MagicMock()
+        
+        results = run_evaluation_loop(client, "fake-model", paired_data, 2, "PROMPT", False)
+        
+        self.assertEqual(len(results), 2)
+        self.assertEqual(mock_evaluate.call_count, 2)
+
+    @patch("evaluate_blind_test.evaluate_translation")
+    def test_run_evaluation_loop_skipping(self, mock_evaluate):
+        """Verify the loop skips failed evaluations correctly."""
+        # Return None for the first call (simulating failure/skip), then a valid dict for the next
+        mock_evaluate.side_effect = [None, {"winner": "with_rag"}]
+        
+        paired_data = [{"source": "txt1", "with_rag": "A1", "without_rag": "B1"}, {"source": "txt2", "with_rag": "A2", "without_rag": "B2"}]
+        client = MagicMock()
+        
+        results = run_evaluation_loop(client, "fake-model", paired_data, 0, "PROMPT", False)
+        
+        # Loop should run for all 2 items, but only 1 result is captured
+        self.assertEqual(len(results), 1)
+        self.assertEqual(mock_evaluate.call_count, 2)
 
 if __name__ == "__main__":
     unittest.main()
