@@ -3,6 +3,7 @@ Please compare the "Source", "Retrieved Translation Memory (TM) and Glossary", a
 
 ### Input Data
 - Source: {source_text}
+{source_context}
 - Retrieved TM/Glossary (RAG Context): 
 {rag_context}
 

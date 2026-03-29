@@ -40,14 +40,14 @@ def test_parse_input_payload_happy_path():
     """Test standard list input."""
     source_text = '["Hello", "World"]'
     result = app.parse_input_payload(source_text)
-    assert result == ["Hello", "World"]
+    assert result == [{"text": "Hello", "context": ""}, {"text": "World", "context": ""}]
 
 
 def test_parse_input_payload_sliding_window_noise():
     """Test extracting JSON array from noisy text."""
     source_text = 'Some chatter... [ "Item 1", "Item 2" ] trailing noise'
     result = app.parse_input_payload(source_text)
-    assert result == ["Item 1", "Item 2"]
+    assert result == [{"text": "Item 1", "context": ""}, {"text": "Item 2", "context": ""}]
 
 
 def test_parse_input_payload_nested_brackets():
@@ -58,14 +58,14 @@ def test_parse_input_payload_nested_brackets():
     # Case: valid array at end
     source_text = 'ignore [ this ] and [ "Valid" ]'
     result = app.parse_input_payload(source_text)
-    assert result == ["Valid"]
+    assert result == [{"text": "Valid", "context": ""}]
 
 
 def test_parse_input_payload_broken_json_fallback():
     """Test fallback to treating input as single string if JSON fails."""
     source_text = 'Just a normal sentence.'
     result = app.parse_input_payload(source_text)
-    assert result == ["Just a normal sentence."]
+    assert result == [{"text": "Just a normal sentence.", "context": ""}]
 
 
 def test_parse_input_payload_delimiter_stripping():
@@ -73,7 +73,7 @@ def test_parse_input_payload_delimiter_stripping():
     # Use proper JSON quotes
     source_text = '["Text to translate:\\nHello"]'
     result = app.parse_input_payload(source_text)
-    assert result == ["Hello"]
+    assert result == [{"text": "Hello", "context": ""}]
 
 # --- Part 2: perform_rag_lookup Tests ---
 
@@ -121,7 +121,7 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
         'metadatas': [[]]
     }
 
-    query = ["source phrase"]
+    query = [{"text": "source phrase"}]
     content, logs = app.perform_rag_lookup(query)
 
     assert "target phrase" in content
@@ -154,7 +154,7 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
         'metadatas': [[{'target': 'no match'}]]
     }
 
-    query = ["my query"]
+    query = [{"text": "my query"}]
 
     content, logs = app.perform_rag_lookup(query)
 
@@ -185,7 +185,7 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
         'metadatas': [[{'target': 'fruit'}]]
     }
 
-    query = ["apple"]
+    query = [{"text": "apple"}]
     content, logs = app.perform_rag_lookup(query)
 
     assert logs[0]['accepted'] is False
@@ -211,7 +211,7 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
         'metadatas': [[{'target': 'hello'}]]
     }
 
-    query = ["greeting"]  # 'greeting' vs 'hi' no word overlap
+    query = [{"text": "greeting"}]  # 'greeting' vs 'hi' no word overlap
     content, logs = app.perform_rag_lookup(query)
 
     assert logs[0]['accepted'] is True
@@ -237,7 +237,7 @@ def test_collection_name_overrides(mock_get_ef, mock_get_chroma):
         mock_client.list_collections.return_value = [mock_g, mock_t]
         
         # Call function
-        app.perform_rag_lookup(["test"])
+        app.perform_rag_lookup([{"text": "test"}])
         
         # Verify get_collection called with Env names
         calls = [c[0][0] for c in mock_client.get_collection.call_args_list]
@@ -356,7 +356,7 @@ def test_handle_translation_dry_run(mock_get_config, client):
 def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_get_client, client):
     """Test Real API Call path (Mocked)."""
     mock_config.return_value = [{"id": "real-model"}]
-    mock_parse.return_value = ["Parsed Query"]
+    mock_parse.return_value = [{"text": "Parsed Query"}]
     mock_rag.return_value = ("<tm_matches>...</tm_matches>", [])
 
     # Mock OpenAI Response
@@ -412,7 +412,7 @@ def test_perform_rag_lookup_custom_thresholds(mock_get_ef, mock_get_chroma):
             'metadatas': [[{'target': 'target'}]]
         }
 
-        content, logs = app.perform_rag_lookup(["test"])
+        content, logs = app.perform_rag_lookup([{"text": "test"}])
         
         # Should be rejected because 0.2 > 0.1
         assert logs[0]['accepted'] is False
@@ -496,7 +496,7 @@ def test_perform_rag_lookup_stem_match_acceptance(mock_get_ef, mock_get_chroma):
         'metadatas': [[{'target': '掲載する'}]]
     }
 
-    query = ["publishing"]
+    query = [{"text": "publishing"}]
     content, logs = app.perform_rag_lookup(query)
 
     glossary_log = next((l for l in logs if l['type'] == 'glossary'), None)
