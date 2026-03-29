@@ -70,7 +70,7 @@ The report header specifies the **Judge Model** and **Files Compared**.
     - *Formula*: `(Wins_RAG - Wins_NonRAG) / Wins_NonRAG * 100`
 - **Contextual Error Reduction**: (Formerly Deficiency Reduction) Percentage of Non-RAG errors corrected by RAG (calculated as reduction in the 'gap to 5.0').
 - **Sub-optimal Rate Reduction**: Percentage reduction in translations scoring below 4.0.
-    - *Significance*: Translations scoring below 4.0 typically require manual post-editing due to minor context issues or inaccuracies.
+    - *Significance*: Translations scoring below 4.0 is considered more likely to require manual post-editing due to minor context issues or inaccuracies.
 - **Net Improvement (Delta)**: Percentage lead of RAG over Non-RAG across the total sample (including ties).
 - **Score Improvement**: Percentage increase in average Context Adherence score compared to Non-RAG.
 
