@@ -58,7 +58,9 @@ def load_po_translations(directory: str) -> Tuple[Dict[str, str], List[str]]:
             found_files.append(file_path)
             for entry in po:
                 if entry.msgid and entry.msgstr:
-                    translations[entry.msgid] = entry.msgstr
+                    # Context-Aware Key: (msgid, msgctxt)
+                    key = (entry.msgid, entry.msgctxt or "")
+                    translations[key] = entry.msgstr
         except Exception as e:
             logger.error(f"Failed to load {file_path}: {e}")
     return translations, found_files
@@ -74,12 +76,13 @@ def pair_translations(with_rag_dir: str, without_rag_dir: str) -> Tuple[List[Dic
     
     paired_data = []
     
-    for msgid, with_rag_str in with_rag_data.items():
-        if msgid in without_rag_data:
+    for (msgid, msgctxt), with_rag_str in with_rag_data.items():
+        if (msgid, msgctxt) in without_rag_data:
             paired_data.append({
                 "source": msgid,
+                "context": msgctxt,
                 "with_rag": with_rag_str,
-                "without_rag": without_rag_data[msgid]
+                "without_rag": without_rag_data[(msgid, msgctxt)]
             })
             
     # Return the mapped translation pairs for LLM evaluation, along with the 
@@ -119,10 +122,12 @@ def format_file_info(file_paths: List[str]) -> str:
 def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False) -> Dict[str, Any]:
     """Calls the Judge LLM to evaluate the pair, or returns mock data on dry run."""
     source_text = sample["source"]
+    source_context = sample.get("context", "")
     
     # 1. Re-Retrieve Context from ChromaDB
     try:
-        rag_context, _ = perform_rag_lookup([source_text])
+        # Use new context-aware dictionary payload format
+        rag_context, _ = perform_rag_lookup([{"text": source_text, "context": source_context}])
         if not rag_context.strip():
             logger.info(f"⏭️ Skipping '{source_text[:30]}...' (No RAG context or Guardrail rejected)")
             return None
@@ -159,8 +164,11 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         trans_b = sample["with_rag"]
 
     # 4. Format Prompt
+    context_line = f"- Context (msgctxt): {source_context}\n" if source_context else ""
     system_prompt = prompt_template.replace(
         "{source_text}", source_text
+    ).replace(
+        "{source_context}", context_line
     ).replace(
         "{rag_context}", rag_context
     ).replace(

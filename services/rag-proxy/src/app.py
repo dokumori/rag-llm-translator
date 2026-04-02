@@ -92,12 +92,12 @@ Config.log_config()
 
 # --- Helper Functions ---
 
-def parse_input_payload(source_text: str) -> List[str]:
+def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
     """
     Extracts the content to be translated using the 'Sliding Window' JSON parsing logic.
-    Returns a cleaned list of strings.
+    Returns a cleaned list of dictionary objects with 'text' and 'context'.
     """
-    query_payload: List[str] = []
+    query_payload: List[Any] = []
     start_indices = [i for i, char in enumerate(source_text) if char == '[']
 
     for idx in reversed(start_indices):
@@ -127,12 +127,25 @@ def parse_input_payload(source_text: str) -> List[str]:
 
     # Clean the content by removing the "Text to translate:\n" prefix if present
     delimiter = "Text to translate:\n"
-    cleaned_payload: List[str] = []
+    cleaned_payload: List[Dict[str, str]] = []
+    
     for item in query_payload:
-        if isinstance(item, str) and delimiter in item:
-            cleaned_payload.append(item.split(delimiter)[-1])
+        text = ""
+        context = ""
+        
+        if isinstance(item, dict):
+            # Extract text and developer-provided context (msgctxt) from gpt-po-translator 2.0.4+
+            text = item.get("text", "") or item.get("string", "") or ""
+            context = item.get("context", "") or ""
+        elif isinstance(item, str):
+            text = item
         else:
-            cleaned_payload.append(item)
+            text = str(item)
+            
+        if delimiter in text:
+            text = text.split(delimiter)[-1]
+            
+        cleaned_payload.append({"text": text, "context": context})
 
     return cleaned_payload
 
@@ -171,7 +184,7 @@ def has_shared_stems(text_a: str, text_b: str) -> bool:
 
 
 
-def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, Any]]]:
+def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Queries ChromaDB, applies Guardrail logic (Glossary/TM), and returns
     the XML formatted context string and the list of match logs.
@@ -193,7 +206,15 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
         existing_collections = [c.name for c in client.list_collections()]
 
         # Prepare the E5 query prefix and strip whitespace
-        formatted_query = ["query: " + text.strip() for text in query_payload]
+        formatted_query = []
+        for item in query_payload:
+            text = item.get("text", "").strip()
+            context = item.get("context", "").strip()
+            # If context is available, append it to the query for better semantic retrieval
+            if context:
+                formatted_query.append(f"query: {text} context: {context}")
+            else:
+                formatted_query.append(f"query: {text}")
 
         # Process Glossary
         if GLOSSARY_COLLECTION in existing_collections:
@@ -211,19 +232,20 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                         tgt = gloss_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (GLOSSARY) ---
+                        query_text = query_payload[i].get("text", "")
                         is_semantic_match = dist < GLOSSARY_THRESHOLD
-                        has_shared_words = has_shared_stems(query_payload[i], src)
+                        has_shared_words = has_shared_stems(query_text, src)
 
                         # Reject if no shared words unless distance is extremely low (synonym exception)
                         if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
                             is_accepted = False
                             logger.info(
-                                f"   🛡️ Glossary Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
+                                f"   🛡️ Glossary Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
                         else:
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "glossary", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+                            "type": "glossary", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
                         })
 
                         if is_accepted:
@@ -244,18 +266,19 @@ def perform_rag_lookup(query_payload: List[str]) -> Tuple[str, List[Dict[str, An
                         tgt = tm_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (TM) ---
+                        query_text = query_payload[i].get("text", "")
                         is_semantic_match = dist < TM_THRESHOLD
-                        has_shared_words = has_shared_stems(query_payload[i], src)
+                        has_shared_words = has_shared_stems(query_text, src)
 
                         if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
                             is_accepted = False
                             logger.info(
-                                f"   🛡️ TM Guardrail Rejection: '{query_payload[i]}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
+                                f"   🛡️ TM Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
                         else:
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "tm", "query": query_payload[i], "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+                            "type": "tm", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
                         })
 
                         if is_accepted:
@@ -373,7 +396,7 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
 
         if is_dry_run:
             log_entry["action"] = "dry_run"
-            mock_translations = [f"[DRY RUN] {item}" for item in query_payload]
+            mock_translations = [f"[DRY RUN] {item.get('text', '')}" for item in query_payload]
             content_return = json.dumps(mock_translations, ensure_ascii=False)
             return jsonify({
                 "id": "dry-run",

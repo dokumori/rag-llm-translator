@@ -25,15 +25,18 @@ class TestEvaluateBlindTest(unittest.TestCase):
         entry1 = MagicMock()
         entry1.msgid = "Hello"
         entry1.msgstr = "Bonjour"
+        entry1.msgctxt = None
         
         entry2 = MagicMock()
         entry2.msgid = "World"
         entry2.msgstr = "Monde"
+        entry2.msgctxt = None
         
         # Ignored due to empty msgstr
         entry3 = MagicMock()
         entry3.msgid = "Empty"
         entry3.msgstr = ""
+        entry3.msgctxt = None
         
         mock_po.__iter__.return_value = [entry1, entry2, entry3]
         mock_pofile.return_value = mock_po
@@ -43,9 +46,10 @@ class TestEvaluateBlindTest(unittest.TestCase):
         
         # Assertions
         self.assertEqual(len(translations), 2)
-        self.assertEqual(translations["Hello"], "Bonjour")
-        self.assertEqual(translations["World"], "Monde")
-        self.assertNotIn("Empty", translations)
+        # Now uses (msgid, msgctxt) tuples as keys
+        self.assertEqual(translations[("Hello", "")], "Bonjour")
+        self.assertEqual(translations[("World", "")], "Monde")
+        self.assertNotIn(("Empty", ""), translations)
         self.assertEqual(found_files, ["dummy/path/file.po"])
 
     @patch("evaluate_blind_test.load_po_translations")
@@ -54,9 +58,9 @@ class TestEvaluateBlindTest(unittest.TestCase):
         # Setup mocks
         mock_load_po.side_effect = [
             # mock return for with_rag_dir: (translations_dict, files_list)
-            ({"Key1": "Val1_RAG", "Key2": "Val2_RAG"}, ["rag.po"]),
+            ({("Key1", ""): "Val1_RAG", ("Key2", "ctx2"): "Val2_RAG"}, ["rag.po"]),
             # mock return for without_rag_dir: (translations_dict, files_list)
-            ({"Key2": "Val2_NO_RAG", "Key3": "Val3_NO_RAG"}, ["no_rag.po"])
+            ({("Key2", "ctx2"): "Val2_NO_RAG", ("Key3", ""): "Val3_NO_RAG"}, ["no_rag.po"])
         ]
         
         # Execute
@@ -66,6 +70,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         # Only Key2 overlaps
         self.assertEqual(len(paired_data), 1)
         self.assertEqual(paired_data[0]["source"], "Key2")
+        self.assertEqual(paired_data[0]["context"], "ctx2")
         self.assertEqual(paired_data[0]["with_rag"], "Val2_RAG")
         self.assertEqual(paired_data[0]["without_rag"], "Val2_NO_RAG")
         self.assertEqual(with_rag_files, ["rag.po"])
@@ -99,11 +104,23 @@ class TestEvaluateBlindTest(unittest.TestCase):
         }
         
         # Execute
-        result = evaluate_translation(mock_client_instance, "fake-model", sample, "PROMPT TEMPLATE {source_text} {rag_context} {translation_a} {translation_b}")
+        sample = {
+            "source": "Hello World",
+            "context": "",
+            "with_rag": "Bonjour le monde",
+            "without_rag": "Salut monde"
+        }
+        
+        # Format a full prompt with the new {source_context} placeholder
+        prompt_template = "Source: {source_text}\n{source_context}RAG: {rag_context}\nA: {translation_a}\nB: {translation_b}"
+        result = evaluate_translation(mock_client_instance, "fake-model", sample, prompt_template)
         
         # Assertions
         mock_choice.assert_called_once_with([True, False])
         self.assertIsNotNone(result)
+        # Verify the RAG lookup was called with the new dictionary format
+        mock_rag_lookup.assert_called_once_with([{"text": "Hello World", "context": ""}])
+        
         self.assertEqual(result["winner"], "with_rag")
         self.assertEqual(result["with_rag_context"], 5)
         self.assertEqual(result["with_rag_fluency"], 4)
@@ -137,11 +154,12 @@ class TestEvaluateBlindTest(unittest.TestCase):
 
         sample = {
             "source": "Hello World",
+            "context": "",
             "with_rag": "Bonjour le monde",
             "without_rag": "Salut monde"
         }
 
-        result = evaluate_translation(mock_client_instance, "fake-model", sample, "PROMPT TEMPLATE {source_text} {rag_context} {translation_a} {translation_b}")
+        result = evaluate_translation(mock_client_instance, "fake-model", sample, "PROMPT {source_text} {source_context} {rag_context} {translation_a} {translation_b}")
 
         mock_choice.assert_called_once_with([True, False])
         self.assertIsNotNone(result)
@@ -161,6 +179,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         
         sample = {
             "source": "No Context Test",
+            "context": "",
             "with_rag": "Test 1",
             "without_rag": "Test 2"
         }
@@ -225,10 +244,10 @@ class TestEvaluateBlindTest(unittest.TestCase):
         mock_evaluate.return_value = {"winner": "with_rag"}
         
         # We have 5 samples, but limit is 2
-        paired_data = [{"source": f"txt{i}", "with_rag": f"A{i}", "without_rag": f"B{i}"} for i in range(5)]
+        paired_data = [{"source": f"txt{i}", "context": "", "with_rag": f"A{i}", "without_rag": f"B{i}"} for i in range(5)]
         client = MagicMock()
         
-        results = run_evaluation_loop(client, "fake-model", paired_data, 2, "PROMPT", False)
+        results = run_evaluation_loop(client, "fake-model", paired_data, 2, "PROMPT {source_context}", False)
         
         self.assertEqual(len(results), 2)
         self.assertEqual(mock_evaluate.call_count, 2)
@@ -236,10 +255,9 @@ class TestEvaluateBlindTest(unittest.TestCase):
     @patch("evaluate_blind_test.evaluate_translation")
     def test_run_evaluation_loop_skipping(self, mock_evaluate):
         """Verify the loop skips failed evaluations correctly."""
-        # Return None for the first call (simulating failure/skip), then a valid dict for the next
         mock_evaluate.side_effect = [None, {"winner": "with_rag"}]
         
-        paired_data = [{"source": "txt1", "with_rag": "A1", "without_rag": "B1"}, {"source": "txt2", "with_rag": "A2", "without_rag": "B2"}]
+        paired_data = [{"source": "txt1", "context": "", "with_rag": "A1", "without_rag": "B1"}, {"source": "txt2", "context": "", "with_rag": "A2", "without_rag": "B2"}]
         client = MagicMock()
         
         results = run_evaluation_loop(client, "fake-model", paired_data, 0, "PROMPT", False)
