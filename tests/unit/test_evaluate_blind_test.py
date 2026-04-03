@@ -12,12 +12,12 @@ from evaluate_blind_test import load_po_translations, pair_translations, evaluat
 
 class TestEvaluateBlindTest(unittest.TestCase):
     
-    @patch("evaluate_blind_test.glob.glob")
+    @patch("evaluate_blind_test.find_po_files")
     @patch("evaluate_blind_test.polib.pofile")
-    def test_load_po_translations(self, mock_pofile, mock_glob):
+    def test_load_po_translations(self, mock_pofile, mock_find_po):
         """Test that load_po_translations correctly parses valid PO files."""
         # Setup mocks
-        mock_glob.return_value = ["dummy/path/file.po"]
+        mock_find_po.return_value = ["dummy/path/file.po"]
         
         mock_po = MagicMock()
         

@@ -1,14 +1,15 @@
 import sys
 import os
 import subprocess
-import glob
 import shutil
 import argparse
 import logging
 import tempfile
 import time
+from dataclasses import dataclass
 from typing import List, Dict
 from core.config import load_models_config
+from core.utils import find_po_files
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -40,12 +41,6 @@ def get_env_config(skip_rag: bool = False) -> Dict[str, str]:
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
 
     return env
-
-
-def find_po_files(input_dir: str) -> List[str]:
-    """Finds all .po files in the input directory (top level only)."""
-    return glob.glob(os.path.join(input_dir, "*.po"))
-
 
 def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
     """Prepares the gpt-po-translator command arguments."""
@@ -113,113 +108,133 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
         raise Exception(f"Command failed after {max_retries} retries.")
 
 
+def check_dry_run(model_id: str) -> bool:
+    """Checks if the specified model is marked for dry run in the models config."""
+    try:
+        models_list = load_models_config()
+        for m in models_list:
+            if m["id"] == model_id:
+                return bool(m.get("is_dry_run", False))
+    except Exception as e:
+        logger.warning(f"Could not read models config to check dry_run flag: {e}")
+    return False
+
+
+def generate_output_filepath(output_base_dir: str, original_filename: str, model_slug: str, rag_mode: str, timestamp: str) -> str:
+    """Generates the final output filepath based on naming conventions."""
+    basename_no_ext, ext = os.path.splitext(original_filename)
+    new_filename = f"{basename_no_ext}_{model_slug}_{rag_mode}_{timestamp}{ext}"
+    return os.path.join(output_base_dir, new_filename)
+
+
+@dataclass
+class TranslationContext:
+    model: str
+    target_lang: str
+    env: Dict[str, str]
+    model_slug: str
+    rag_mode: str
+    timestamp: str
+
+
+def validate_output_file(file_path: str) -> bool:
+    """Validates the translated output file exists and is not empty."""
+    if not os.path.exists(file_path):
+        logger.error(f"   ❌ Error: Output file is missing after successful run: {file_path}")
+        return False
+    if not os.path.isfile(file_path):
+        logger.error(f"   ❌ Error: Output path is not a file: {file_path}")
+        return False
+    if os.path.getsize(file_path) == 0:
+        logger.error(f"   ❌ Error: Output file is empty: {file_path}")
+        return False
+    return True
+
+
+def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationContext) -> bool:
+    """Handles the translation process for a single file."""
+    filename = os.path.basename(src_file)
+    final_dest_file = generate_output_filepath(output_base_dir, filename, ctx.model_slug, ctx.rag_mode, ctx.timestamp)
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_work_dir:
+            temp_file_path = os.path.join(temp_work_dir, filename)
+            shutil.copy2(src_file, temp_file_path)
+
+            cmd = prepare_command(ctx.model, ctx.target_lang, temp_work_dir)
+            result = execute_translation(cmd, ctx.env)
+
+            if result.returncode == 0:
+                if validate_output_file(temp_file_path):
+                    try:
+                        shutil.copy2(temp_file_path, final_dest_file)
+                        logger.info(f"   ✅ Saved to: {final_dest_file}")
+                        return True
+                    except (PermissionError, OSError) as e:
+                        logger.error(f"   ❌ Error copying file to destination {final_dest_file}: {e}")
+                        return False
+                else:
+                    return False
+            else:
+                logger.error(f"   ❌ Tool execution failed for {filename} (Exit Code: {result.returncode})")
+                return False
+
+    except Exception as e:
+        logger.critical(f"   ❌ Critical Error on {filename}: {e}", exc_info=True)
+        return False
+
+
 def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False) -> None:
     """
     Main orchestration function for the translation workflow.
     """
-    # 1. Setup
     target_lang = os.environ.get("TARGET_LANG", "ja")
-
-    # Ensure output directory exists
     os.makedirs(output_base_dir, exist_ok=True)
 
-    # 2. Find Files
     po_files = find_po_files(input_base_dir)
-
     if not po_files:
-        logger.warning(
-            "⚠️ No .po files found in {input_base_dir}. No requests will be sent.")
+        logger.warning(f"⚠️ No .po files found in {input_base_dir}. No requests will be sent.")
         return
 
     total_files = len(po_files)
-    # Check if this model is marked as a dry run in the models config
-    is_dry_run = False
-    try:
-        models_list = load_models_config()
-        for m in models_list:
-            if m["id"] == model:
-                is_dry_run = bool(m.get("is_dry_run", False))
-                break
-    except Exception as e:
-        logger.warning(f"Could not read models config to check dry_run flag: {e}")
-
+    is_dry_run = check_dry_run(model)
+    
+    # Note: is_dry_run only modifies the logging text in the current implementation.
+    # The actual translation subprocess logic continues to execute as normal.
     if is_dry_run:
         logger.info(f"🚀 Found {total_files} files. Starting translation in Dry Run Mode for '{target_lang}'...")
     else:
         logger.info(f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...")
 
+    env = get_env_config(skip_rag=skip_rag)
+    logger.info(f"📁 Output will be written to: {output_base_dir}")
+
     success_count = 0
     failure_count = 0
 
-    env = get_env_config(skip_rag=skip_rag)
+    ctx = TranslationContext(
+        model=model,
+        target_lang=target_lang,
+        env=env,
+        model_slug=model_slug,
+        rag_mode=rag_mode,
+        timestamp=timestamp
+    )
 
-    logger.info(f"📁 Output will be written to: {output_base_dir}")
-
-    # 3. Process Loop with Tempfile Context
     for index, src_file in enumerate(po_files, 1):
         filename = os.path.basename(src_file)
+        logger.info(f"[{index}/{total_files}] 📦 Processing: {filename}")
         
-        # Construct new filename
-        basename_no_ext, ext = os.path.splitext(filename)
-        new_filename = f"{basename_no_ext}_{model_slug}_{rag_mode}_{timestamp}{ext}"
+        success = process_single_file(src_file, output_base_dir, ctx)
         
-        final_dest_file = os.path.join(output_base_dir, new_filename)
-
-        logger.info(
-            f"[{index}/{total_files}] 📦 Processing: {filename}")
-
-        try:
-            # We use a TemporaryDirectory to cleanly isolate each file processing
-            with tempfile.TemporaryDirectory() as temp_work_dir:
-
-                temp_file_path = os.path.join(temp_work_dir, filename)
-                shutil.copy2(src_file, temp_file_path)
-
-                # B. PREPARE COMMAND
-                cmd = prepare_command(model, target_lang, temp_work_dir)
-
-                # C. EXECUTE
-                result = execute_translation(cmd, env)
-
-                # D. HANDLE RESULT
-                if result.returncode == 0:
-                    if not os.path.exists(temp_file_path):
-                        logger.error(
-                            f"   ❌ Error: Output file {filename} missing from {temp_work_dir} after successful run.")
-                        failure_count += 1
-                        continue
-                    elif not os.path.isfile(temp_file_path):
-                        logger.error(f"   ❌ Error: Output path is not a file: {temp_file_path}")
-                        failure_count += 1
-                        continue
-                    elif os.path.getsize(temp_file_path) == 0:
-                        logger.error(f"   ❌ Error: Output file is empty: {temp_file_path}")
-                        failure_count += 1
-                        continue
-                    else:
-                        try:
-                            shutil.copy2(temp_file_path, final_dest_file)
-                            logger.info(f"   ✅ Saved to: {final_dest_file}")
-                            success_count += 1
-                        except (PermissionError, OSError) as e:
-                            logger.error(f"   ❌ Error copying file to destination {final_dest_file}: {e}")
-                            failure_count += 1
-                            continue
-                else:
-                    logger.error(
-                        f"   ❌ Tool execution failed for {filename} (Exit Code: {result.returncode})")
-                    failure_count += 1
-
-        except Exception as e:
-            logger.critical(
-                f"   ❌ Critical Error on {filename}: {e}", exc_info=True)
+        if success:
+            success_count += 1
+        else:
             failure_count += 1
 
-    # 4. Summary
     logger.info("=" * 30)
     logger.info("🎉 Translation run complete.")
-    logger.info(
-        f"📊 Summary: {success_count} Success, {failure_count} Failed, {total_files} Total")
+    logger.info(f"📊 Summary: {success_count} Success, {failure_count} Failed, {total_files} Total")
     logger.info("=" * 30)
 
 

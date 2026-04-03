@@ -1,6 +1,6 @@
 # RAG-LLM Translator: Context-Aware Localisation
 
-The RAG-LLM Translator leverages Large Language Models and a Retrieval-Augmented Generation (RAG) architecture to automate PO file translation while ensuring high accuracy and terminology consistency. It has been genericised to support most PO translation projects, expanding on its initial role as a translation aid for the Drupal community (https://www.drupal.org/project/translation_llm).
+The RAG-LLM Translator leverages Large Language Models and a Retrieval-Augmented Generation (RAG) architecture to automate PO file translation while ensuring high accuracy and terminology consistency. It has been generalised to support most PO translation projects, expanding on its initial role as a translation aid for the Drupal community (https://www.drupal.org/project/translation_llm).
 
 The system is compatible with any AI provider that adheres to the OpenAI API specification.
 
@@ -30,11 +30,13 @@ bash bin/initial_setup.sh
 - **Localization**:
   - Target language
   - *Processing batch size
-- **RAG Sensitivity**:
+- **RAG Sensitivity** 📖:
   - *Semantic matching thresholds
   - *Distance sensitivity
 - **Cleanup**:
   - Selection of post-processing plugins (Choose `N` if the target language is not Japanese AND no custom plugins are provided)
+
+📖 Refer to [the doc](docs/3_RAG_performance_analysis.md) for the details on RAG sensitivity and how to fine-tune it.
 
 ## 2. Build
 

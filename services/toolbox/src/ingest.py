@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Generator, Any, Tuple, Set, Optional
 from core.config import Config
+from core.utils import find_po_files
 from infrastructure import get_chroma_client, get_embedding_function
 
 # --- Configuration ---
@@ -200,9 +201,8 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
         return
 
     # ROBUST FILE FINDING
-    # Use rglob for recursive finding and check both lowercase and uppercase extensions
-    po_files = list(source_dir.rglob("*.po")) + list(source_dir.rglob("*.PO"))
-    po_files = list(set(po_files))  # Remove duplicates if any
+    # Use shared utility to find all .po variations recursively
+    po_files = [Path(p) for p in find_po_files(str(source_dir), recursive=True)]
 
     if not po_files:
         logger.warning(f"⚠️  Found 0 reference .po files in {source_dir}")

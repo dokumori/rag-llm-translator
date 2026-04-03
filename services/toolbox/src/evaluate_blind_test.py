@@ -10,7 +10,6 @@ retrieved context.
 
 import os
 import sys
-import glob
 import json
 import random
 import csv
@@ -20,6 +19,7 @@ from typing import List, Dict, Any, Tuple
 import datetime
 from openai import OpenAI
 from core.config import load_models_config
+from core.utils import find_po_files
 
 # Attempt to import tools for getting context from db
 try:
@@ -51,7 +51,7 @@ def load_po_translations(directory: str) -> Tuple[Dict[str, str], List[str]]:
     """
     translations = {}
     found_files = []
-    po_files = glob.glob(os.path.join(directory, "**/*.po"), recursive=True)
+    po_files = find_po_files(directory, recursive=True)
     for file_path in po_files:
         try:
             po = polib.pofile(file_path)
