@@ -34,6 +34,7 @@ services:
       - HF_HOME=/app/data/cache/huggingface
       - TORCHINDUCTOR_CACHE_DIR=/app/data/cache/torchinductor
       - TORCH_COMPILE_DISABLE=1
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
       - PROMPTS_DIR=/app/config/prompts
       - MODELS_CONFIG_PATH=/app/config/models/models.json
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
@@ -80,6 +81,7 @@ services:
       - HF_HOME=/app/data/cache/huggingface
       - TORCHINDUCTOR_CACHE_DIR=/app/data/cache/torchinductor
       - TORCH_COMPILE_DISABLE=1
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
       - TM_SOURCE_DIR=/app/tm_source
       - RAG_ANALYSIS_DIR=/app/data/rag-analysis
       - OPENAI_BASE_URL=http://rag-proxy:5000/v1
