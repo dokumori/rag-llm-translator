@@ -84,14 +84,8 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     If reset is True, deletes existing collection first.
     """
     COLLECTION_NAME = Config.GLOSSARY_COLLECTION
-    source_dir = source_path.parent  # source_path passed in was originally a FILE path, but we treat it as base now or derive from TM_SOURCE_DIR
 
-    # Logic Change: We now scan TM_SOURCE_DIR for a single CSV.
-    # To fix the mismatch in original args, we will ignore the `source_path` argument (which was GLOSSARY_FILE)
-    # and instead look in the directory of GLOSSARY_FILE.
-    
-    # Actually, looking at main(), it passes GLOSSARY_FILE which is TM_SOURCE_DIR / "glossary.csv".
-    # So we can derive the directory from that.
+    # Scans the parent directory of the provided path for any single glossary CSV file.
     scan_dir = source_path.parent
     
     logger.info(f"📚 Scanning for glossary CSVs in {scan_dir}...")
@@ -158,6 +152,8 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
 
     for src, tgt in unique_entries.items():
         doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
+        # Unique ID by content to allow idempotent loading to prevent duplicate
+        # entries in the DB
         doc_id = generate_content_hash(doc_text)
 
         ids.append(doc_id)
@@ -235,7 +231,11 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
                     clean_src = entry.msgid.strip()
                     clean_tgt = entry.msgstr.strip()
 
+                    # check to ensure neither is empty
                     if clean_src and clean_tgt:
+                        
+                        # Deduplication logic: if the same msgid is found in multiple files, 
+                        # the last one will overwrite the previous ones
                         if clean_src not in unique_tm:
                             unique_tm[clean_src] = (clean_tgt, base_filename)
         except Exception as e:
@@ -251,6 +251,7 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
 
     for src, (tgt, fname) in unique_tm.items():
         doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
+        # Unique ID by content, allows idempotent (incremental) loading
         doc_id = generate_content_hash(doc_text)
 
         ids.append(doc_id)
@@ -272,6 +273,7 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
 
     logger.info(f"   🚀 Starting vector ingestion for {label}...")
 
+    # Process IDs, documents, and metadatas in synchronized chunks (ch_*)
     for ch_ids, ch_docs, ch_meta in zip(
         batch_generator(ids, batch_size),
         batch_generator(documents, batch_size),

@@ -41,10 +41,11 @@ The `analyse.sh` script concludes with a **Recommended Configuration** block. Th
 Based on 1023 accepted matches:
 - glossary_threshold: 0.25
 - tm_threshold: 0.23
-- distance_sensitivity: 0.82
 - Explanation:
   • Thresholds: Calculated using Mean + 3σ to cover 99.7% of valid matches.
-  • Sensitivity: Derived from average closeness (1.0 - avg_distance), clamped 0.5-0.9.
+
+--- 🩺 Diagnostics ---
+Average Match Closeness: 0.1525 (range: 0.0–1.0, lower = tighter matches)
 ```
 
 ### How to Apply
@@ -54,15 +55,17 @@ Map the recommended values to the `.env` configuration as follows:
 | :--- | :--- | :--- |
 | `glossary_threshold` | `GLOSSARY_THRESHOLD` | Copy value directly. |
 | `tm_threshold` | `TM_THRESHOLD` | Copy value directly. |
-| `distance_sensitivity` | `RAG_STRICT_DISTANCE_THRESHOLD` | Copy value directly. |
 
 ### How it Works
 The script applies the **3-Sigma Rule** ($\mu + 3\sigma$) to determine thresholds. By analysing the distance distribution of matches previously accepted, it calculates a safe upper limit that covers **99.7%** of valid matches while excluding outliers.
 
 * **Thresholds (`glossary`, `tm`)**: These are calculated as `Mean Distance + (3 * Standard Deviation)`.
-* **Distance Sensitivity**: This is derived from the "density" of valid matches. If matches are consistently close (e.g., average distance of 0.1), a higher sensitivity is suggested to reject looser matches. 
 
-After the values are set, your RAG-LLM translator should be well-tuned and ready to use. To learn more about how these recommendations are made, refer to the explanations below. 
+The script also reports a read-only diagnostic:
+
+* **Average Match Closeness**: The mean cosine distance across all accepted matches. A lower value indicates that your data is producing consistently tight, high-confidence matches. If this value increases over time, it may indicate that the vector database has grown crowded or that the source content has drifted from the training data.
+
+After the threshold values are set, your RAG-LLM translator should be well-tuned and ready to use. To learn more about how these recommendations are made, refer to the explanations below.
 
 ---
 

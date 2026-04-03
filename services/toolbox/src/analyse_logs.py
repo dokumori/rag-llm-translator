@@ -100,6 +100,22 @@ def main() -> None:
         logger.warning("⚠️ No RAG matches found to analyse.")
         sys.exit(0)
 
+    # Deduplicate: the same query string can appear in multiple translation
+    # batches, which would inflate statistics. Keep first occurrence only.
+    seen_keys: set = set()
+    unique_rag_data: List[Dict[str, Any]] = []
+    for m in rag_data:
+        key = (m['type'], m['query'], m['src'])
+        if key not in seen_keys:
+            seen_keys.add(key)
+            unique_rag_data.append(m)
+    duplicates_removed = len(rag_data) - len(unique_rag_data)
+    if duplicates_removed > 0:
+        logger.info(
+            f"🔁 Deduplicated: {duplicates_removed} duplicate RAG matches removed "
+            f"({len(rag_data)} → {len(unique_rag_data)} unique).")
+    rag_data = unique_rag_data
+
     # Separate Matches and Misses
     accepted_matches = [m for m in rag_data if m.get('accepted', False)]
     rejected_matches = [m for m in rag_data if not m.get('accepted', False)]
@@ -195,19 +211,14 @@ def main() -> None:
 
             print(f"- {m_type}_threshold: {rec_threshold:.2f}")
 
-        # 2. Calculate Distance Sensitivity
-        # Formula: 1.0 - (Mean of all accepted distances)
-        # Constraint: Clamp between 0.5 and 0.9
-        all_accepted_dists = [m['dist'] for m in accepted_matches]
-        avg_dist = statistics.mean(all_accepted_dists)
-        rec_sensitivity = 1.0 - avg_dist
-        rec_sensitivity = max(0.5, min(0.9, rec_sensitivity))
-
-        print(f"- distance_sensitivity: {rec_sensitivity:.2f}")
-
         print("- Explanation:")
         print("  • Thresholds: Calculated using Mean + 3σ to cover 99.7% of valid matches.")
-        print("  • Sensitivity: Derived from average closeness (1.0 - avg_distance), clamped 0.5-0.9.")
+
+        # Diagnostic: Average Match Closeness (read-only health metric)
+        all_accepted_dists = [m['dist'] for m in accepted_matches]
+        avg_dist = statistics.mean(all_accepted_dists)
+        print(f"\n--- 🩺 Diagnostics ---")
+        print(f"Average Match Closeness: {avg_dist:.4f} (range: 0.0–1.0, lower = tighter matches)")
 
 
 if __name__ == "__main__":
