@@ -118,16 +118,16 @@ class TestCorePostProcess(unittest.TestCase):
     @patch('post_process.check_plugin_conflicts')
     @patch('post_process.load_plugin')
     @patch('post_process.process_single_file')
-    @patch('post_process.glob.glob')
+    @patch('post_process.find_po_files')
     @patch('os.path.isdir')
     @patch('os.path.isfile')
-    def test_flat_discovery(self, mock_isfile, mock_isdir, mock_glob, mock_process, mock_load, mock_conflicts):
+    def test_flat_discovery(self, mock_isfile, mock_isdir, mock_find_po, mock_process, mock_load, mock_conflicts):
         """Test that the script finds .po files at top level of directory."""
         # Setup mocks: /tmp is a dir, /tmp/file1.po is a file
         mock_isdir.side_effect = lambda p: p == "/tmp"
         mock_isfile.side_effect = lambda p: p in ["/tmp/file1.po", "/tmp/file2.po"]
         
-        mock_glob.return_value = ['/tmp/file1.po', '/tmp/file2.po']
+        mock_find_po.return_value = ['/tmp/file1.po', '/tmp/file2.po']
         mock_load.return_value = MagicMock()
 
         with patch.dict(os.environ, {
@@ -138,8 +138,8 @@ class TestCorePostProcess(unittest.TestCase):
             with patch.object(sys, 'argv', ["script", "/tmp"]):
                 post_process.main()
                 
-                # Verify glob was called without recursive=True
-                mock_glob.assert_called_once_with(os.path.join("/tmp", "*.po"))
+                # Verify shared utility was called to replace glob
+                mock_find_po.assert_called_once_with("/tmp", recursive=False)
                 
                 # Verify both files were processed
                 self.assertEqual(mock_process.call_count, 2)

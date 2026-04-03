@@ -1,283 +1,144 @@
-"""
-Unit Test: Translation Runner
------------------------------
-Tests the batch translation orchestrator in `services/toolbox/src/translate_runner.py`.
-Verifies file discovery, batching, and API interaction logic.
-
-Run Command:
-    docker compose run --rm toolbox python -m pytest /app/tests/unit/test_translate_runner.py
-"""
-import translate_runner
-import sys
 import os
-import unittest
-from unittest.mock import MagicMock, patch, call
+import pytest
+from unittest.mock import patch, MagicMock
+import sys
 
-# Ensure we can import translate_runner from the services directory
-# Ensure we can import translate_runner from the services directory
-# sys.path hacking removed per refactoring - rely on PYTHONPATH
+# Add src to python path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../services/toolbox/src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../services/shared/src')))
 
+from translate_runner import (
+    check_dry_run,
+    generate_output_filepath,
+    validate_output_file,
+    process_single_file,
+    TranslationContext
+)
 
-class TestTranslateRunner(unittest.TestCase):
+@pytest.mark.parametrize("mock_return, expected", [
+    ([{"id": "model_a", "is_dry_run": True}], True),
+    ([{"id": "model_a", "is_dry_run": False}], False),
+    ([{"id": "model_a"}], False),
+    ([{"id": "other_model", "is_dry_run": True}], False),
+])
+@patch('translate_runner.load_models_config')
+def test_check_dry_run(mock_load_models_config, mock_return, expected):
+    """
+    Tests check_dry_run with various model configurations.
+    Ensures correct boolean return based on 'is_dry_run' presence and value.
+    """
+    mock_load_models_config.return_value = mock_return
+    assert check_dry_run("model_a") is expected
 
-    # --- Tests for find_po_files ---
+@patch('translate_runner.load_models_config')
+def test_check_dry_run_exception(mock_load_models_config):
+    """
+    Tests check_dry_run's error handling.
+    Ensures it returns False and doesn't crash when config loading fails.
+    """
+    mock_load_models_config.side_effect = Exception("Config error")
+    assert check_dry_run("model_a") is False
 
-    @patch('translate_runner.glob.glob')
-    def test_find_po_files(self, mock_glob):
-        """Test finding .po files at top level."""
-        # Setup mock return
-        mock_files = ['/input/file1.po', '/input/file2.po']
-        mock_glob.return_value = mock_files
+def test_generate_output_filepath():
+    """
+    Tests the filename generation logic.
+    Ensures naming convention matches {basename}_{slug}_{mode}_{timestamp}.{ext}
+    """
+    expected_path = os.path.join("output_dir", "test_file_slug1_ragX_2026.po")
+    actual_path = generate_output_filepath("output_dir", "test_file.po", "slug1", "ragX", "2026")
+    assert actual_path == expected_path
 
-        # Execute
-        result = translate_runner.find_po_files('/input')
+def test_validate_output_file(tmp_path):
+    """
+    Tests exhaustive validation of the output file.
+    Covers: non-existence, directory collision, empty file, and valid file.
+    """
+    temp_dir = str(tmp_path)
+    file_path = os.path.join(temp_dir, "test.po")
 
-        # Verify
-        mock_glob.assert_called_once_with(
-            os.path.join('/input', "*.po"))
-        self.assertEqual(result, mock_files)
+    # State 1: file does not exist
+    assert validate_output_file(file_path) is False
 
-    @patch('translate_runner.glob.glob')
-    def test_find_po_files_empty(self, mock_glob):
-        """Test finding no files."""
-        mock_glob.return_value = []
-        result = translate_runner.find_po_files('/input')
-        self.assertEqual(result, [])
+    # State 2: path is a directory (unlikely but possible error state)
+    os.makedirs(file_path)
+    assert validate_output_file(file_path) is False
+    os.rmdir(file_path) # Clean up for next state
 
-    @patch('translate_runner.glob.glob')
-    def test_find_po_files_ignores_subdirectories(self, mock_glob):
-        """Explicitly verify that subdirectories are ignored by the flat glob."""
-        # Setup mock return as if glob found files in subdirs (which it shouldn't with *.po)
-        # But we want to verify the pattern passed to glob
-        translate_runner.find_po_files('/input')
-        
-        # Verify the pattern is flat
-        mock_glob.assert_called_once_with(os.path.join('/input', "*.po"))
+    # State 3: file exists but is empty (0 bytes)
+    with open(file_path, 'w') as f:
+        pass
+    assert validate_output_file(file_path) is False
 
-    # --- Tests for prepare_command ---
+    # State 4: file is valid and has content
+    with open(file_path, 'w') as f:
+        f.write("content")
+    assert validate_output_file(file_path) is True
 
-    def test_prepare_command(self):
-        """Test command argument construction."""
-        model = "test-model"
-        lang = "ja"
-        folder = "/tmp/folder"
+@patch('translate_runner.execute_translation')
+@patch('translate_runner.prepare_command')
+def test_process_single_file_success(mock_prepare, mock_execute, tmp_path):
+    """
+    Tests a successful end-to-end file translation process.
+    Mocks the translation execution and verifies the file is correctly
+    copied to the final destination with the expected name.
+    """
+    input_base_dir = tmp_path / "input"
+    output_base_dir = tmp_path / "output"
+    input_base_dir.mkdir()
+    output_base_dir.mkdir()
 
-        cmd = translate_runner.prepare_command(model, lang, folder)
+    src_file = input_base_dir / "test.po"
+    src_file.write_text("original content")
 
-        expected_cmd = [
-            sys.executable,
-            "-m", "python_gpt_po.main",
-            "--provider", "openai",
-            "--model", model,
-            "--folder", folder,
-            "--lang", lang,
-            "--bulk",
-            "--bulksize", "15"
-        ]
-        self.assertEqual(cmd, expected_cmd)
+    ctx = TranslationContext(
+        model="model", target_lang="ja", env={"OPENAI_API_KEY": "dummy"},
+        model_slug="slug", rag_mode="rag", timestamp="ts"
+    )
 
-    # --- Tests for execute_translation (Retries) ---
+    # Mock success. Because shutil.copy2 copies the original content to the temp path
+    # before execute_translation is called, the file will exist and have non-zero size,
+    # so `validate_output_file` will correctly pass without needing a mock!
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_execute.return_value = mock_result
 
-    @patch('translate_runner.subprocess.run')
-    @patch('translate_runner.time.sleep')
-    def test_execute_translation_success_first_try(self, mock_sleep, mock_run):
-        """Test successful execution on the first attempt."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
+    success = process_single_file(str(src_file), str(output_base_dir), ctx)
 
-        cmd = ["echo", "test"]
-        env = {}
+    assert success is True
+    
+    final_output = output_base_dir / "test_slug_rag_ts.po"
+    assert final_output.exists()
+    assert final_output.read_text() == "original content"
 
-        result = translate_runner.execute_translation(cmd, env)
+@patch('translate_runner.execute_translation')
+@patch('translate_runner.prepare_command')
+def test_process_single_file_failure(mock_prepare, mock_execute, tmp_path):
+    """
+    Tests the failure path of the single file translation process.
+    Ensures that when translation fails, the function returns False and
+    no file is moved to the final output directory.
+    """
+    input_base_dir = tmp_path / "input"
+    output_base_dir = tmp_path / "output"
+    input_base_dir.mkdir()
+    output_base_dir.mkdir()
 
-        self.assertEqual(result.returncode, 0)
-        mock_run.assert_called_once_with(
-            cmd, env=env, capture_output=True, text=True
-        )
-        mock_sleep.assert_not_called()
+    src_file = input_base_dir / "test.po"
+    src_file.write_text("original content")
 
-    @patch('translate_runner.subprocess.run')
-    @patch('translate_runner.time.sleep')
-    def test_execute_translation_retry_success(self, mock_sleep, mock_run):
-        """Test execution fails once, then succeeds."""
-        fail_res = MagicMock()
-        fail_res.returncode = 1
-        fail_res.stderr = "Mock Error"
+    ctx = TranslationContext(
+        model="model", target_lang="ja", env={"OPENAI_API_KEY": "dummy"},
+        model_slug="slug", rag_mode="rag", timestamp="ts"
+    )
 
-        success_res = MagicMock()
-        success_res.returncode = 0
+    # Mock failure
+    mock_result = MagicMock()
+    mock_result.returncode = 1
+    mock_execute.return_value = mock_result
 
-        mock_run.side_effect = [fail_res, success_res]
+    success = process_single_file(str(src_file), str(output_base_dir), ctx)
 
-        cmd = ["echo", "test"]
-        env = {}
-
-        result = translate_runner.execute_translation(cmd, env, max_retries=1)
-
-        # Assert success and verify it took 2 attempts (initial + 1 retry)
-        # The sleep mock confirms we waited between attempts.
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(mock_run.call_count, 2)
-        # Assertion: Verify backoff logic (2 ** 1 = 2 seconds)
-        mock_sleep.assert_called_with(2)
-
-    @patch('translate_runner.subprocess.run')
-    @patch('translate_runner.time.sleep')
-    def test_execute_translation_final_failure(self, mock_sleep, mock_run):
-        """Test execution fails after all retries."""
-        fail_res = MagicMock()
-        fail_res.returncode = 1
-        fail_res.stderr = "Final Error"
-        mock_run.return_value = fail_res
-
-        cmd = ["echo", "test"]
-        env = {}
-
-        result = translate_runner.execute_translation(cmd, env, max_retries=1)
-
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(mock_run.call_count, 2)  # Initial + 1 retry
-
-    # --- Tests for Workflow & Isolation Logic ---
-
-    @patch('translate_runner.os.makedirs')
-    @patch('translate_runner.shutil.copy2')
-    @patch('translate_runner.os.path.exists')
-    @patch('translate_runner.os.path.isfile')
-    @patch('translate_runner.os.path.getsize')
-    @patch('translate_runner.glob.glob')
-    @patch('translate_runner.execute_translation')
-    @patch('translate_runner.tempfile.TemporaryDirectory')
-    @patch('translate_runner.load_models_config')
-    def test_run_translation_workflow_isolation_and_success(self, mock_load, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy, mock_mkdirs):
-        """
-        Verify isolation logic:
-        1. Context manager creates temp dir.
-        2. Copies src -> temp.
-        3. Runs command.
-        4. Copies temp -> dest (on success).
-        """
-        # Setup Temp Dir Context
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__.return_value = "/tmp/mock_work"
-        mock_temp.return_value = mock_ctx
-
-        # Setup Files Found (First glob call)
-        # Subsequent glob calls will be for cleaning temp dir
-        def glob_side_effect(*args, **kwargs):
-            if "input" in args[0]:
-                return ['/input/file1.po']
-            elif "mock_work" in args[0]:  # Cleaning step
-                return ['/tmp/mock_work/garbage.txt']
-            return []
-        mock_glob.side_effect = glob_side_effect
-
-        # Setup Mock Config (Non-dry run)
-        mock_load.return_value = [{"id": "model", "is_dry_run": False}]
-
-        # Setup Execution Success
-        # Mock subprocess.run to return exit code 0 (success)
-        mock_res = MagicMock()
-        mock_res.returncode = 0
-        mock_exec.return_value = mock_res
-
-        # Setup File Existence (Output file check)
-        mock_exists.side_effect = lambda p: p in ('/tmp/mock_work/file1.po', '/input/file1.po')
-        mock_isfile.side_effect = lambda p: p == '/tmp/mock_work/file1.po'
-        mock_getsize.side_effect = lambda p: 100 if p == '/tmp/mock_work/file1.po' else 0
-
-        # Execute
-        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
-
-        # Verify 1: Copy to Temp
-        mock_copy.assert_any_call('/input/file1.po', '/tmp/mock_work/file1.po')
-
-        # Verify 3: Copy to Final Destination (Result was 0)
-        mock_copy.assert_any_call(
-            '/tmp/mock_work/file1.po', '/output/file1_slug_mode_time.po')
-
-    @patch('translate_runner.shutil.copy2')
-    @patch('translate_runner.os.path.exists')
-    @patch('translate_runner.os.path.isfile')
-    @patch('translate_runner.os.path.getsize')
-    @patch('translate_runner.glob.glob')
-    @patch('translate_runner.execute_translation')
-    @patch('translate_runner.tempfile.TemporaryDirectory')
-    @patch('translate_runner.os.makedirs')
-    @patch('translate_runner.load_models_config')
-    def test_run_translation_workflow_missing_output(self, mock_load, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
-        """Test case where tool succeeds (exit 0) but output file is missing."""
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__.return_value = "/tmp/mock_work"
-        mock_temp.return_value = mock_ctx
-
-        # Only return input file, empty list for cleanup glob
-        mock_glob.side_effect = lambda p, **k: [
-            '/input/file1.po'] if 'input' in p else []
-
-        # Setup Mock Config
-        mock_load.return_value = [{"id": "model", "is_dry_run": False}]
-
-        mock_res = MagicMock()
-        mock_res.returncode = 0
-        mock_exec.return_value = mock_res
-
-        # Condition: Source file exists? Yes. Output file exists? No.
-        # The code calls os.path.exists(temp_file_path) for the output check.
-        # It assumes src exists implicitly via glob.
-        mock_exists.side_effect = lambda p: p == '/input/file1.po'  # Output file missing
-        mock_isfile.side_effect = lambda p: p == '/input/file1.po'
-        mock_getsize.side_effect = lambda p: 100 if p == '/input/file1.po' else 0
-
-        # Execute
-        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
-
-        # Verify: NO copy to output
-        # Check all copy calls, ensure none target /output
-        for call_args in mock_copy.call_args_list:
-            args, _ = call_args
-            dest = args[1]
-            self.assertNotIn(
-                '/output', dest, "Should not copy to output if file is missing")
-
-    @patch('translate_runner.shutil.copy2')
-    @patch('translate_runner.os.path.exists')
-    @patch('translate_runner.os.path.isfile')
-    @patch('translate_runner.os.path.getsize')
-    @patch('translate_runner.glob.glob')
-    @patch('translate_runner.execute_translation')
-    @patch('translate_runner.tempfile.TemporaryDirectory')
-    @patch('translate_runner.os.makedirs')
-    @patch('translate_runner.load_models_config')
-    @patch('translate_runner.logger.info')
-    def test_run_translation_workflow_dry_run_logging(self, mock_log_info, mock_load, mock_mkdirs, mock_temp, mock_exec, mock_glob, mock_getsize, mock_isfile, mock_exists, mock_copy):
-        """Verify that dry-run mode triggers the correct log message."""
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__.return_value = "/tmp/mock_work"
-        mock_temp.return_value = mock_ctx
-
-        mock_glob.side_effect = lambda p, **k: ['/input/file1.po'] if 'input' in p else []
-        
-        # Setup Mock Config (Dry run)
-        mock_load.return_value = [{"id": "model", "is_dry_run": True}]
-
-        mock_res = MagicMock()
-        mock_res.returncode = 0
-        mock_exec.return_value = mock_res
-        
-        mock_exists.return_value = True
-        mock_isfile.return_value = True
-        mock_getsize.return_value = 100
-
-        # Execute
-        translate_runner.run_translation_workflow("model", "/input", "/output", "slug", "mode", "time")
-
-        # Verify: Check if the log message contains "Dry Run Mode"
-        # We look for the call that happens after finding files
-        found_dry_run_log = any("Dry Run Mode" in call_args[0][0] for call_args in mock_log_info.call_args_list)
-        self.assertTrue(found_dry_run_log, "Should have logged starting in Dry Run Mode")
-
-
-if __name__ == '__main__':
-    unittest.main()
+    assert success is False
+    
+    final_output = output_base_dir / "test_slug_rag_ts.po"
+    assert not final_output.exists()

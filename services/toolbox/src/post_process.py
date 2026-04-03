@@ -2,6 +2,7 @@ import sys
 import os
 import glob
 import importlib.util
+from core.utils import find_po_files
 
 def check_plugin_conflicts():
     """
@@ -125,9 +126,8 @@ def main():
     if os.path.isfile(input_path):
         files_to_process.append(input_path)
     elif os.path.isdir(input_path):
-        # Find all .po files in the folder (top level only)
-        search_pattern = os.path.join(input_path, "*.po")
-        files_to_process = glob.glob(search_pattern)
+        # Find all .po files in the folder (top level only) via shared utility
+        files_to_process = find_po_files(input_path, recursive=False)
     else:
         print(f"❌ Error: Path not found: {input_path}")
         sys.exit(1)

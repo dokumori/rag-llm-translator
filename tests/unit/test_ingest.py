@@ -105,18 +105,14 @@ class TestIngest(unittest.TestCase):
     # --- 3. Translation Memory Processing Tests ---
 
     @patch("ingest.Path.exists")
-    @patch("ingest.Path.rglob")
+    @patch("ingest.find_po_files")
     @patch("polib.pofile")
     @patch("ingest._ingest_batches")
-    def test_process_tm_logic(self, mock_ingest, mock_polib, mock_rglob, mock_exists):
+    def test_process_tm_logic(self, mock_ingest, mock_polib, mock_find_po, mock_exists):
         """Verifies fuzzy filtering, msgid deduplication, and recursive search."""
         mock_exists.return_value = True
 
-        # Implementation calls rglob twice (*.po and *.PO).
-        # We need to return a list for both calls.
-        # Side effect can be used to return different lists for different calls,
-        # or just return the same list since we strip duplicates anyway.
-        mock_rglob.side_effect = [[Path("nested/test.po")], []]
+        mock_find_po.return_value = ["nested/test.po"]
 
         # Mock PO entries
         entry_save = MagicMock(msgid="Save", msgstr="Speichern", flags=[])
