@@ -32,8 +32,8 @@ echo " 🌡️ RAG THRESHOLDS CONFIGURATION"
 echo "   (Refer to docs/3_RAG_performance_analysis.md for details)"
 echo "===================================================================="
 echo "RAG Thresholds: Fine-tune matching sensitivity."
-read -p "Enter TM_THRESHOLD (default: 0.23): " TM_THRESHOLD
-TM_THRESHOLD=${TM_THRESHOLD:-0.23}
+read -p "Enter TM_THRESHOLD (default: 0.21): " TM_THRESHOLD
+TM_THRESHOLD=${TM_THRESHOLD:-0.21}
 
 read -p "Enter GLOSSARY_THRESHOLD (default: 0.25): " GLOSSARY_THRESHOLD
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-0.25}
