@@ -70,7 +70,7 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
             last_exception = None
             last_result = None
 
-            # capture_output = True allows capturing stdout/stderr for logging
+            # capture_output = set True to allow logging of stdout/stderr
             result = subprocess.run(
                 cmd,
                 env=env,
@@ -157,16 +157,23 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
     final_dest_file = generate_output_filepath(output_base_dir, filename, ctx.model_slug, ctx.rag_mode, ctx.timestamp)
 
     try:
+        # Create a temporary working directory to isolate this file's
+        # translation (which will be handled by gpt-po-translator)
         with tempfile.TemporaryDirectory() as temp_work_dir:
             temp_file_path = os.path.join(temp_work_dir, filename)
+            
+            # Copy the original file to the temporary workspace
             shutil.copy2(src_file, temp_file_path)
 
+            # Prepare the shell command and execute the translation tool
             cmd = prepare_command(ctx.model, ctx.target_lang, temp_work_dir)
             result = execute_translation(cmd, ctx.env)
 
+            # If the tool finished successfully, validate the results
             if result.returncode == 0:
                 if validate_output_file(temp_file_path):
                     try:
+                        # Move the translated file from the temp directory to the final output path
                         shutil.copy2(temp_file_path, final_dest_file)
                         logger.info(f"   ✅ Saved to: {final_dest_file}")
                         return True
@@ -180,6 +187,7 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
                 return False
 
     except Exception as e:
+        # Catch unexpected errors to prevent the entire pipeline from crashing
         logger.critical(f"   ❌ Critical Error on {filename}: {e}", exc_info=True)
         return False
 
