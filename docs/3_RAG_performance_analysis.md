@@ -106,6 +106,29 @@ When running the analysis against [untranslated strings from Drupal 11.0.6](http
 * **Linguistic Precision Check**: Relevance is evaluated via an exact word match (lexical intersection). Approximately 40-45% of potential matches were blocked by this guardrail, effectively filtering "false friends".
 * **Effective RAG Coverage**: High-confidence RAG assistance is provided for ~40% of all processed strings, ensuring context satisfies both mathematical and lexical safety checks.
 
+### The Strict Distance Threshold (Synonym Guardrail)
+The system utilises a strict distance threshold (`RAG_STRICT_DISTANCE_THRESHOLD`, located in your `.env` file; default `0.08`) as an override for the Linguistic Precision Check. When two strings have zero matching words, they are normally rejected. However, if the cosine distance is extremely low (below this strict threshold), the system accepts it as a pure semantic synonym.
+
+**Important Note:** Unlike the TM and Glossary thresholds which adapt to database density via the 3-Sigma rule, `RAG_STRICT_DISTANCE_THRESHOLD` is a constant calibration value. It represents a conservative, empirical "floor" tuned specifically for **English software and Drupal UI strings** using the `multilingual-e5-large` model. Because it depends on how the embedding model clusters terminology within a specific semantic domain, users translating vastly different domains (e.g., medical texts, legal documents) may need to tweak this value manually in `.env` by observing the distance of rejected synonyms in `near_misses.csv`.
+
+## 2. Manual Tuning Workflow (Calibrating Synonyms)
+
+While the script automatically recommends `TM` and `Glossary` thresholds, the **Strict Distance Threshold** requires occasional human verification. If you feel the system is missing too many obvious synonyms, or being too risky with different meanings, follow this "Borderline Case Review" approach:
+
+### The Borderline Case Review
+1. **Run the Analysis**: Execute `bash bin/analyse.sh`.
+2. **Scan the Terminal Results**: Review the `Synonym Guardrail Analysis` block. If the "Borderline" examples (which sit just above your current threshold) look like correct synonyms, your threshold might be too strict.
+3. **Filter the CSV**: Open `data/rag-analysis/near_misses.csv` and apply these filters:
+   - `no_shared_words`: **TRUE**
+   - `dist`: **Between 0.05 and 0.15** (The "Critical Zone")
+4. **Make the Call**:
+   - **Scenario A (Too Strict)**: You see many perfect synonyms (e.g., "Add" vs "Create") being rejected. **Action**: Increase `RAG_STRICT_DISTANCE_THRESHOLD` to `0.09` or `0.10`.
+   - **Scenario B (Too Loose)**: You see "False Friends" (e.g., "Send" vs "Submit" — similar, but different UI actions) appearing in the borderline bucket. If you loosen the threshold, these will be accepted! **Action**: Keep the threshold strict (e.g., `0.08` or decrease to `0.07`).
+
+### Priority: Safety vs. Coverage
+- **Safety First**: If a single dangerous hallucination occurs, prioritize a stricter threshold (lower number). 
+- **Coverage First**: If RAG assistance is consistently missing synonyms that you know exist in the DB, loosen the threshold (higher number).
+
 ---
 
 ### How the Analysis was Conducted
