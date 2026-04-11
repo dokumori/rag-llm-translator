@@ -63,7 +63,7 @@ def main() -> None:
                     guardrail_rejections += 1
                     continue
 
-                # [NEW] Ignore inspection logs to prevent double-counting
+                # Ignore inspection logs to prevent double-counting
                 if "FINAL_PAYLOAD" in line:
                     continue
 
@@ -151,13 +151,12 @@ def main() -> None:
     def export_csv(data: List[Dict[str, Any]], filename: str) -> bool:
         if not data:
             return False
-        keys = ["timestamp", "type", "query", "src", "tgt", "dist", "accepted"]
         # We need to ensure we grab the timestamp from the parent entry if not present,
         # but strictly speaking, the flattened rag_data might lack context if not carefully constructed.
         # However, for this simple analysis, we'll dump what we have in the rag_data dictionaries.
 
         # Pre-check keys exists in data to avoid errors, defaulting to empty string
-        fieldnames = ["type", "query", "src", "tgt", "dist", "accepted"]
+        fieldnames = ["type", "query", "src", "tgt", "dist", "accepted", "no_shared_words"]
 
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -219,6 +218,57 @@ def main() -> None:
         avg_dist = statistics.mean(all_accepted_dists)
         print(f"\n--- 🩺 Diagnostics ---")
         print(f"Average Match Closeness: {avg_dist:.4f} (range: 0.0–1.0, lower = tighter matches)")
+
+    # --- 🔍 Synonym Guardrail Analysis ---
+    # This section helps evaluate whether RAG_STRICT_DISTANCE_THRESHOLD is appropriate
+    # for the current dataset. It requires the 'no_shared_words' field in log entries
+    # (added to app.py). Older logs without this field are skipped gracefully.
+    strict_threshold = float(os.environ.get("RAG_STRICT_DISTANCE_THRESHOLD", 0.08))
+    no_word_matches = [m for m in rag_data if m.get('no_shared_words', False)]
+
+    if no_word_matches:
+        print(f"\n--- 🔍 Synonym Guardrail Analysis ---")
+        print(f"Strict threshold in use: {strict_threshold:.2f} (RAG_STRICT_DISTANCE_THRESHOLD)")
+        print(f"Matches with zero word overlap: {len(no_word_matches)} / {len(rag_data)}")
+
+        # Define distance buckets dynamically around the configured strict threshold
+        borderline_high = round(strict_threshold + 0.02, 4)
+        buckets = [
+            (0.00, strict_threshold, f"0.00–{strict_threshold:.2f} (within strict threshold)"),
+            (strict_threshold, borderline_high, f"{strict_threshold:.2f}–{borderline_high:.2f} (borderline — review these)"),
+        ]
+        
+        # Add remaining buckets starting from borderline_high, skipping bounds that are too low
+        next_start = borderline_high
+        for upper in [0.15, 0.20]:
+            if next_start < upper:
+                buckets.append((next_start, upper, f"{next_start:.2f}–{upper:.2f}"))
+                next_start = upper
+        buckets.append((next_start, float('inf'), f"{next_start:.2f}+"))
+
+        print(f"\n  {'Distance Range':<42} {'Count':>6}  {'Status'}")
+        for low, high, label in buckets:
+            in_bucket = [m for m in no_word_matches if low <= m['dist'] < high]
+            count = len(in_bucket)
+            if count == 0:
+                continue
+
+            if high <= strict_threshold:
+                status = "✅ ACCEPTED (below strict threshold)"
+            elif low == strict_threshold:
+                status = "⚠️  REJECTED — potential synonyms?"
+            else:
+                status = "❌ REJECTED"
+            print(f"  {label:<42} {count:>6}  {status}")
+
+            # Show up to 3 examples for the borderline bucket to aid manual review
+            if low == strict_threshold and count > 0:
+                for example in in_bucket[:3]:
+                    print(f"     e.g. '{example['query']}' vs '{example['src']}' (dist: {example['dist']:.4f})")
+    elif any('no_shared_words' in m for m in rag_data):
+        # Field exists but no matches had zero word overlap
+        print(f"\n--- 🔍 Synonym Guardrail Analysis ---")
+        print(f"No matches with zero word overlap found. The strict threshold had no effect.")
 
 
 if __name__ == "__main__":
