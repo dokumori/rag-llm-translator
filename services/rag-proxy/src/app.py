@@ -245,7 +245,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "glossary", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+                            "type": "glossary", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                         })
 
                         if is_accepted:
@@ -278,7 +278,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "tm", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted
+                            "type": "tm", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                         })
 
                         if is_accepted:

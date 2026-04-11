@@ -21,7 +21,7 @@ read -p "Enter TARGET_LANG (default: ja): " TARGET_LANG
 TARGET_LANG=${TARGET_LANG:-ja}
 
 # Prompt for Bulk Size
-echo "Bulk Size: The number of strings sent to LLM at once along with RAG context. Smaller is better context/quality but more expensive (more total tokens used)."
+echo "Bulk Size: The number of strings sent to LLM at once along with RAG context. Smaller values improve context/quality but increase cost (due to higher total token usage)."
 read -p "Enter BULK_SIZE (default: 15): " BULK_SIZE
 BULK_SIZE=${BULK_SIZE:-15}
 
@@ -38,8 +38,9 @@ TM_THRESHOLD=${TM_THRESHOLD:-0.21}
 read -p "Enter GLOSSARY_THRESHOLD (default: 0.25): " GLOSSARY_THRESHOLD
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-0.25}
 
-read -p "Enter RAG_STRICT_DISTANCE_THRESHOLD (default: 0.08): " RAG_STRICT_DISTANCE_THRESHOLD
-RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD:-0.08}
+# Empirical synonym guardrail (tuned specifically for English software/Drupal strings)
+# See docs/3_RAG_performance_analysis.md before changing this value.
+RAG_STRICT_DISTANCE_THRESHOLD=0.08
 echo "===================================================================="
 echo ""
 
