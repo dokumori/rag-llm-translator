@@ -133,6 +133,7 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     assert glossary_log is not None
     assert glossary_log['accepted'] is True
     assert glossary_log['dist'] == 0.1
+    assert glossary_log['no_shared_words'] is False
 
 
 @patch('app.get_chroma_client')
@@ -189,7 +190,7 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
     content, logs = app.perform_rag_lookup(query)
 
     assert logs[0]['accepted'] is False
-    # Verify the log message printed? We can't easily assert print, but we check status.
+    assert logs[0]['no_shared_words'] is True
 
 
 @patch('app.get_chroma_client')
@@ -215,8 +216,8 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
     content, logs = app.perform_rag_lookup(query)
 
     assert logs[0]['accepted'] is True
+    assert logs[0]['no_shared_words'] is True
 
-    assert logs[0]['accepted'] is True
     
 # --- Part 4: Dynamic Configuration Tests (New Coverage) ---
 
