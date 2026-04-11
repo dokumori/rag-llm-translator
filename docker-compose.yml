@@ -94,6 +94,7 @@ services:
       - MODELS_CONFIG_PATH=/app/config/models/models.json
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
       - TARGET_LANG=${TARGET_LANG}
+      - RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
     networks:
       - app_network
     user: "${UID}:${GID}"
