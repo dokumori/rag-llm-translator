@@ -109,7 +109,7 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     # Dist 0.1 < 0.25 (Threshold) -> Should Accept
     # Bug Fix: Correct nested list structure for results
     mock_glossary.query.return_value = {
-        'documents': [['passage: source phrase']],
+        'documents': [['source phrase']],
         'distances': [[0.1]],
         'metadatas': [[{'target': 'target phrase'}]]
     }
@@ -150,7 +150,7 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
 
     # Dist 0.8 > 0.25 -> Should Reject
     mock_glossary.query.return_value = {
-        'documents': [['passage: something else']],
+        'documents': [['something else']],
         'distances': [[0.8]],
         'metadatas': [[{'target': 'no match'}]]
     }
@@ -181,7 +181,7 @@ def test_perform_rag_lookup_hallucination_rejection(mock_get_ef, mock_get_chroma
     # Dist 0.2 < 0.25 (Looks good) BUT 'apple' vs 'banana' has 0 overlap.
     # Should reject unless dist < 0.08
     mock_glossary.query.return_value = {
-        'documents': [['passage: banana']],
+        'documents': [['banana']],
         'distances': [[0.2]],
         'metadatas': [[{'target': 'fruit'}]]
     }
@@ -207,7 +207,7 @@ def test_perform_rag_lookup_synonym_exception(mock_get_ef, mock_get_chroma):
 
     # Dist 0.05 < 0.08 -> Should Accept even with no overlap
     mock_glossary.query.return_value = {
-        'documents': [['passage: hi']],
+        'documents': [['hi']],
         'distances': [[0.05]],
         'metadatas': [[{'target': 'hello'}]]
     }
@@ -408,7 +408,7 @@ def test_perform_rag_lookup_custom_thresholds(mock_get_ef, mock_get_chroma):
 
         # Dist 0.2 would be accepted by default (0.25) but rejected by custom logic (0.1)
         mock_glossary.query.return_value = {
-            'documents': [['passage: source']],
+            'documents': [['source']],
             'distances': [[0.2]],
             'metadatas': [[{'target': 'target'}]]
         }
@@ -492,7 +492,7 @@ def test_perform_rag_lookup_stem_match_acceptance(mock_get_ef, mock_get_chroma):
 
     # Dist 0.10 < 0.25 (threshold) AND stems match -> Should Accept
     mock_glossary.query.return_value = {
-        'documents': [['passage: Publish']],
+        'documents': [['Publish']],
         'distances': [[0.10]],
         'metadatas': [[{'target': '掲載する'}]]
     }

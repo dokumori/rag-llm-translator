@@ -7,7 +7,7 @@ from core.config import Config
 logger = logging.getLogger(__name__)
 
 # Singletons (Lazy Loading)
-_e5_ef: Optional[embedding_functions.SentenceTransformerEmbeddingFunction] = None
+_embedding_fn: Optional[embedding_functions.SentenceTransformerEmbeddingFunction] = None
 _chroma_client: Optional[chromadb.HttpClient] = None
 
 
@@ -16,18 +16,18 @@ def get_embedding_function() -> embedding_functions.SentenceTransformerEmbedding
     Returns the singleton instance of the embedding function.
     Loads it strictly once.
     """
-    global _e5_ef
-    if _e5_ef is None:
+    global _embedding_fn
+    if _embedding_fn is None:
         logger.info(f"⏳ Loading Embedding Model ({Config.EMBEDDING_MODEL_NAME})...")
         try:
-            _e5_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+            _embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
                 model_name=Config.EMBEDDING_MODEL_NAME
             )
             logger.info("✅ Embedding Model Loaded.")
         except Exception as e:
             logger.error(f"❌ Failed to load embedding model: {e}")
             raise e
-    return _e5_ef
+    return _embedding_fn
 
 
 def get_chroma_client() -> chromadb.HttpClient:

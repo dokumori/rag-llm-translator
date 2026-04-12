@@ -67,8 +67,6 @@ def main() -> None:
 
     for i in range(len(docs)):
         src = docs[i].strip()
-        if src.startswith("passage:"):
-            src = src[len("passage:"):].strip()
         tgt = str(metas[i].get('target', '')).strip()
 
         if not src or not tgt:
@@ -91,8 +89,6 @@ def main() -> None:
     records = []
     for i in range(len(docs)):
         d_src = docs[i].strip()
-        if d_src.startswith("passage:"):
-            d_src = d_src[len("passage:"):].strip()
         d_tgt = str(metas[i].get('target', '')).strip()
         records.append((d_src, d_tgt))
 

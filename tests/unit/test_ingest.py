@@ -27,7 +27,7 @@ class TestIngest(unittest.TestCase):
     def test_generate_content_hash(self):
         """Verifies consistent MD5 hash generation."""
         # We use hashing to identify unique content batches in the database.
-        text = "passage: Hello World"
+        text = "Hello World"
         hash1 = ingest.generate_content_hash(text)
         hash2 = ingest.generate_content_hash(text)
 
@@ -37,7 +37,7 @@ class TestIngest(unittest.TestCase):
         self.assertEqual(len(hash1), 32)
         # Different output for different input
         self.assertNotEqual(
-            hash1, ingest.generate_content_hash("passage: Different"))
+            hash1, ingest.generate_content_hash("Different"))
 
     def test_batch_generator(self):
         """Verifies correct chunking of lists."""
@@ -141,9 +141,9 @@ class TestIngest(unittest.TestCase):
 
         self.assertEqual(len(docs), 1)
         # Verify document content matches expectation
-        self.assertEqual(docs[0], "passage: Save")
+        self.assertEqual(docs[0], "Save")
         # Verify ID matches the hash of the content
-        self.assertEqual(ids[0], ingest.generate_content_hash("passage: Save"))
+        self.assertEqual(ids[0], ingest.generate_content_hash("Save"))
         self.assertEqual(metadata[0]['target'], "Speichern")
 
     # --- 4. Incremental Batching Tests ---

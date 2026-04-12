@@ -194,7 +194,6 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
     found_glossary: set = set()
     found_tm: set = set()
 
-    # STRICT THRESHOLDS (Tuned for multilingual-e5-large)
     TM_THRESHOLD = Config.TM_THRESHOLD
     GLOSSARY_THRESHOLD = Config.GLOSSARY_THRESHOLD
     RAG_STRICT_DISTANCE_THRESHOLD = Config.RAG_STRICT_DISTANCE_THRESHOLD
@@ -205,16 +204,16 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
         client = get_chroma_client()
         existing_collections = [c.name for c in client.list_collections()]
 
-        # Prepare the E5 query prefix and strip whitespace
+        # Prepare query texts and strip whitespace
         formatted_query = []
         for item in query_payload:
             text = item.get("text", "").strip()
             context = item.get("context", "").strip()
             # If context is available, append it to the query for better semantic retrieval
             if context:
-                formatted_query.append(f"query: {text} context: {context}")
+                formatted_query.append(f"{text} context: {context}")
             else:
-                formatted_query.append(f"query: {text}")
+                formatted_query.append(text)
 
         # Process Glossary
         if GLOSSARY_COLLECTION in existing_collections:
@@ -228,7 +227,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                 for i, doc_list in enumerate(gloss_res['documents']):
                     if doc_list:
                         dist = gloss_res['distances'][i][0]
-                        src = doc_list[0].replace("passage: ", "")
+                        src = doc_list[0]
                         tgt = gloss_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (GLOSSARY) ---
@@ -245,7 +244,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "glossary", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                            "type": "glossary", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                         })
 
                         if is_accepted:
@@ -262,7 +261,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                 for i, doc_list in enumerate(tm_res['documents']):
                     if doc_list:
                         dist = tm_res['distances'][i][0]
-                        src = doc_list[0].replace("passage: ", "")
+                        src = doc_list[0]
                         tgt = tm_res['metadatas'][i][0].get('target', '')
 
                         # --- GUARDRAIL (TM) ---
@@ -278,7 +277,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                             is_accepted = is_semantic_match
 
                         matches_log.append({
-                            "type": "tm", "query": query_text, "src": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                            "type": "tm", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                         })
 
                         if is_accepted:

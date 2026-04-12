@@ -10,7 +10,7 @@ logger = logging.getLogger("download_model")
 def download():
     # Fetch from env var, matching the ARG in Dockerfile
     # Default matching our config default
-    model_name = os.environ.get("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-large")
+    model_name = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
     logger.info(f"💾 Pre-downloading model: {model_name}...")
     
     # This triggers the download to HF_HOME

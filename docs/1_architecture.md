@@ -11,9 +11,8 @@ This section describes the technical components and infrastructure supporting th
 ### The Vector Store (ChromaDB)
 The core of the system is **ChromaDB**, a vector database that stores semantic representations of the glossary and translation memory.
 
-* **Embedding Model**: Uses `intfloat/multilingual-e5-large`, which is specifically optimised for multilingual retrieval across different language pairs.
+* **Embedding Model**: Uses `BAAI/bge-large-en-v1.5`, an English-optimized text embedding model for stable query matching against English source strings.
 * **Distance Metric**: Configured to use **Cosine Similarity** to determine the mathematical closeness of strings.
-* **Data Formatting**: The E5 model family requires specific prefixes to function correctly. During storage, the system automatically prepends the prefix `passage:` to all records to signify they are retrievable data points.
 
 ### The RAG Proxy
 The **RAG Proxy** acts as an intermediary between the translation tool and the LLM (OpenAI).
@@ -32,7 +31,7 @@ flowchart TD
     subgraph Ingestion ["Stage 1: Ingestion (ingest.py)"]
         A[Glossary CSV] --> C{Deduplication}
         B[Existing .po files] --> C
-        C -->|Embed with intfloat/multilingual-e5-large| D[(ChromaDB)]
+        C -->|Embed with BAAI/bge-large-en-v1.5| D[(ChromaDB)]
         D -- Collections --> E[app_glossary] & F[app_tm]
     end
 

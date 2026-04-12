@@ -152,7 +152,7 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     metadatas = []
 
     for src, tgt in unique_entries.items():
-        doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
+        doc_text = src
         # Unique ID by content to allow idempotent loading to prevent duplicate
         # entries in the DB
         doc_id = generate_content_hash(doc_text)
@@ -250,7 +250,7 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     metadatas = []
 
     for src, (tgt, fname) in unique_tm.items():
-        doc_text = "passage: " + src  # CRITICAL: Preserve Prefix
+        doc_text = src
         # Unique ID by content, allows idempotent (incremental) loading
         doc_id = generate_content_hash(doc_text)
 
@@ -362,16 +362,16 @@ def main() -> None:
 
     logger.info(f"⏳ Loading Embedding Model ({MODEL_NAME})...")
     try:
-        e5_ef = get_embedding_function()
+        embedding_fn = get_embedding_function()
     except Exception as e:
         logger.critical(f"❌ Failed to load embedding model: {e}")
         return
 
     if run_glossary:
-        process_glossary(client, e5_ef, GLOSSARY_FILE, reset=args.reset)
+        process_glossary(client, embedding_fn, GLOSSARY_FILE, reset=args.reset)
 
     if run_tm:
-        process_tm(client, e5_ef, TM_SOURCE_DIR, reset=args.reset)
+        process_tm(client, embedding_fn, TM_SOURCE_DIR, reset=args.reset)
 
     logger.info("🎉 Ingestion Pipeline Finished.")
 

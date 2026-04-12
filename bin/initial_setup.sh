@@ -32,15 +32,15 @@ echo " 🌡️ RAG THRESHOLDS CONFIGURATION"
 echo "   (Refer to docs/3_RAG_performance_analysis.md for details)"
 echo "===================================================================="
 echo "RAG Thresholds: Fine-tune matching sensitivity."
-read -p "Enter TM_THRESHOLD (default: 0.21): " TM_THRESHOLD
-TM_THRESHOLD=${TM_THRESHOLD:-0.21}
+read -p "Enter GLOSSARY_THRESHOLD (default: 0.36): " GLOSSARY_THRESHOLD
+GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-0.36}
 
-read -p "Enter GLOSSARY_THRESHOLD (default: 0.25): " GLOSSARY_THRESHOLD
-GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-0.25}
+read -p "Enter TM_THRESHOLD (default: 0.27): " TM_THRESHOLD
+TM_THRESHOLD=${TM_THRESHOLD:-0.27}
 
-# Empirical synonym guardrail (tuned specifically for English software/Drupal strings)
+# Empirical synonym guardrail
 # See docs/3_RAG_performance_analysis.md before changing this value.
-RAG_STRICT_DISTANCE_THRESHOLD=0.08
+RAG_STRICT_DISTANCE_THRESHOLD=0.15
 echo "===================================================================="
 echo ""
 
@@ -106,8 +106,8 @@ TARGET_LANG=${TARGET_LANG}
 BULK_SIZE=${BULK_SIZE}
 POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED}
 POST_PROCESS_PLUGINS=${POST_PROCESS_PLUGINS}
-TM_THRESHOLD=${TM_THRESHOLD}
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
+TM_THRESHOLD=${TM_THRESHOLD}
 RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
 CHROMA_PORT=8000
 

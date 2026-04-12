@@ -14,7 +14,7 @@ class TestSharedInfrastructure(unittest.TestCase):
     def setUp(self):
         # Reset singletons before each test
         infrastructure._chroma_client = None
-        infrastructure._e5_ef = None
+        infrastructure._embedding_fn = None
 
     @patch("chromadb.HttpClient")
     def test_get_chroma_client_singleton(self, mock_chroma):

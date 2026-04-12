@@ -21,12 +21,9 @@ class Config:
     # --- LLM Configuration ---
     LLM_API_TOKEN: str = os.environ.get("LLM_API_TOKEN", "")
     LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "")
-    
-    # --- RAG Thresholds ---
-    # Defaults tuned for multilingual-e5-large
-    TM_THRESHOLD: float = float(os.environ.get("TM_THRESHOLD", 0.23))
-    GLOSSARY_THRESHOLD: float = float(os.environ.get("GLOSSARY_THRESHOLD", 0.25))
-    RAG_STRICT_DISTANCE_THRESHOLD: float = float(os.environ.get("RAG_STRICT_DISTANCE_THRESHOLD", 0.08))
+    TM_THRESHOLD: float = float(os.environ.get("TM_THRESHOLD", 0.27))
+    GLOSSARY_THRESHOLD: float = float(os.environ.get("GLOSSARY_THRESHOLD", 0.36))
+    RAG_STRICT_DISTANCE_THRESHOLD: float = float(os.environ.get("RAG_STRICT_DISTANCE_THRESHOLD", 0.15))
 
     # --- Paths ---
     PROMPTS_DIR: str = os.environ.get("PROMPTS_DIR", "/app/config/prompts")
@@ -35,7 +32,7 @@ class Config:
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
     
     # --- Embedding Model ---
-    EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-large"
+    EMBEDDING_MODEL_NAME: str = "BAAI/bge-large-en-v1.5"
     
     # --- Localization ---
     TARGET_LANG: str = os.environ.get("TARGET_LANG", "ja")
