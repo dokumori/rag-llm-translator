@@ -64,6 +64,8 @@ def test_rag_context_injection(client, mocker):
     # without needing a real database connection.
     mock_chroma_client = mocker.patch('app.get_chroma_client')
     mock_upstream_client = mocker.patch('app.get_upstream_client')
+    mock_get_ef = mocker.patch('app.get_embedding_function')
+    mock_get_ef.return_value = MagicMock()
 
     # Mock List Collections
     mock_col_ref = MagicMock()
@@ -102,14 +104,6 @@ def test_rag_context_injection(client, mocker):
     # However, app.py imports it. We need to patch it where it is used.
     # It is defined in app.py, so patch 'app.construct_system_prompt'.
     mock_construct = mocker.patch('app.construct_system_prompt', return_value="System Prompt Injected")
-
-    # 2. Send Request
-    # We send a standard translation request. 
-    payload = {
-        "model": "deepseek-r1-v1",
-        "messages": [{"role": "user", "content": "Text to translate:\nDrupal Core"}],
-        "system": "You are a translator."
-    }
 
     print("\n----------------------------------------------------------------------")
     print("🧪 TEST: RAG Context Injection")
