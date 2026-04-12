@@ -20,9 +20,16 @@ def get_embedding_function() -> embedding_functions.SentenceTransformerEmbedding
     if _embedding_fn is None:
         logger.info(f"⏳ Loading Embedding Model ({Config.EMBEDDING_MODEL_NAME})...")
         try:
-            _embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=Config.EMBEDDING_MODEL_NAME
-            )
+            import warnings
+            # Suppress a known-benign warning from transformers when loading BGE models:
+            # 'embeddings.position_ids' appears as UNEXPECTED in the load report because
+            # the architecture computes position IDs dynamically and doesn't load this weight.
+            # This does not affect embedding quality or correctness.
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*position_ids.*")
+                _embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=Config.EMBEDDING_MODEL_NAME
+                )
             logger.info("✅ Embedding Model Loaded.")
         except Exception as e:
             logger.error(f"❌ Failed to load embedding model: {e}")
