@@ -4,7 +4,7 @@ To ensure high-quality translations, it is necessary to monitor the performance 
 
 ## Notes on Cost vs Quality
 
-To optimise the cost-efficiency of the translation process while maintaining the consistency and quality of translated strings, processing occurs in batches. A default batch size of 15 is utilised, providing a balance that leverages shared context and reduces token usage without a substantial impact on results. Smaller batch sizes may improve quality but increase token usage and cost, while larger batch sizes may reduce cost but potentially impact quality.
+Translations are processed in batches (default: 15) to balance cost and quality. This leverages shared context and reduces token usage. Smaller batches may improve quality but increase costs; larger batches reduce costs but may impact results.
 
 ## Running the Analysis
 
@@ -14,7 +14,7 @@ The RAG proxy logs all activities, including the distance scores for every retri
 
 The following conditions must be met before an analysis is conducted:
 
-1. **Verify Vector Database**: Ensure the database is populated by executing:
+1. **Verify Database**: Run `check_db.py` to ensure the vector database is populated:
    ```bash
    docker compose exec toolbox python3 /app/src/check_db.py
    ```
@@ -35,39 +35,37 @@ The `analyse.sh` script concludes with a **Recommended Configuration** block. Th
 
 ### Example Output
 ```text
+--- 📏 Distance Statistics ---
+
+▸ All Potential Matches (accepted + rejected)
+Type       Count   Mean       95%        Min        25%        50%        75%        Max
+Glossary   1301    0.310153   0.420555   -0.000001  0.278032   0.335388   0.377384   0.477361
+TM         1301    0.237747   0.355981   -0.000001  0.186667   0.243500   0.293970   0.442293
+
+▸ Accepted Matches Only
+Type       Count   Mean       95%        Min        25%        50%        75%        Max
+Glossary   483     0.233000   0.358000   -0.000001  0.198000   0.240000   0.280000   0.400000
+TM         682     0.187000   0.270000   -0.000001  0.150000   0.190000   0.230000   0.350000
+
 --- 💡 Recommended Settings ---
-Based on 1023 accepted matches:
-- glossary_threshold: 0.36
-- tm_threshold: 0.27
+Based on 1165 accepted matches:
+- GLOSSARY_THRESHOLD:  0.36
+- TM_THRESHOLD:        0.27
 - Explanation:
   • Thresholds: Calculated using the 95th percentile of valid matches, capped at max observed + 0.05.
-
---- 🩺 Diagnostics ---
-Average Match Closeness: 0.15 (range: 0.0–1.0, lower = tighter matches)
 ```
 
 ### Applying Threshold Adjustments
 
+To apply these recommendations, copy the `GLOSSARY_THRESHOLD` and `TM_THRESHOLD` values directly from the script output into your `.env` configuration.
+
 > [!IMPORTANT]
-> Changing the strict distance threshold (`RAG_STRICT_DISTANCE_THRESHOLD`) affects the resulting **recommended** `glossary` and `tm` thresholds. If you adjust the strict distance threshold, you must **recreate the proxy container, execute a translation (to generate fresh logs)**, and then re-run the analysis to see the updated recommendations.
+> The recommended values are based on the matches currently being accepted. If you change the underlying strict distance threshold (`RAG_STRICT_DISTANCE_THRESHOLD`), you must **recreate the proxy container**, **execute a fresh translation**, and then re-run the analysis to see the updated recommendations.
 
-Map the recommended values to the `.env` configuration as follows:
+### How it Works (Technical Logic)
+The script uses a **95th Percentile** approach to identify the boundary where 95% of your previously "Accepted" matches sit. This boundary becomes the new recommendation, ensuring the system adapts to the empirical quality of your specific dataset while excluding extreme outliers. As a safety constraint, recommendations are never allowed to exceed `Maximum Observed Distance + 0.05`.
 
-| Recommended Value | .env Variable | Action |
-| :--- | :--- | :--- |
-| `glossary_threshold` | `GLOSSARY_THRESHOLD` | Copy value directly. |
-| `tm_threshold` | `TM_THRESHOLD` | Copy value directly. |
-
-### How it Works
-The script applies a **95th Percentile** approach to determine thresholds. By analysing the distance distribution of matches previously accepted, it identifies the boundary where 95% of valid matches sit, effectively excluding extreme outliers. 
-
-* **Thresholds (`glossary`, `tm`)**: These are calculated as the 95th percentile of accepted distances. As a safety constraint, the recommendation is hard-capped to never exceed `Maximum Observed Distance + 0.05`.
-
-The script also reports a read-only diagnostic:
-
-* **Average Match Closeness**: The mean cosine distance across all accepted matches. A lower value indicates that your data is producing consistently tight, high-confidence matches. If this value increases over time, it may indicate that the vector database has grown crowded or that the source content has drifted from the training data.
-
-After the threshold values are set, your RAG-LLM translator should be well-tuned and ready to use. To learn more about how these recommendations are made, refer to the explanations below.
+For a deeper breakdown of the values shown in the report, refer to the [Metric Definitions](#metric-definitions) section.
 
 ---
 
@@ -78,22 +76,25 @@ The system calculates **Cosine Distance** (ranging from 0.0 to 1.0) to measure t
 
 
 
-> **Note:** The following interpretation is based on baseline performance using [Japanese translations for Drupal Core](https://ftp.drupal.org/files/translations/all/drupal/drupal-11.0.6.ja.po) and a sample [glossary](https://www.drupal.org/files/issues/2026-01-22/glossary.csv) prepared via `demo_prep.sh`. **These zones are data-dependent;** they may shift significantly depending on the datasets or the underlying embedding model utilised.
+> [!IMPORTANT]
+> **Model-Specific Thresholds:** The absolute distance numbers below (e.g., 0.20 – 0.30) are explicitly calibrated to the baseline performance of the **`BAAI/bge-large-en-v1.5`** embedding model. Different models cluster semantic relationships differently (anisotropy). If you swap out this embedding model, you cannot rely on these specific numbers and must recalculate your operational threshold zones from scratch.
+> 
+> **Data Dependency:** Furthermore, these zones are based on a [Drupal Core translation dataset](https://ftp.drupal.org/files/translations/all/drupal/drupal-11.0.6.ja.po) and a sample [glossary](https://www.drupal.org/files/issues/2026-01-22/glossary.csv). While the target language being translated into is irrelevant to RAG distance (distance is measured exclusively between two English strings), the optimal threshold will still fluctuate depending on the quality, quantity, and vocabulary density of your specific domain dataset.
 
-* **High-Confidence (0.00 – 0.20):** These represent near-exact matches or high-frequency technical terms. (e.g., 'Media Field' vs 'Field' at 0.179)
-    * **Action:** Matches are typically accepted if they pass the lexical word-overlap guardrail.
-* **Optimal Context (0.20 – 0.30):** The input is semantically similar but may contain synonyms or slight phrasing variations (e.g., 'Revision Log' vs 'Revision' at 0.205).
-    * **Action:** This is the primary operational range for RAG-driven LLM assistance.
-* **The Shadow Zone (0.30 – 0.45):** These matches are conceptually related but often linguistically distinct; they are prone to causing "hallucinations" in the translation output.
-    * **Action:** To prevent inaccurate context, these are currently **Distance Rejected** by project thresholds.
-* **Noise Zone (> 0.45):** The input is likely new, unique, or unrelated to the existing dataset.
-    * **Action:** No matches are considered; the LLM relies entirely on its internal training data.
+* **High-Confidence (0.00 – 0.20):** Near-exact matches or high-frequency technical terms (e.g., 'Media Field' vs 'Field').
+    * **Action:** Matches are typically accepted via lexical guardrails.
+* **Optimal Context (0.20 – 0.30):** Semantically similar but with synonyms or phrasing variations (e.g., 'Revision Log' vs 'Revision').
+    * **Action:** Primary operational range for RAG-driven assistance.
+* **The Shadow Zone (0.30 – 0.45):** Conceptually related but linguistically distinct; prone to causing hallucinations.
+    * **Action:** Distance Rejected by default thresholds.
+* **Noise Zone (> 0.45):** New or unique content unrelated to existing data.
+    * **Action:** Rejected; LLM relies on internal knowledge.
 
 ### Tracking Your Baseline
 
 To track the effectiveness of your RAG setup over time, the `analyse.sh` script will automatically generate a timestamped markdown report and CSV data dumps during each run.
 
-* **Analysis Reports (`rag-performance-report_*.md`)**: A full, human-friendly summary of distance stats, newly recommended thresholds, and the Acceptance Rate/Coverage table.
+* **Analysis Reports (`rag-performance-report_*.md`)**: A full, human-friendly summary of the Performance Summary, Acceptance Rate, distance stats, and newly recommended thresholds.
 * **Match Exports (`matches_*.csv` / `rejected_matches_*.csv`)**: The raw string match data used to generate the report, useful for manual tuning.
 
 You will find all historical reports in your `data/rag-analysis/` directory.
@@ -102,17 +103,35 @@ You will find all historical reports in your `data/rag-analysis/` directory.
 > **Total Attempts** refers to the number of unique source strings processed across all batches (each batch contains up to 15 strings by default). **Precision** measures how often vector matches were linguistically relevant, while **Coverage** measures how much of your content received RAG assistance.
 
 ### Metric Definitions
+
+The analysis report is divided into several sections, defined as follows:
+
+#### 1. Performance Summary
 * **Total Attempts**: The number of unique source strings processed across all translation batches.
-* **Accepted Matches**: Matches passing both Distance Threshold and Linguistic Guardrails.
-* **Guardrail Blocked**: Matches within distance threshold but rejected for lacking shared words (e.g., 'Crop ID' vs 'Identification').
-* **Distance Rejected**: Strings where no match was found within the mathematical threshold.
-* **Precision (Linguistic)**: The percentage of vector-similar matches that were linguistically relevant.
-* **Coverage (RAG)**: The percentage of total strings that received RAG assistance.
-* **Total unique RAG matches**: The number of unique string-to-context pairs retrieved from the vector database.
-* **Matches that shared zero linguistic words/stems**: The number of retrieved matches that triggered the Synoynm Guardrail because they share no lexical overlap with the source string.
+* **Accepted Matches**: Matches that passed both the Distance Threshold and the Linguistic Guardrails.
+* **Guardrail Blocked**: Matches that were within the distance threshold but were rejected because they shared no lexical words/stems with the source.
+* **Distance Rejected**: Matches where the vector distance exceeded the mathematical threshold (`TM_THRESHOLD` or `GLOSSARY_THRESHOLD`).
+* **Precision (Linguistic)**: The percentage of vector-similar matches that were successfully accepted (i.e., `Accepted / (Accepted + Guardrail Blocked)`).
+* **Coverage (RAG)**: The percentage of total unique source strings that received RAG assistance.
+
+#### 2. Acceptance Rate
+* **Accepted**: The total count of all glossary and TM matches that will be sent to the LLM.
+* **Rejected**: The total count of matches excluded due to distance or guardrails.
+
+#### 3. Distance Statistics
+Comparing these tables helps identify **Signal Drift**—precision loss occurring as source content evolves or the database becomes semantically "crowded."
+
+* **All Potential Matches (accepted + rejected)**: Measures overall "fit"; high distances indicate source content is unrelated to the database.
+* **Accepted Matches Only**: Matches passing all guardrails. 
+    * **95% Column**: Informs recommended thresholds via the "95th Percentile" logic.
+    * **Mean Column**: Represents **"Average Match Closeness."** Lower values are better. A significant increase over time signals data drift or a "crowded" database (increasing false-friend risks).
+
+#### 4. Synonym Guardrail Analysis
+* **Total unique RAG matches**: The total number of unique string-to-context pairs retrieved.
+* **Matches that shared zero linguistic words/stems**: The specific count of retrieved matches that triggered the Synonym Guardrail check because they share no lexical overlap with the source.
 
 ### The Strict Distance Threshold (Synonym Guardrail)
-The system utilises a strict distance threshold (`RAG_STRICT_DISTANCE_THRESHOLD`, located in your `.env` file; base default `0.15`) as an override for the Linguistic Precision Check. When two strings have zero matching words, they are normally rejected. However, if the cosine distance is extremely low (below this strict threshold), the system accepts it as a pure semantic synonym.
+A strict threshold (`RAG_STRICT_DISTANCE_THRESHOLD`, located in your `.env` file; default `0.15`) overrides the Linguistic Precision Check. Strings with zero matching words are normally rejected unless their cosine distance is below this "semantic synonym" floor.
 
 **Important Note:** Unlike the TM and Glossary thresholds which adapt to the empirical distribution via the 95th Percentile rule, `RAG_STRICT_DISTANCE_THRESHOLD` is a constant calibration value. It represents a conservative, empirical "floor" tuned specifically for **English software and Drupal UI strings** using the `BAAI/bge-large-en-v1.5` model. Because it depends on how the embedding model clusters terminology within a specific semantic domain, users translating vastly different domains (e.g., medical texts, legal documents) may need to tweak this value manually in `.env` by observing the distance of rejected synonyms in `rejected_matches_*.csv`.
 
@@ -143,8 +162,9 @@ While the script automatically recommends `TM` and `Glossary` thresholds, the **
 
 ---
 
-### How the Analysis was Conducted
-The `analyse.sh` script doesn't only produce recommendations, it also exports detailed datasets to `data/rag-analysis` for manual inspection. The following files provide critical insights:
+### Reviewing the Exported Data (CSV Artifacts)
+
+To verify the accuracy of the automated recommendations or to perform deep-dive troubleshooting, you should inspect the detailed datasets exported to `data/rag-analysis/` during each run:
 
 **A. Matches (`matches_*.csv`)**
 * Contains strings (`untranslated_string`) where the system successfully identified a high-quality match in the RAG repository (`rag_context`).
@@ -157,7 +177,7 @@ The `analyse.sh` script doesn't only produce recommendations, it also exports de
 
 # RAG Threshold Calibration and Maintenance
 
-Periodic analysis is essential to maintain RAG accuracy as the vector database expands.
+Periodic analysis ensures RAG accuracy as your database grows. 
 
 ## 1. Timing for Analysis and Calibration
 Calibration is necessitated by specific project events:
@@ -172,8 +192,8 @@ Calibration is necessitated by specific project events:
 ## 2. Impact of Data Growth
 As datasets grow, the "Vector Space" becomes more crowded, impacting retrieval in two ways:
 
-* **Precision Risk**: In dense databases, semantically distinct terms (e.g., "Delete Account" and "Delegate Account") may appear close in vector distance. Strict thresholds are necessary to prevent incorrect matches.
-* **Density Benefit**: Increased data volume raises the probability of exact matches, which will appear near the "Distance Floor" (approx. 0.18–0.22 for the BGE-Large-EN model).
+* **Precision Risk**: Dense databases increase the risk of "False Friends" (e.g., "Delete" vs "Delegate"). Strict thresholds maintain precision.
+* **Density Benefit**: Increased volume improves the probability of exact matches, shifting distribution toward the "Distance Floor" (approx. 0.18–0.22 for the BGE-Large-EN model).
 
 ## 3. Interpreting Analysis Numbers
 The following logic determines if threshold adjustments are required:
