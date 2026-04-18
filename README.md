@@ -30,13 +30,11 @@ bash bin/initial_setup.sh
 - **Localization**:
   - Target language
   - *Processing batch size
-- **RAG Sensitivity** 📖:
-  - *Semantic matching thresholds
-  - *Distance sensitivity
 - **Cleanup**:
   - Selection of post-processing plugins (Choose `N` if the target language is not Japanese AND no custom plugins are provided)
 
-📖 Refer to [the doc](docs/3_RAG_performance_analysis.md) for the details on RAG sensitivity and how to fine-tune it.
+> [!NOTE]
+> **RAG Sensitivity** 📖: Default thresholds for semantic matching and distance sensitivity are applied automatically during setup. Refer to [the doc](docs/3_RAG_performance_analysis.md) for details on how to fine-tune these values in your `.env` file if needed.
 
 ## 2. Build
 

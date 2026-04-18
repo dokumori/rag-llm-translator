@@ -25,26 +25,16 @@ echo "Bulk Size: The number of strings sent to LLM at once along with RAG contex
 read -p "Enter BULK_SIZE (default: 15): " BULK_SIZE
 BULK_SIZE=${BULK_SIZE:-15}
 
-# Prompt for RAG Thresholds
-echo ""
-echo "===================================================================="
-echo " 🌡️ RAG THRESHOLDS CONFIGURATION"
-echo "   (Refer to docs/3_RAG_performance_analysis.md for details)"
-echo "===================================================================="
-echo "RAG Thresholds: Fine-tune matching sensitivity."
-read -p "Enter GLOSSARY_THRESHOLD (default: 0.36): " GLOSSARY_THRESHOLD
-GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-0.36}
-
-read -p "Enter TM_THRESHOLD (default: 0.27): " TM_THRESHOLD
-TM_THRESHOLD=${TM_THRESHOLD:-0.27}
+# RAG Thresholds: Fine-tune matching sensitivity.
+# (Refer to docs/3_RAG_performance_analysis.md for details)
+GLOSSARY_THRESHOLD=0.36
+TM_THRESHOLD=0.27
 
 # Empirical synonym guardrail
 # See docs/3_RAG_performance_analysis.md before changing this value.
 RAG_STRICT_DISTANCE_THRESHOLD=0.15
-echo "===================================================================="
-echo ""
 
-# Prompt for Post-Processing (Drupal/CJK Cleanup)
+# Prompt for Post-Processing
 echo ""
 echo "===================================================================="
 echo " ⚙️  POST-PROCESSING PLUGINS"
@@ -75,13 +65,17 @@ if [ "$POST_PROCESSING_ENABLED" = "true" ]; then
     
     # Combine and trim trailing commas
     ALL_PLUGINS="${PLUGINS_DEFAULT}${PLUGINS_CUSTOM}"
-    ALL_PLUGINS=${ALL_PLUGINS%,} # Remove trailing comma if exists
+    ALL_PLUGINS=${ALL_PLUGINS%,} 
     
-    # Fallback default if nothing found (shouldn't happen with our default list)
-    DEFAULT_SUGGESTION=${ALL_PLUGINS:-"spacing_around_drupal_variables,jp_en_spacing"}
+    # Add space after commas for display
+    ALL_PLUGINS_DISPLAY=$(echo "$ALL_PLUGINS" | sed 's/,/, /g')
+    
+    # Default to PLUGINS_DEFAULT only
+    DEFAULT_SUGGESTION=${PLUGINS_DEFAULT%,}
+    DEFAULT_SUGGESTION=$(echo "$DEFAULT_SUGGESTION" | sed 's/,/, /g')
 
     echo "🔌 Available Plugins:"
-    echo "$DEFAULT_SUGGESTION" | tr ',' '\n' | while read -r plugin; do
+    echo "$ALL_PLUGINS_DISPLAY" | tr ',' '\n' | while read -r plugin; do
         if [ -n "$plugin" ]; then
             echo "   - $plugin"
         fi
