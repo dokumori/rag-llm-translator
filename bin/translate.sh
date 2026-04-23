@@ -33,7 +33,7 @@ fi
 # Host paths for metadata check
 INPUT_HOST_DIR="data/translations/input"
 OUTPUT_HOST_DIR="data/translations/output"
-REQUIRED_LANG_STR="\"Language: ${TARGET_LANG}\\\n\""
+REQUIRED_LANG_STR="\"Language: ${TARGET_LANG}\\n\""
 
 # Helper: load models with custom override support
 load_merged_models() {
@@ -113,7 +113,27 @@ for po_file in "$INPUT_HOST_DIR"/*.po; do
   [ -e "$po_file" ] || continue
   if ! grep -qi "Language: ${TARGET_LANG}" "$po_file"; then
     echo "📝 Adding missing language header to $(basename "$po_file")..."
-    { printf "%s\n" "$REQUIRED_LANG_STR"; cat "$po_file"; } > "${po_file}.tmp" && mv "${po_file}.tmp" "$po_file"
+    python3 - "$po_file" "$REQUIRED_LANG_STR" <<'EOF'
+import sys, re
+
+# Read the target .po file into memory for header manipulation
+po_file, lang_str = sys.argv[1], sys.argv[2]
+with open(po_file, 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Only insert if not already present
+if lang_str in content:
+    sys.exit(0)
+
+# Find the end of the first msgstr "" header block.
+# The header block ends at the first blank line after the opening msgstr "".
+# Insert lang_str before that blank line.
+pattern = r'((?:^"[^\n]*\\n"\n)+)(\n)'
+new_content = re.sub(pattern, lambda m: m.group(1) + lang_str + '\n' + m.group(2), content, count=1, flags=re.MULTILINE)
+
+with open(po_file, 'w', encoding='utf-8') as f:
+    f.write(new_content)
+EOF
   fi
 done
 
