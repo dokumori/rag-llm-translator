@@ -80,6 +80,9 @@ def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = 
             
             last_result = result
 
+            logger.info(f"Stdout: {result.stdout}")
+            logger.info(f"Stderr: {result.stderr}")
+
             if result.returncode == 0:
                 return result
 

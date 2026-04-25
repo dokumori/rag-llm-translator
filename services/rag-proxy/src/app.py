@@ -400,11 +400,14 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
             return jsonify({
                 "id": "dry-run",
                 "object": "chat.completion",
+                "created": int(time.time()),
+                "model": requested_model,
                 "choices": [{
                     "index": 0,
                     "message": {"role": "assistant", "content": content_return},
                     "finish_reason": "stop"
-                }]
+                }],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             })
 
         # --- 6. REAL API CALL ---
