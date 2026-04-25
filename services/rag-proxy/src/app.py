@@ -307,11 +307,21 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
 
     return f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
 
+# --- Helper: Extract Language from Path ---
+
+def _extract_lang_from_path(path: str) -> Optional[str]:
+    """Extracts target language from URL path segment like /lang_it/."""
+    match = re.search(r'/lang_([a-z]{2,5})(?:/|$)', path)
+    return match.group(1) if match else None
+
+
 # --- Routes ---
 
 @app.route('/v1/models', methods=['GET'])
 @app.route('/v1/skip_rag/models', methods=['GET'])
-def list_models() -> Response:
+@app.route('/v1/lang_<target_lang_code>/models', methods=['GET'])
+@app.route('/v1/lang_<target_lang_code>/skip_rag/models', methods=['GET'])
+def list_models(target_lang_code: str = None) -> Response:
     """Returns a dynamic list of models from configuration."""
     config_models = get_models_config()
     return jsonify({
@@ -325,7 +335,9 @@ def list_models() -> Response:
 
 @app.route('/v1/chat/completions', methods=['POST'])
 @app.route('/v1/skip_rag/chat/completions', methods=['POST'])
-def handle_translation() -> Union[Response, Tuple[Response, int]]:
+@app.route('/v1/lang_<target_lang_code>/chat/completions', methods=['POST'])
+@app.route('/v1/lang_<target_lang_code>/skip_rag/chat/completions', methods=['POST'])
+def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Response, int]]:
     """Main endpoint for handling translation requests."""
     start_time = time.time()
     try:
@@ -369,7 +381,8 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
             rag_content = "\n<!-- RAG Lookup Skipped -->\n"
 
         # --- 3. CONSTRUCT PROMPT ---
-        target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or DEFAULT_LANG
+        target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or _extract_lang_from_path(request.path) or DEFAULT_LANG
+        logger.info(f"🌐 Target language resolved to: {target_lang} (from: {'body' if data.get('target_lang') else 'header' if request.headers.get('X-Target-Lang') else 'path' if _extract_lang_from_path(request.path) else 'default'})")
         final_system_content = construct_system_prompt(
             data.get('system', ""), rag_content, target_lang)
 
@@ -400,11 +413,14 @@ def handle_translation() -> Union[Response, Tuple[Response, int]]:
             return jsonify({
                 "id": "dry-run",
                 "object": "chat.completion",
+                "created": int(time.time()),
+                "model": requested_model,
                 "choices": [{
                     "index": 0,
                     "message": {"role": "assistant", "content": content_return},
                     "finish_reason": "stop"
-                }]
+                }],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             })
 
         # --- 6. REAL API CALL ---

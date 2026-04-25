@@ -111,30 +111,45 @@ echo "🔍 Validating .po metadata in $INPUT_HOST_DIR..."
 # Note: This runs on the host to ensure headers are present before container processing
 for po_file in "$INPUT_HOST_DIR"/*.po; do
   [ -e "$po_file" ] || continue
-  if ! grep -qi "Language: ${TARGET_LANG}" "$po_file"; then
-    echo "📝 Adding missing language header to $(basename "$po_file")..."
-    python3 - "$po_file" "$REQUIRED_LANG_STR" <<'EOF'
-import sys, re
+  python3 - "$po_file" "$REQUIRED_LANG_STR" <<'EOF'
+import sys, re, os
 
 # Read the target .po file into memory for header manipulation
 po_file, lang_str = sys.argv[1], sys.argv[2]
 with open(po_file, 'r', encoding='utf-8') as f:
     content = f.read()
 
-# Only insert if not already present
+# 1. Correct langcode already present — nothing to do.
 if lang_str in content:
     sys.exit(0)
 
-# Find the end of the first msgstr "" header block.
-# The header block ends at the first blank line after the opening msgstr "".
-# Insert lang_str before that blank line.
-pattern = r'((?:^"[^\n]*\\n"\n)+)(\n)'
-new_content = re.sub(pattern, lambda m: m.group(1) + lang_str + '\n' + m.group(2), content, count=1, flags=re.MULTILINE)
+# 2. A *different* Language: line exists — replace it.
+if re.search(r'^"Language: [^\\]+\\n"', content, re.MULTILINE):
+    new_content = re.sub(
+        r'^"Language: [^\\]+\\n"', # Pattern to find
+        lambda m: lang_str,        # Use lambda to avoid re.sub backslash processing
+        content,                   # Source text
+        count=1,                   # Only replace the first occurrence
+        flags=re.MULTILINE,        # Treat each line as a start
+    )
+    with open(po_file, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    print(f"Replaced Language header in {os.path.basename(po_file)} with {lang_str.strip()}")
+    sys.exit(0)
 
+# 3. No `Language:` line at all — insert into the header block.
+print(f"Adding missing language header to {os.path.basename(po_file)}...")
+pattern = r'((?:^"[^\n]*\\n"\n)+)(\n)'
+new_content = re.sub(
+    pattern,
+    lambda m: m.group(1) + lang_str + '\n' + m.group(2),
+    content,
+    count=1,
+    flags=re.MULTILINE,
+)
 with open(po_file, 'w', encoding='utf-8') as f:
     f.write(new_content)
 EOF
-  fi
 done
 
 # 3. Prepare Naming Metadata
@@ -172,13 +187,12 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # 4. Execute Modular Translation Runner
 echo "📦 Starting Modular Translation Runner..."
-# Note: The runner now handles the recursion and temp isolation internally.
-# We point to the container's mount points: /app/po/input and /app/po/output
 docker compose exec \
   toolbox python3 -u /app/src/translate_runner.py \
   --model "$SELECTED_MODEL" \
   --input "/app/po/input" \
   --output "/app/po/output" \
+  --target-lang "$TARGET_LANG" \
   --model-slug "$MODEL_SLUG" \
   --rag-mode "$RAG_MODE" \
   --timestamp "$TIMESTAMP" \
@@ -187,8 +201,6 @@ docker compose exec \
 # 5. Post-Processing
 echo "✨ Running Post-Process..."
 docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
-
-
 
 echo "----------------------------------------------------------------"
 echo "✅ Translation Workflow Complete!"
