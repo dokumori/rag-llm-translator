@@ -4,6 +4,13 @@ The RAG-LLM Translator leverages Large Language Models and a Retrieval-Augmented
 
 The system is compatible with any AI provider that adheres to the OpenAI API specification.
 
+# Known issues
+Some OpenAI models (o1 / o3 / GPT5 series) no longer accept parameters that this translator depends on:
+- `max_token`: this is now `max_completion_token`
+- `temperature`: this is no longer accepted and defaults to 1
+
+We plan to support them in the future, but for now please avoid using them. 
+
 # How to use rag-llm-translator
 
 ## Overview
@@ -76,6 +83,13 @@ Although the system still translate without RAG, maximizing the benefits of a RA
 - It must have the following columns:
   - **source**: original strings e.g. `Node`
   - **target**: translations e.g. `ノード`
+
+### Custom model list (Optional)
+You can override the list of existing LLM models by providing a custom model configuration file. 
+
+- **Location**: `config/models/custom/`
+- **Naming Convention**: `models.json` - Simply copy models.example.json and edit it. 
+- **Effect**: If present, the system will load models from this file instead of `config/models/models.json`. The default `dry-run` model is automatically preserved to ensure testing capability.
 
 ### Custom system prompts (Optional)
 You can provide project-specific translation instructions by placing a custom system prompt file. 

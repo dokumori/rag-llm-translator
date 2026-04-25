@@ -1,10 +1,10 @@
 {
-  "_comment": "Copy this file to config/models/custom/models.json to override or add models.",
-  "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended.",
+  "_comment": "Copy this file to config/models/custom/models.json to override the default models.",
+  "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended. **Please note that this translator is not yet compatible with OpenAI's o1 / o3 / GPT-5 models.**",
   "models": [
     {
-      "id": "my-custom-model-id",
-      "name": "My Custom Model",
+      "id": "gpt-4.1-2025-04-14",
+      "name": "GPT 4.1",
       "is_dry_run": false
     }
   ]
