@@ -24,19 +24,37 @@ MAX_RETRIES = 2
 BULK_SIZE = os.environ.get("BULK_SIZE", "15")
 
 
-def get_env_config(skip_rag: bool = False) -> Dict[str, str]:
+def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str, str]:
     """Returns the environment configuration for the translation tool."""
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = "dummy"
 
     # Allow override via environment variable, default to http://rag-proxy:5000/v1
     base_url = os.environ.get("OPENAI_BASE_URL", "http://rag-proxy:5000/v1")
-    
+
+    # Prefer explicitly-passed target_lang (from CLI arg) over env var.
+    # This lets translate.sh pass the freshly-read .env value without
+    # requiring a container restart/rebuild.
+    if target_lang is None:
+        target_lang = os.environ.get("TARGET_LANG")
+    if not target_lang:
+        raise ValueError(
+            "❌ TARGET_LANG is not set. "
+            "Set it in your .env file (e.g. TARGET_LANG=ja) and re-run."
+        )
+
+    # Encode target language in URL path so rag-proxy receives it per-request.
+    # This follows the same pattern as skip_rag: the OpenAI SDK appends
+    # /chat/completions after the base_url, so path segments survive intact.
+    base_url = f"{base_url.rstrip('/')}/lang_{target_lang}"
+
     if skip_rag:
         # Append /skip_rag to path directly instead of a query parameter which breaks /models resolution
         base_url = f"{base_url.rstrip('/')}/skip_rag"
 
     env["OPENAI_BASE_URL"] = base_url
+    # Also propagate as an env var so any child process sees the same value
+    env["TARGET_LANG"] = target_lang
 
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
 
@@ -195,11 +213,19 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
         return False
 
 
-def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False) -> None:
+def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False, target_lang: str = None) -> None:
     """
     Main orchestration function for the translation workflow.
     """
-    target_lang = os.environ.get("TARGET_LANG", "ja")
+    # Prefer explicitly-passed target_lang (from CLI arg) over env var so that
+    # changing TARGET_LANG in .env takes effect immediately without container restart.
+    if target_lang is None:
+        target_lang = os.environ.get("TARGET_LANG")
+    if not target_lang:
+        raise ValueError(
+            "❌ TARGET_LANG is not set. "
+            "Set it in your .env file (e.g. TARGET_LANG=ja) and re-run."
+        )
     os.makedirs(output_base_dir, exist_ok=True)
 
     po_files = find_po_files(input_base_dir)
@@ -217,7 +243,7 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
     else:
         logger.info(f"🚀 Found {total_files} files. Starting translation with model '{model}' for '{target_lang}'...")
 
-    env = get_env_config(skip_rag=skip_rag)
+    env = get_env_config(target_lang=target_lang, skip_rag=skip_rag)
     logger.info(f"📁 Output will be written to: {output_base_dir}")
 
     success_count = 0
@@ -255,6 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="LLM Model ID")
     parser.add_argument("--input", required=True, help="Input directory")
     parser.add_argument("--output", required=True, help="Output directory")
+    parser.add_argument("--target-lang", default=None, help="Target language code (overrides TARGET_LANG env var)")
     parser.add_argument("--model-slug", required=True, help="Model slug for numbering")
     parser.add_argument("--rag-mode", required=True, help="RAG mode label")
     parser.add_argument("--timestamp", required=True, help="Run timestamp")
@@ -262,4 +289,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run_translation_workflow(args.model, args.input, args.output, args.model_slug, args.rag_mode, args.timestamp, skip_rag=args.skip_rag)
+    run_translation_workflow(args.model, args.input, args.output, args.model_slug, args.rag_mode, args.timestamp, skip_rag=args.skip_rag, target_lang=args.target_lang)
