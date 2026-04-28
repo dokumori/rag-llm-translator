@@ -35,6 +35,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Silence noisy third-party libraries and model loading output
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("transformers").setLevel(logging.WARNING)
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+
 # --- Helpers ---
 
 
@@ -390,7 +398,6 @@ def main() -> None:
         logger.error("🛑 Pre-flight checks failed. Exiting.")
         return
 
-    logger.info(f"🔌 Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}...")
     try:
         client = get_chroma_client()
     except Exception as e:
@@ -398,7 +405,6 @@ def main() -> None:
              f"❌ Failed to connect to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}. Error: {e}")
         return
 
-    logger.info(f"⏳ Loading Embedding Model ({MODEL_NAME})...")
     try:
         embedding_fn = get_embedding_function()
     except Exception as e:
