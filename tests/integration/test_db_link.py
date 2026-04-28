@@ -7,11 +7,13 @@ Does NOT use mocks. Requires the ChromaDB container to be running.
 Run Command:
     docker compose exec rag-proxy python -m pytest /app/tests/integration/test_db_link.py
 """
-import numpy as np
+# numpy is only available inside the Docker container; skip the whole module gracefully
+# when running locally so collection doesn't error out.
+import pytest
+np = pytest.importorskip("numpy")
 from chromadb.api.types import Documents, Embeddings
 from app import app
 import sys
-import pytest
 import chromadb
 import os
 import logging

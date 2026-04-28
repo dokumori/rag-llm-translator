@@ -115,9 +115,9 @@ class TestIngest(unittest.TestCase):
         mock_find_po.return_value = ["nested/test.po"]
 
         # Mock PO entries
-        entry_save = MagicMock(msgid="Save", msgstr="Speichern", flags=[])
-        entry_save_dupe = MagicMock(msgid="Save", msgstr="Old", flags=[])
-        entry_fuzzy = MagicMock(msgid="Fuzzy", msgstr="Wait", flags=["fuzzy"])
+        entry_save = MagicMock(msgid="Save", msgstr="Speichern", flags=[], msgctxt="")
+        entry_save_dupe = MagicMock(msgid="Save", msgstr="Old", flags=[], msgctxt="")
+        entry_fuzzy = MagicMock(msgid="Fuzzy", msgstr="Wait", flags=["fuzzy"], msgctxt="")
 
         mock_po = MagicMock()
         mock_po.__iter__.return_value = [
@@ -126,7 +126,7 @@ class TestIngest(unittest.TestCase):
 
         # Execute processing on the mocked directory
         mock_client = MagicMock()
-        ingest.process_tm(mock_client, MagicMock(), Path("tm_dir"))
+        ingest.process_tm(mock_client, MagicMock(), "ja")
 
         mock_ingest.assert_called_once()
 
@@ -143,7 +143,7 @@ class TestIngest(unittest.TestCase):
         # Verify document content matches expectation
         self.assertEqual(docs[0], "Save")
         # Verify ID matches the hash of the content
-        self.assertEqual(ids[0], ingest.generate_content_hash("Save"))
+        self.assertEqual(ids[0], ingest.generate_content_hash("Save", langcode="ja", msgctxt=""))
         self.assertEqual(metadata[0]['target'], "Speichern")
 
     # --- 4. Incremental Batching Tests ---
@@ -192,12 +192,13 @@ class TestIngest(unittest.TestCase):
     @patch("ingest.get_embedding_function")
     @patch("ingest.process_glossary")
     @patch("ingest.process_tm")
-    def test_main_routing(self, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
+    @patch("ingest.pre_flight_check", return_value=True)
+    def test_main_routing(self, mock_pre_flight, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
         """Verifies CLI flags correctly route to processors."""
 
         # Test Case 1: Glossary Only
         mock_args.return_value = MagicMock(
-            glossary_only=True, tm_only=False, reset=False)
+            glossary_only=True, tm_only=False, reset=False, lang="ja")
         ingest.main()
         mock_gloss.assert_called_once()
         mock_tm.assert_not_called()
@@ -207,7 +208,7 @@ class TestIngest(unittest.TestCase):
 
         # Test Case 2: TM Only
         mock_args.return_value = MagicMock(
-            glossary_only=False, tm_only=True, reset=False)
+            glossary_only=False, tm_only=True, reset=False, lang="ja")
         ingest.main()
         mock_gloss.assert_not_called()
         mock_tm.assert_called_once()
@@ -217,10 +218,11 @@ class TestIngest(unittest.TestCase):
     @patch("ingest.get_embedding_function")
     @patch("ingest.process_glossary")
     @patch("ingest.process_tm")
-    def test_main_reset_flow(self, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
+    @patch("ingest.pre_flight_check", return_value=True)
+    def test_main_reset_flow(self, mock_pre_flight, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
         """Verifies that reset flag is passed down."""
         mock_args.return_value = MagicMock(
-            glossary_only=False, tm_only=False, reset=True)
+            glossary_only=False, tm_only=False, reset=True, lang="ja")
         ingest.main()
 
         # Check that reset=True was passed to both

@@ -1,0 +1,9 @@
+# Extra dependencies required to run the full unit test suite locally.
+# The toolbox venv already provides: Flask, openai, polib, pytest, pytest-mock.
+#
+# snowballstemmer: pure Python — installs fine on Python 3.14.
+# chromadb: requires onnxruntime which has no Python 3.14 wheel yet.
+#   → A minimal stub in tests/custom/chromadb/ shadows the real package so
+#     source modules can be imported; all actual DB calls are mocked.
+
+snowballstemmer==2.2.0
