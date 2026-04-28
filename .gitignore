@@ -84,3 +84,7 @@ config/prompts/custom/*.md
 # Custom plugins and tests
 services/toolbox/src/plugins/custom
 tests/custom
+
+# Pyrefly
+pyrefly.toml
+
