@@ -44,7 +44,6 @@ services:
       - TM_THRESHOLD=${TM_THRESHOLD}
       - GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
       - RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
-      - TARGET_LANG=${TARGET_LANG}
     ports:
       - "5001:5000"
     volumes:
@@ -94,7 +93,6 @@ services:
       - PYTHONUNBUFFERED=1
       - MODELS_CONFIG_PATH=/app/config/models/models.json
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
-      - TARGET_LANG=${TARGET_LANG}
       - RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
     networks:
       - app_network

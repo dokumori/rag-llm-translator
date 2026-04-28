@@ -184,10 +184,13 @@ def has_shared_stems(text_a: str, text_b: str) -> bool:
 
 
 
-def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[Dict[str, Any]]]:
+def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "") -> Tuple[str, List[Dict[str, Any]]]:
     """
     Queries ChromaDB, applies Guardrail logic (Glossary/TM), and returns
     the XML formatted context string and the list of match logs.
+    
+    When target_lang is provided, queries are filtered by langcode metadata
+    so only context for the correct target language is retrieved.
     """
     rag_content = ""
     matches_log: List[Dict[str, Any]] = []
@@ -215,14 +218,19 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
             else:
                 formatted_query.append(text)
 
+        # Build language filter for ChromaDB metadata queries
+        lang_filter = {"langcode": target_lang} if target_lang else None
+
         # Process Glossary
         if GLOSSARY_COLLECTION in existing_collections:
             gloss_col = client.get_collection(
                 GLOSSARY_COLLECTION,
                 embedding_function=get_embedding_function()
             )
-            gloss_res = gloss_col.query(
-                query_texts=formatted_query, n_results=1)
+            query_kwargs = {"query_texts": formatted_query, "n_results": 1}
+            if lang_filter:
+                query_kwargs["where"] = lang_filter
+            gloss_res = gloss_col.query(**query_kwargs)
             if gloss_res['documents']:
                 for i, doc_list in enumerate(gloss_res['documents']):
                     if doc_list:
@@ -256,7 +264,10 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]]) -> Tuple[str, List[D
                 TM_COLLECTION,
                 embedding_function=get_embedding_function()
             )
-            tm_res = tm_col.query(query_texts=formatted_query, n_results=1)
+            tm_query_kwargs = {"query_texts": formatted_query, "n_results": 1}
+            if lang_filter:
+                tm_query_kwargs["where"] = lang_filter
+            tm_res = tm_col.query(**tm_query_kwargs)
             if tm_res['documents']:
                 for i, doc_list in enumerate(tm_res['documents']):
                     if doc_list:
@@ -368,9 +379,15 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         rag_content = ""
         rag_matches = []
         
+        target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or _extract_lang_from_path(request.path) or DEFAULT_LANG
+        if not target_lang:
+            logger.warning("⚠️ No target language resolved from body, header, path, or env. RAG filtering will be disabled.")
+        else:
+            logger.info(f"🌐 Target language resolved to: {target_lang} (from: {'body' if data.get('target_lang') else 'header' if request.headers.get('X-Target-Lang') else 'path' if _extract_lang_from_path(request.path) else 'default'})")
+
         if not skip_rag:
             try:
-                rag_content, rag_matches = perform_rag_lookup(query_payload)
+                rag_content, rag_matches = perform_rag_lookup(query_payload, target_lang=target_lang)
                 log_entry["rag_matches"] = rag_matches
             except Exception as e:
                 log_entry["rag_error"] = str(e)
@@ -381,8 +398,6 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
             rag_content = "\n<!-- RAG Lookup Skipped -->\n"
 
         # --- 3. CONSTRUCT PROMPT ---
-        target_lang = data.get('target_lang') or request.headers.get('X-Target-Lang') or _extract_lang_from_path(request.path) or DEFAULT_LANG
-        logger.info(f"🌐 Target language resolved to: {target_lang} (from: {'body' if data.get('target_lang') else 'header' if request.headers.get('X-Target-Lang') else 'path' if _extract_lang_from_path(request.path) else 'default'})")
         final_system_content = construct_system_prompt(
             data.get('system', ""), rag_content, target_lang)
 

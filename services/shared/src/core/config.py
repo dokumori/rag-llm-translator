@@ -35,7 +35,9 @@ class Config:
     EMBEDDING_MODEL_NAME: str = "BAAI/bge-large-en-v1.5"
     
     # --- Localization ---
-    TARGET_LANG: str = os.environ.get("TARGET_LANG", "ja")
+    # No default — target language must be provided explicitly per-request
+    # (via URL path, CLI argument, etc.) to prevent cross-language contamination.
+    TARGET_LANG: str = os.environ.get("TARGET_LANG", "")
     
     @classmethod
     def log_config(cls):

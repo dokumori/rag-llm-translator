@@ -11,8 +11,8 @@ The translation evaluation feature operates as an automated 'blind test', which 
    
 2. **Store the translated .po files in the correct directories**  
    Place exactly one `.po` file in each of the following directories:
-   - RAG translations: `data/translations/eval/with_rag/`
-   - Non-RAG translations: `data/translations/eval/without_rag/`
+   - RAG translations: `data/translations/eval/{langcode}/with_rag/`
+   - Non-RAG translations: `data/translations/eval/{langcode}/without_rag/`
 
 3. **Run the evaluation script**  
    From the main project folder, run the following shell command:

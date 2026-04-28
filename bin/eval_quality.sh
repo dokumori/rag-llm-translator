@@ -9,6 +9,9 @@ fi
 
 set -e
 
+# Source shared helpers
+source "$(dirname "$0")/common.sh"
+
 echo "----------------------------------------------------------------"
 echo "RAG LLM Translation Quality Evaluation (LLM-as-a-Judge)"
 echo "----------------------------------------------------------------"
@@ -26,8 +29,16 @@ if [ ! -f "$MODELS_JSON" ]; then
   exit 1
 fi
 
-WITH_RAG_DIR="data/translations/eval/with_rag"
-WITHOUT_RAG_DIR="data/translations/eval/without_rag"
+# Language Selection
+TARGET_LANG=$(select_language "evaluation" "${TRANSLATIONS_ROOT}/eval" ".po")
+if [ -z "$TARGET_LANG" ]; then
+  echo "❌ No language selected or available. Exiting."
+  exit 1
+fi
+echo "🌐 Target language: $TARGET_LANG"
+
+WITH_RAG_DIR=$(eval_dir "$TARGET_LANG")/with_rag
+WITHOUT_RAG_DIR=$(eval_dir "$TARGET_LANG")/without_rag
 
 # Helper: load models with custom override support
 load_merged_models() {
@@ -137,8 +148,8 @@ def load_po_keys(directory):
             pass
     return keys
 
-with_rag = load_po_keys('/app/po/eval/with_rag')
-without_rag = load_po_keys('/app/po/eval/without_rag')
+with_rag = load_po_keys('/app/po/eval/$TARGET_LANG/with_rag')
+without_rag = load_po_keys('/app/po/eval/$TARGET_LANG/without_rag')
 print(len(with_rag.intersection(without_rag)))
 ")
 
@@ -201,8 +212,8 @@ echo "----------------------------------------------------------------"
 docker compose exec \
   toolbox python3 -u /app/src/evaluate_blind_test.py \
   --model "$SELECTED_MODEL" \
-  --with-rag-dir "/app/po/eval/with_rag" \
-  --without-rag-dir "/app/po/eval/without_rag" \
+  --with-rag-dir "/app/po/eval/$TARGET_LANG/with_rag" \
+  --without-rag-dir "/app/po/eval/$TARGET_LANG/without_rag" \
   --limit "$FINAL_LIMIT"
 
 echo "----------------------------------------------------------------"

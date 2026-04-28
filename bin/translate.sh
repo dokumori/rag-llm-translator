@@ -8,10 +8,10 @@ if [ -f .env ]; then
   export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
 fi
 
-# Default to 'ja' if not set in .env
-TARGET_LANG=${TARGET_LANG:-ja}
-
 set -e
+
+# Source shared helpers
+source "$(dirname "$0")/common.sh"
 
 echo "----------------------------------------------------------------"
 echo "RAG LLM Translation System"
@@ -30,10 +30,26 @@ if [ ! -f "$MODELS_JSON" ]; then
   exit 1
 fi
 
-# Host paths for metadata check
-INPUT_HOST_DIR="data/translations/input"
-OUTPUT_HOST_DIR="data/translations/output"
-REQUIRED_LANG_STR="\"Language: ${TARGET_LANG}\\n\""
+# 0. Language Selection
+if [[ "$1" == -* ]]; then
+  TARGET_LANG="${1#-}"
+else
+  TARGET_LANG=$(select_language "translation" "${TRANSLATIONS_ROOT}/input" ".po")
+fi
+
+if [ -z "$TARGET_LANG" ]; then
+  echo "❌ No language selected or available. Exiting."
+  exit 1
+fi
+
+if [ "$TARGET_LANG" = "all" ]; then
+  echo "🌐 Target languages: ALL available languages"
+  TARGET_LANGS=($(list_available_langs "${TRANSLATIONS_ROOT}/input" ".po"))
+else
+  echo "🌐 Target language: $TARGET_LANG"
+  TARGET_LANGS=("$TARGET_LANG")
+fi
+
 
 # Helper: load models with custom override support
 load_merged_models() {
@@ -107,7 +123,20 @@ done
 echo "----------------------------------------------------------------"
 
 # 2. Metadata Validation (Pre-flight check)
-echo "🔍 Validating .po metadata in $INPUT_HOST_DIR..."
+for LANG_ITER in "${TARGET_LANGS[@]}"; do
+  echo "----------------------------------------------------------------"
+  echo "⚙️ Processing language: $LANG_ITER"
+  echo "----------------------------------------------------------------"
+  
+  TARGET_LANG="$LANG_ITER"
+  INPUT_HOST_DIR=$(input_dir "$TARGET_LANG")
+  OUTPUT_HOST_DIR=$(output_dir "$TARGET_LANG")
+  REQUIRED_LANG_STR="\"Language: ${TARGET_LANG}\\n\""
+
+  # Ensure output directory exists
+  mkdir -p "$OUTPUT_HOST_DIR"
+
+  echo "🔍 Validating .po metadata in $INPUT_HOST_DIR..."
 # Note: This runs on the host to ensure headers are present before container processing
 for po_file in "$INPUT_HOST_DIR"/*.po; do
   [ -e "$po_file" ] || continue
@@ -190,8 +219,8 @@ echo "📦 Starting Modular Translation Runner..."
 docker compose exec \
   toolbox python3 -u /app/src/translate_runner.py \
   --model "$SELECTED_MODEL" \
-  --input "/app/po/input" \
-  --output "/app/po/output" \
+  --input "/app/po/input/$TARGET_LANG" \
+  --output "/app/po/output/$TARGET_LANG" \
   --target-lang "$TARGET_LANG" \
   --model-slug "$MODEL_SLUG" \
   --rag-mode "$RAG_MODE" \
@@ -199,8 +228,10 @@ docker compose exec \
   $SKIP_RAG_FLAG
 
 # 5. Post-Processing
-echo "✨ Running Post-Process..."
-docker compose exec toolbox python3 /app/src/post_process.py /app/po/output
+  echo "✨ Running Post-Process..."
+  docker compose exec toolbox python3 /app/src/post_process.py "/app/po/output/$TARGET_LANG"
+
+done
 
 echo "----------------------------------------------------------------"
 echo "✅ Translation Workflow Complete!"

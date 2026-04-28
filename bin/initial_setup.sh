@@ -14,11 +14,8 @@ read -p "Enter LLM base URL: " LLM_BASE_URL
 
 echo ""
 echo "===================================================================="
-echo " ⚙️ TARGET LANGUAGE AND BULK SIZE"
+echo " ⚙️ BULK SIZE"
 echo "===================================================================="
-# Prompt for Target Language (default to 'ja')
-read -p "Enter TARGET_LANG (default: ja): " TARGET_LANG
-TARGET_LANG=${TARGET_LANG:-ja}
 
 # Prompt for Bulk Size
 echo "Bulk Size: The number of strings sent to LLM at once along with RAG context. Smaller values improve context/quality but increase cost (due to higher total token usage)."
@@ -96,7 +93,6 @@ cat > "${PROJECT_ROOT}/.env" << EOF
 # .env file - Generated on $(date '+%Y-%m-%d %H:%M')
 LLM_API_TOKEN=${LLM_API_TOKEN}
 LLM_BASE_URL=${LLM_BASE_URL}
-TARGET_LANG=${TARGET_LANG}
 BULK_SIZE=${BULK_SIZE}
 POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED}
 POST_PROCESS_PLUGINS=${POST_PROCESS_PLUGINS}

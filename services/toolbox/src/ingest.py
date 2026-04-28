@@ -1,6 +1,10 @@
 '''
 Ingests the glossary and translation string into ChromaDB
 with automated cleaning, deduplication, and incremental loading.
+
+Each ingested entry is tagged with a `langcode` metadata field so
+that the RAG proxy can filter retrieval results by target language.
+TM entries also store `msgctxt` (Drupal disambiguation context).
 '''
 
 import chromadb
@@ -15,12 +19,10 @@ from pathlib import Path
 from typing import List, Dict, Generator, Any, Tuple, Set, Optional
 from core.config import Config
 from core.utils import find_po_files
+from core import paths
 from infrastructure import get_chroma_client, get_embedding_function
 
 # --- Configuration ---
-# Allow overriding the source dir via environment variable
-TM_SOURCE_DIR = Path(Config.TM_SOURCE_DIR)
-GLOSSARY_FILE = TM_SOURCE_DIR / "glossary.csv"
 MODEL_NAME = Config.EMBEDDING_MODEL_NAME
 CHROMA_HOST = Config.CHROMA_HOST
 CHROMA_PORT = Config.CHROMA_PORT
@@ -36,9 +38,14 @@ logger = logging.getLogger(__name__)
 # --- Helpers ---
 
 
-def generate_content_hash(text: str) -> str:
-    """Generates a deterministic MD5 hash for the given text to use as a Document ID."""
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
+def generate_content_hash(text: str, langcode: str = "", msgctxt: str = "") -> str:
+    """Generates a deterministic MD5 hash incorporating langcode and msgctxt for uniqueness.
+    
+    This ensures the same English string ingested for different languages
+    (or with different Drupal msgctxt values) produces distinct IDs.
+    """
+    composite = f"{langcode}:{msgctxt}:{text}"
+    return hashlib.md5(composite.encode('utf-8')).hexdigest()
 
 
 def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
@@ -48,19 +55,20 @@ def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
         yield iterable[ndx:min(ndx + n, l)]
 
 
-def pre_flight_check(run_glossary: bool, run_tm: bool) -> bool:
+def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bool:
     """
     Validates input files before performing expensive operations.
     Returns True if checks pass, False otherwise.
     """
     logger.info("🔍 Running Pre-flight Checks...")
 
-    if not TM_SOURCE_DIR.exists():
-        logger.error(f"❌ Source directory not found: {TM_SOURCE_DIR}")
+    source_dir = Path(paths.tm_source_dir(langcode))
+    if not source_dir.exists():
+        logger.error(f"❌ Source directory not found: {source_dir}")
         return False
 
     if run_glossary:
-        csv_files = list(TM_SOURCE_DIR.glob("*.csv"))
+        csv_files = list(source_dir.glob("*.csv"))
         if len(csv_files) > 1:
             file_list = ", ".join([f.name for f in csv_files])
             logger.error(f"❌ Multiple glossary files detected: [{file_list}]")
@@ -79,15 +87,17 @@ def pre_flight_check(run_glossary: bool, run_tm: bool) -> bool:
 # --- Glossary Processor ---
 
 
-def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, reset: bool = False) -> None:
+def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False) -> None:
     """
     Reads, cleans, deduplicates, and incrementally ingests glossary terms.
     If reset is True, deletes existing collection first.
+    
+    Each entry is tagged with the langcode metadata field.
     """
     COLLECTION_NAME = Config.GLOSSARY_COLLECTION
 
-    # Scans the parent directory of the provided path for any single glossary CSV file.
-    scan_dir = source_path.parent
+    # Resolve path via unified path helper
+    scan_dir = Path(paths.tm_source_dir(langcode))
     
     logger.info(f"📚 Scanning for glossary CSVs in {scan_dir}...")
     
@@ -125,8 +135,10 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
         logger.error(f"❌ Failed to get/create glossary collection: {e}")
         return
 
-    # Key: Clean Source, Value: Clean Target
-    unique_entries: Dict[str, str] = {}
+    # Key: (source, context), Value: target
+    # Using (source, context) as key allows the same glossary term
+    # with different contexts to be stored separately.
+    unique_entries: Dict[Tuple[str, str], str] = {}
 
     try:
         # Use 'utf-8-sig' to handle the BOM (\ufeff) marker automatically
@@ -135,11 +147,13 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
             for row in reader:
                 src = row.get('source', '').strip()
                 tgt = row.get('target', '').strip()
+                ctx = row.get('context', '').strip()
 
                 if src and tgt:
-                    # Simple case-sensitive rule: First occurrence wins
-                    if src not in unique_entries:
-                        unique_entries[src] = tgt
+                    dedup_key = (src, ctx)
+                    # First occurrence wins
+                    if dedup_key not in unique_entries:
+                        unique_entries[dedup_key] = tgt
     except Exception as e:
         logger.error(f"❌ Error reading glossary CSV: {e}")
         return
@@ -151,15 +165,19 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
     documents = []
     metadatas = []
 
-    for src, tgt in unique_entries.items():
+    for (src, ctx), tgt in unique_entries.items():
         doc_text = src
-        # Unique ID by content to allow idempotent loading to prevent duplicate
-        # entries in the DB
-        doc_id = generate_content_hash(doc_text)
+        # Unique ID incorporates langcode and context for multi-language support
+        doc_id = generate_content_hash(doc_text, langcode=langcode, msgctxt=ctx)
 
         ids.append(doc_id)
         documents.append(doc_text)
-        metadatas.append({"target": tgt, "source_original": src})
+        metadatas.append({
+            "target": tgt,
+            "source_original": src,
+            "langcode": langcode,
+            "context": ctx,
+        })
 
     # Batch and Incremental Load
     _ingest_batches(gloss_col, ids, documents, metadatas,
@@ -169,12 +187,17 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, source_path: Path, re
 
 # --- TM Processor ---
 
-def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bool = False) -> None:
+def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False) -> None:
     """
-    Recursively finds PO files, deduplicates by msgid, and incrementally ingests.
+    Recursively finds PO files, deduplicates by (msgid, msgctxt), and incrementally ingests.
     If reset is True, deletes existing collection first.
+    
+    Each entry is tagged with langcode and msgctxt metadata fields.
+    Deduplication key is (msgid, msgctxt) so identical strings with different
+    Drupal contexts are stored as separate entries.
     """
     COLLECTION_NAME = Config.TM_COLLECTION
+    source_dir = Path(paths.tm_source_dir(langcode))
     logger.info(f"💾 Processing Translation Memory from {source_dir}...")
 
     if not source_dir.exists():
@@ -217,8 +240,10 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     else:
         logger.info(f"   🔍 Found {len(po_files)} reference .po files.")
 
-    # Key: msgid, Value: (msgstr, filename)
-    unique_tm: Dict[str, Tuple[str, str]] = {}
+    # Key: (msgid, msgctxt), Value: (msgstr, filename)
+    # Using (msgid, msgctxt) as key allows the same English string
+    # with different Drupal contexts to be stored separately.
+    unique_tm: Dict[Tuple[str, str], Tuple[str, str]] = {}
     logger.info("   ⏳ Reading and deduplicating PO entries...")
 
     for po_file in po_files:
@@ -230,14 +255,16 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
                 if entry.msgid and entry.msgstr and "fuzzy" not in entry.flags:
                     clean_src = entry.msgid.strip()
                     clean_tgt = entry.msgstr.strip()
+                    msgctxt = (entry.msgctxt or "").strip()
 
                     # check to ensure neither is empty
                     if clean_src and clean_tgt:
+                        dedup_key = (clean_src, msgctxt)
                         
-                        # Deduplication logic: if the same msgid is found in multiple files, 
-                        # the last one will overwrite the previous ones
-                        if clean_src not in unique_tm:
-                            unique_tm[clean_src] = (clean_tgt, base_filename)
+                        # Deduplication logic: if the same (msgid, msgctxt) is found
+                        # in multiple files, first occurrence wins
+                        if dedup_key not in unique_tm:
+                            unique_tm[dedup_key] = (clean_tgt, base_filename)
         except Exception as e:
             logger.warning(f"   ⚠️ Error reading file {po_file}: {e}")
 
@@ -249,14 +276,19 @@ def process_tm(client: chromadb.HttpClient, ef: Any, source_dir: Path, reset: bo
     documents = []
     metadatas = []
 
-    for src, (tgt, fname) in unique_tm.items():
+    for (src, msgctxt), (tgt, fname) in unique_tm.items():
         doc_text = src
-        # Unique ID by content, allows idempotent (incremental) loading
-        doc_id = generate_content_hash(doc_text)
+        # Unique ID incorporates langcode and msgctxt
+        doc_id = generate_content_hash(doc_text, langcode=langcode, msgctxt=msgctxt)
 
         ids.append(doc_id)
         documents.append(doc_text)
-        metadatas.append({"target": tgt, "file": fname})
+        metadatas.append({
+            "target": tgt,
+            "file": fname,
+            "langcode": langcode,
+            "msgctxt": msgctxt,
+        })
 
     # Batch and Incremental Load
     _ingest_batches(tm_col, ids, documents, metadatas,
@@ -327,6 +359,9 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Ingest translation data into ChromaDB.")
+    parser.add_argument("--lang", required=True,
+                        help="Target language code (e.g. ja, it). "
+                             "Determines which data/tm_source/{lang}/ directory to read from.")
     parser.add_argument("--glossary-only", action="store_true",
                         help="Only ingest the glossary CSV.")
     parser.add_argument("--tm-only", action="store_true",
@@ -334,6 +369,9 @@ def main() -> None:
     parser.add_argument("--reset", action="store_true",
                         help="Delete existing collections before ingestion (Cleanup dupes).")
     args = parser.parse_args()
+
+    langcode = args.lang
+    logger.info(f"🌐 Target language: {langcode}")
 
     run_glossary = True
     run_tm = True
@@ -348,7 +386,7 @@ def main() -> None:
         run_tm = True
 
     # --- Pre-Flight Check ---
-    if not pre_flight_check(run_glossary, run_tm):
+    if not pre_flight_check(run_glossary, run_tm, langcode=langcode):
         logger.error("🛑 Pre-flight checks failed. Exiting.")
         return
 
@@ -368,10 +406,10 @@ def main() -> None:
         return
 
     if run_glossary:
-        process_glossary(client, embedding_fn, GLOSSARY_FILE, reset=args.reset)
+        process_glossary(client, embedding_fn, langcode, reset=args.reset)
 
     if run_tm:
-        process_tm(client, embedding_fn, TM_SOURCE_DIR, reset=args.reset)
+        process_tm(client, embedding_fn, langcode, reset=args.reset)
 
     logger.info("🎉 Ingestion Pipeline Finished.")
 
