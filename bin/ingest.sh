@@ -84,7 +84,7 @@ echo "Select ingestion mode:"
 echo "1) Full Ingest (Glossary + TM)"
 echo "2) Glossary Only"
 echo "3) TM Only"
-echo "4) Reset & Full Ingest (Wipe existing data)"
+echo "4) Reset (Wipe existing data)"
 echo "----------------------------------------------------------------"
 read -p "Choice [1-4]: " choice
 
@@ -92,24 +92,54 @@ case $choice in
   1) FLAGS="" ;;
   2) FLAGS="--glossary-only" ;;
   3) FLAGS="--tm-only" ;;
-  4) FLAGS="--reset" ;;
+  4) FLAGS="--reset-only" ;;
   *) echo "Invalid choice"; exit 1 ;;
 esac
 
-# 5. Loop over all languages and ingest
-echo "🚀 Launching Ingestion for ${#VALID_LANGS[@]} language(s)..."
+echo "----------------------------------------------------------------"
+if [ "$choice" -eq 4 ]; then
+  echo "Select language to reset:"
+else
+  echo "Select target language for ingestion:"
+fi
+
+lang_options=("${VALID_LANGS[@]}" "all")
+PS3="Enter the number of your choice: "
+select SELECTED_LANG in "${lang_options[@]}"; do
+  if [ -n "$SELECTED_LANG" ]; then
+    break
+  else
+    echo "❌ Invalid option. Please try again."
+  fi
+done
+
+if [ "$SELECTED_LANG" == "all" ]; then
+  if [ "$choice" -eq 4 ]; then
+    TARGET_LANGS=("all")
+  else
+    TARGET_LANGS=("${VALID_LANGS[@]}")
+  fi
+else
+  TARGET_LANGS=("$SELECTED_LANG")
+fi
+
+echo "🚀 Launching operation for ${#TARGET_LANGS[@]} language(s)..."
 cd "$PROJECT_ROOT"
 
 FAILED_LANGS=()
 SUCCESS_LANGS=()
-for LANG_CODE in "${VALID_LANGS[@]}"; do
+for LANG_CODE in "${TARGET_LANGS[@]}"; do
   echo ""
   echo "================================================================"
-  echo "📦 Ingesting: $LANG_CODE"
+  if [ "$choice" -eq 4 ]; then
+    echo "🗑️  Resetting: $LANG_CODE"
+  else
+    echo "📦 Ingesting: $LANG_CODE"
+  fi
   echo "================================================================"
   # Use -u to ensure logs appear immediately in the terminal
   if ! docker compose exec toolbox python3 -u /app/src/ingest.py --lang "$LANG_CODE" $FLAGS; then
-    echo "⚠️  Ingestion failed for $LANG_CODE — continuing with remaining languages."
+    echo "⚠️  Operation failed for $LANG_CODE — continuing with remaining languages."
     FAILED_LANGS+=("$LANG_CODE")
   else
     SUCCESS_LANGS+=("$LANG_CODE")
@@ -118,9 +148,16 @@ done
 
 echo ""
 echo "================================================================"
-echo "📊 Ingestion Summary:"
-if [ ${#SUCCESS_LANGS[@]} -gt 0 ]; then
-  echo "✅ Successfully ingested: ${SUCCESS_LANGS[*]}"
+if [ "$choice" -eq 4 ]; then
+  echo "📊 Reset Summary:"
+  if [ ${#SUCCESS_LANGS[@]} -gt 0 ]; then
+    echo "✅ Successfully reset: ${SUCCESS_LANGS[*]}"
+  fi
+else
+  echo "📊 Ingestion Summary:"
+  if [ ${#SUCCESS_LANGS[@]} -gt 0 ]; then
+    echo "✅ Successfully ingested: ${SUCCESS_LANGS[*]}"
+  fi
 fi
 
 if [ ${#SKIPPED_LANGS[@]} -gt 0 ]; then

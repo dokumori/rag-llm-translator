@@ -95,7 +95,7 @@ def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bo
 # --- Glossary Processor ---
 
 
-def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False) -> None:
+def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
     """
     Reads, cleans, deduplicates, and incrementally ingests glossary terms.
     If reset is True, deletes existing collection first.
@@ -103,6 +103,31 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
     Each entry is tagged with the langcode metadata field.
     """
     COLLECTION_NAME = Config.GLOSSARY_COLLECTION
+
+    if reset:
+        try:
+            col = client.get_collection(COLLECTION_NAME)
+            if langcode == "all":
+                client.delete_collection(COLLECTION_NAME)
+                logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
+            else:
+                col.delete(where={"langcode": langcode})
+                logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
+        except Exception:
+            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist or could not be accessed.")
+
+    if skip_ingest:
+        return
+
+    try:
+        gloss_col = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=ef,
+            metadata={"hnsw:space": "cosine"}
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to get/create glossary collection: {e}")
+        return
 
     # Resolve path via unified path helper
     scan_dir = Path(paths.tm_source_dir(langcode))
@@ -124,25 +149,6 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
         logger.error(f"❌ Glossary file not found at: {target_file}")
         return
 
-    if reset:
-        try:
-            client.delete_collection(COLLECTION_NAME)
-            logger.info(
-                f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
-        except Exception:
-            logger.info(
-                f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
-
-    try:
-        gloss_col = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"}
-        )
-    except Exception as e:
-        logger.error(f"❌ Failed to get/create glossary collection: {e}")
-        return
-
     # Key: (source, context), Value: target
     # Using (source, context) as key allows the same glossary term
     # with different contexts to be stored separately.
@@ -153,9 +159,14 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
         with target_file.open(mode='r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                src = row.get('source', '').strip()
-                tgt = row.get('target', '').strip()
-                ctx = row.get('context', '').strip()
+                # Normalise column names to lowercase for case-insensitive lookup.
+                # extract_glossary_from_db.py writes 'Source', 'Context', 'Target' (title-case),
+                # so plain row.get('source') would silently return '' without this step.
+                row_lower = {k.lower(): v for k, v in row.items()}
+                src = row_lower.get('source', '').strip()
+                tgt = row_lower.get('target', '').strip()
+                # The glossary CSV may use 'msgctxt' or 'context' as the column name.
+                ctx = (row_lower.get('msgctxt', '') or row_lower.get('context', '')).strip()
 
                 if src and tgt:
                     dedup_key = (src, ctx)
@@ -195,7 +206,7 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
 
 # --- TM Processor ---
 
-def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False) -> None:
+def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
     """
     Recursively finds PO files, deduplicates by (msgid, msgctxt), and incrementally ingests.
     If reset is True, deletes existing collection first.
@@ -205,21 +216,21 @@ def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool 
     Drupal contexts are stored as separate entries.
     """
     COLLECTION_NAME = Config.TM_COLLECTION
-    source_dir = Path(paths.tm_source_dir(langcode))
-    logger.info(f"💾 Processing Translation Memory from {source_dir}...")
-
-    if not source_dir.exists():
-        logger.error(f"❌ Source directory not found: {source_dir}")
-        return
 
     if reset:
         try:
-            client.delete_collection(COLLECTION_NAME)
-            logger.info(
-                f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
+            col = client.get_collection(COLLECTION_NAME)
+            if langcode == "all":
+                client.delete_collection(COLLECTION_NAME)
+                logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
+            else:
+                col.delete(where={"langcode": langcode})
+                logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
         except Exception:
-            logger.info(
-                f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist.")
+            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist or could not be accessed.")
+
+    if skip_ingest:
+        return
 
     try:
         tm_col = client.get_or_create_collection(
@@ -229,6 +240,13 @@ def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool 
         )
     except Exception as e:
         logger.error(f"❌ Failed to get/create TM collection: {e}")
+        return
+
+    source_dir = Path(paths.tm_source_dir(langcode))
+    logger.info(f"💾 Processing Translation Memory from {source_dir}...")
+
+    if not source_dir.exists():
+        logger.error(f"❌ Source directory not found: {source_dir}")
         return
 
     # ROBUST FILE FINDING
@@ -376,6 +394,8 @@ def main() -> None:
                         help="Only ingest the .po files.")
     parser.add_argument("--reset", action="store_true",
                         help="Delete existing collections before ingestion (Cleanup dupes).")
+    parser.add_argument("--reset-only", action="store_true",
+                        help="Only delete existing collections/entries, do not ingest anything.")
     args = parser.parse_args()
 
     langcode = args.lang
@@ -392,9 +412,12 @@ def main() -> None:
         logger.warning("⚠️  Both flags set. Running BOTH.")
         run_glossary = True
         run_tm = True
+    if args.reset_only:
+        run_glossary = False
+        run_tm = False
 
     # --- Pre-Flight Check ---
-    if not pre_flight_check(run_glossary, run_tm, langcode=langcode):
+    if not args.reset_only and not pre_flight_check(run_glossary, run_tm, langcode=langcode):
         logger.error("🛑 Pre-flight checks failed. Exiting.")
         return
 
@@ -410,6 +433,16 @@ def main() -> None:
     except Exception as e:
         logger.critical(f"❌ Failed to load embedding model: {e}")
         return
+
+    is_reset = args.reset or args.reset_only
+
+    if is_reset:
+        # For reset only, we still need to process the deletion logic
+        if args.reset_only:
+            process_glossary(client, embedding_fn, langcode, reset=True, skip_ingest=True)
+            process_tm(client, embedding_fn, langcode, reset=True, skip_ingest=True)
+            logger.info("🎉 Reset Finished.")
+            return
 
     if run_glossary:
         process_glossary(client, embedding_fn, langcode, reset=args.reset)
