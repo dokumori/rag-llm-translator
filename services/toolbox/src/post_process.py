@@ -1,6 +1,7 @@
 import sys
 import os
 import glob
+import argparse
 import importlib.util
 from core.utils import find_po_files
 
@@ -59,6 +60,36 @@ def load_plugin(plugin_name):
         print(f"❌ Failed to load plugin '{plugin_name}': {e}")
         return None
 
+def resolve_plugins(lang: str | None = None) -> list[str]:
+    """
+    Resolve the plugin list for a specific language.
+
+    Looks up POST_PROCESS_PLUGINS_<LANG>.  If no language is provided
+    or no matching variable exists, returns an empty list (no plugins run).
+
+    An explicitly empty value (e.g. POST_PROCESS_PLUGINS_ZH="") means
+    "no plugins for this language".
+    """
+    if not lang:
+        print("ℹ️  No --lang provided. Cannot resolve plugins. Skipping.")
+        return []
+
+    # Normalise: "pt-br" → "PT_BR"
+    env_key = f"POST_PROCESS_PLUGINS_{lang.upper().replace('-', '_')}"
+    lang_specific = os.environ.get(env_key)
+
+    if lang_specific is None:
+        print(f"ℹ️  No plugin config found for '{lang}' ({env_key}). Skipping.")
+        return []
+
+    plugins = [p.strip() for p in lang_specific.split(',') if p.strip()]
+    if plugins:
+        print(f"🔌 Plugins for '{lang}': {plugins}")
+    else:
+        print(f"ℹ️  Plugin config for '{lang}' is explicitly empty. No plugins to run.")
+    return plugins
+
+
 def process_single_file(file_path, loaded_plugins):
     try:
         print(f"🔧 Processing: {os.path.basename(file_path)}...")
@@ -94,31 +125,42 @@ def main():
         print(f"ℹ️ Post-processing is disabled via environment variable. Skipping.")
         sys.exit(0)
 
-    # Load Plugins
-    plugin_names_env = os.environ.get("POST_PROCESS_PLUGINS", "spacing_around_drupal_variables,jp_en_spacing")
-    if not plugin_names_env:
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        description="Post-process translated .po files using configurable plugins."
+    )
+    parser.add_argument(
+        "input_path", nargs="?", default=None,
+        help="Path to a .po file or directory of .po files."
+    )
+    parser.add_argument(
+        "--lang", default=None,
+        help="Target language code (e.g. ja, pt-br). "
+             "Used to resolve language-specific plugin lists."
+    )
+    args = parser.parse_args()
+
+    # Resolve plugins via precedence chain
+    plugin_names = resolve_plugins(args.lang)
+    if not plugin_names:
         print("ℹ️ No plugins configured. Exiting.")
         sys.exit(0)
-        
-    plugin_names = [p.strip() for p in plugin_names_env.split(',') if p.strip()]
+
     loaded_plugins = []
-    
-    print(f"🔌 Loading plugins: {plugin_names}")
     for name in plugin_names:
         module = load_plugin(name)
         if module:
             loaded_plugins.append(module)
-            
+
     if not loaded_plugins:
         print("⚠️ No valid plugins loaded. Exiting.")
         sys.exit(0)
 
     # Input Path
-    if len(sys.argv) < 2:
+    input_path = args.input_path
+    if input_path is None:
         print(f"⚠️ No path provided. Defaulting to: {POST_PROCESS_INPUT_DIR}")
         input_path = POST_PROCESS_INPUT_DIR
-    else:
-        input_path = sys.argv[1]
 
     files_to_process = []
 

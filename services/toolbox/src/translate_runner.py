@@ -62,9 +62,12 @@ def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str,
 
 def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
     """Prepares the gpt-po-translator command arguments."""
+    # We use a custom wrapper to monkey-patch python_gpt_po's context handling.
+    wrapper_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_gpt_po.py")
+
     return [
         sys.executable,
-        "-m", "python_gpt_po.main",
+        wrapper_script,
         "--provider", "openai",
         "--model", model,
         "--folder", temp_folder,
@@ -72,6 +75,7 @@ def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]
         "--bulk",
         "--bulksize", BULK_SIZE
     ]
+
 
 
 def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = MAX_RETRIES) -> subprocess.CompletedProcess:

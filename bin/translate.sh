@@ -229,7 +229,7 @@ docker compose exec \
 
 # 5. Post-Processing
   echo "✨ Running Post-Process..."
-  docker compose exec toolbox python3 /app/src/post_process.py "/app/po/output/$TARGET_LANG"
+  docker compose exec toolbox python3 /app/src/post_process.py "/app/po/output/$TARGET_LANG" --lang "$TARGET_LANG"
 
 done
 

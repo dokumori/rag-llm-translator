@@ -98,6 +98,13 @@ def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
     Returns a cleaned list of dictionary objects with 'text' and 'context'.
     """
     query_payload: List[Any] = []
+    
+    # Extract global context from gpt-po-translator prompt prefix if present
+    global_context = ""
+    context_match = re.search(r"CONTEXT:\s*(.*?)\nIMPORTANT: Choose the translation", source_text)
+    if context_match:
+        global_context = context_match.group(1).strip()
+
     start_indices = [i for i, char in enumerate(source_text) if char == '[']
 
     for idx in reversed(start_indices):
@@ -136,11 +143,14 @@ def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
         if isinstance(item, dict):
             # Extract text and developer-provided context (msgctxt) from gpt-po-translator 2.0.4+
             text = item.get("text", "") or item.get("string", "") or ""
-            context = item.get("context", "") or ""
+            raw_context = item.get("context", None)
+            context = raw_context if raw_context is not None else global_context
         elif isinstance(item, str):
             text = item
+            context = global_context
         else:
             text = str(item)
+            context = global_context
             
         if delimiter in text:
             text = text.split(delimiter)[-1]
@@ -221,42 +231,112 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
         # Build language filter for ChromaDB metadata queries
         lang_filter = {"langcode": target_lang} if target_lang else None
 
+        def _query_with_context_fallback(collection, query_texts, lang_filter, batch_context, context_meta_key):
+            """
+            Runs a ChromaDB query respecting context isolation.
+
+            Strategy:
+              1. If batch_context is present, query with
+                 (langcode == target_lang AND <context_meta_key> == batch_context).
+                 If that returns no documents, fall back to lang-only.
+              2. If batch_context is ABSENT (empty), query with
+                 (langcode == target_lang AND <context_meta_key> == "").
+                 This prevents context-specific entries from bleeding into
+                 no-context strings (e.g. 'Italian' without msgctxt should
+                 NOT match a glossary entry tagged with a specific msgctxt).
+              3. If no lang_filter, query without any metadata filter.
+
+            Returns (result, context_was_used: bool).
+            """
+            base_kwargs = {"query_texts": query_texts, "n_results": 1}
+
+            if lang_filter and batch_context:
+                # --- Pass 1: context-specific query ---
+                ctx_kwargs = {**base_kwargs, "where": {"$and": [{"langcode": target_lang}, {context_meta_key: batch_context}]}}
+                try:
+                    ctx_res = collection.query(**ctx_kwargs)
+                    has_any = any(doc_list for doc_list in ctx_res.get("documents", []))
+                    if has_any:
+                        logger.info(f"   🎯 Context-filtered query succeeded (context_key='{context_meta_key}', context='{batch_context}')")
+                        return ctx_res, True
+                    else:
+                        logger.info(f"   ⚠️ Context-filtered query returned no results; falling back to lang-only filter (context='{batch_context}')")
+                except Exception as ctx_err:
+                    logger.warning(f"   ⚠️ Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
+
+                # --- Fallback: lang-only (no context restriction) ---
+                fallback_kwargs = {**base_kwargs, "where": lang_filter}
+                return collection.query(**fallback_kwargs), False
+
+            elif lang_filter:
+                # No batch_context: restrict to context-free entries only
+                # so context-specific glossary entries don't bleed into no-context strings.
+                no_ctx_kwargs = {**base_kwargs, "where": {"$and": [{"langcode": target_lang}, {context_meta_key: ""}]}}
+                try:
+                    no_ctx_res = collection.query(**no_ctx_kwargs)
+                    has_any = any(doc_list for doc_list in no_ctx_res.get("documents", []))
+                    if has_any:
+                        return no_ctx_res, False
+                    else:
+                        logger.info(f"   ⚠️ No context-free entries found; falling back to lang-only filter")
+                except Exception as no_ctx_err:
+                    logger.warning(f"   ⚠️ Context-free query failed ({no_ctx_err}); falling back to lang-only filter")
+
+                # Fallback: lang-only (catches entries ingested before context isolation was enforced)
+                return collection.query(**{**base_kwargs, "where": lang_filter}), False
+            else:
+                return collection.query(**base_kwargs), False
+
         # Process Glossary
         if GLOSSARY_COLLECTION in existing_collections:
             gloss_col = client.get_collection(
                 GLOSSARY_COLLECTION,
                 embedding_function=get_embedding_function()
             )
-            query_kwargs = {"query_texts": formatted_query, "n_results": 1}
-            if lang_filter:
-                query_kwargs["where"] = lang_filter
-            gloss_res = gloss_col.query(**query_kwargs)
-            if gloss_res['documents']:
-                for i, doc_list in enumerate(gloss_res['documents']):
-                    if doc_list:
-                        dist = gloss_res['distances'][i][0]
-                        src = doc_list[0]
-                        tgt = gloss_res['metadatas'][i][0].get('target', '')
+            
+            # Group items by context to optimize queries
+            gloss_groups = {}
+            for i, item in enumerate(query_payload):
+                ctx = item.get("context", "").strip()
+                if ctx not in gloss_groups:
+                    gloss_groups[ctx] = []
+                gloss_groups[ctx].append((i, formatted_query[i], item.get("text", "")))
 
-                        # --- GUARDRAIL (GLOSSARY) ---
-                        query_text = query_payload[i].get("text", "")
-                        is_semantic_match = dist < GLOSSARY_THRESHOLD
-                        has_shared_words = has_shared_stems(query_text, src)
+            for item_context, group_items in gloss_groups.items():
+                group_indices = [g[0] for g in group_items]
+                group_formatted_texts = [g[1] for g in group_items]
+                group_original_texts = [g[2] for g in group_items]
 
-                        # Reject if no shared words unless distance is extremely low (synonym exception)
-                        if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
-                            is_accepted = False
-                            logger.info(
-                                f"   🛡️ Glossary Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
-                        else:
-                            is_accepted = is_semantic_match
+                gloss_res, gloss_ctx_used = _query_with_context_fallback(
+                    gloss_col, group_formatted_texts, lang_filter, item_context, "context"
+                )
+                if gloss_res['documents']:
+                    for j, doc_list in enumerate(gloss_res['documents']):
+                        if doc_list:
+                            orig_idx = group_indices[j]
+                            query_text = group_original_texts[j]
+                            dist = gloss_res['distances'][j][0]
+                            src = doc_list[0]
+                            tgt = gloss_res['metadatas'][j][0].get('target', '')
 
-                        matches_log.append({
-                            "type": "glossary", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
-                        })
+                            # --- GUARDRAIL (GLOSSARY) ---
+                            is_semantic_match = dist < GLOSSARY_THRESHOLD
+                            has_shared_words = has_shared_stems(query_text, src)
 
-                        if is_accepted:
-                            found_glossary.add(f"- '{src}' -> '{tgt}'")
+                            # Reject if no shared words unless distance is extremely low (synonym exception)
+                            if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
+                                is_accepted = False
+                                logger.info(
+                                    f"   🛡️ Glossary Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
+                            else:
+                                is_accepted = is_semantic_match
+
+                            matches_log.append({
+                                "type": "glossary", "context": item_context if gloss_ctx_used else "", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                            })
+
+                            if is_accepted:
+                                found_glossary.add(f"- '{src}' -> '{tgt}'")
 
         # Process Translation Memory (TM)
         if TM_COLLECTION in existing_collections:
@@ -264,35 +344,51 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                 TM_COLLECTION,
                 embedding_function=get_embedding_function()
             )
-            tm_query_kwargs = {"query_texts": formatted_query, "n_results": 1}
-            if lang_filter:
-                tm_query_kwargs["where"] = lang_filter
-            tm_res = tm_col.query(**tm_query_kwargs)
-            if tm_res['documents']:
-                for i, doc_list in enumerate(tm_res['documents']):
-                    if doc_list:
-                        dist = tm_res['distances'][i][0]
-                        src = doc_list[0]
-                        tgt = tm_res['metadatas'][i][0].get('target', '')
+            
+            # Group items by context to optimize queries
+            tm_groups = {}
+            for i, item in enumerate(query_payload):
+                ctx = item.get("context", "").strip()
+                if ctx not in tm_groups:
+                    tm_groups[ctx] = []
+                tm_groups[ctx].append((i, formatted_query[i], item.get("text", "")))
 
-                        # --- GUARDRAIL (TM) ---
-                        query_text = query_payload[i].get("text", "")
-                        is_semantic_match = dist < TM_THRESHOLD
-                        has_shared_words = has_shared_stems(query_text, src)
+            for item_context, group_items in tm_groups.items():
+                group_indices = [g[0] for g in group_items]
+                group_formatted_texts = [g[1] for g in group_items]
+                group_original_texts = [g[2] for g in group_items]
 
-                        if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
-                            is_accepted = False
-                            logger.info(
-                                f"   🛡️ TM Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
-                        else:
-                            is_accepted = is_semantic_match
+                tm_res, tm_ctx_used = _query_with_context_fallback(
+                    tm_col, group_formatted_texts, lang_filter, item_context, "msgctxt"
+                )
+                if tm_res['documents']:
+                    for j, doc_list in enumerate(tm_res['documents']):
+                        if doc_list:
+                            orig_idx = group_indices[j]
+                            query_text = group_original_texts[j]
+                            dist = tm_res['distances'][j][0]
+                            src = doc_list[0]
+                            tgt = tm_res['metadatas'][j][0].get('target', '')
 
-                        matches_log.append({
-                            "type": "tm", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
-                        })
+                            # --- GUARDRAIL (TM) ---
+                            is_semantic_match = dist < TM_THRESHOLD
+                            has_shared_words = has_shared_stems(query_text, src)
 
-                        if is_accepted:
-                            found_tm.add(f"Source: {src}\nTarget: {tgt}")
+                            if not has_shared_words and dist > RAG_STRICT_DISTANCE_THRESHOLD:
+                                is_accepted = False
+                                logger.info(
+                                    f"   🛡️ TM Guardrail Rejection: '{query_text}' vs '{src}' (Dist: {dist:.4f}, No shared words)")
+                            else:
+                                is_accepted = is_semantic_match
+
+                            matches_log.append({
+                                "type": "tm", "context": item_context if tm_ctx_used else "", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                            })
+
+                            if is_accepted:
+                                found_tm.add(f"Source: {src}\nTarget: {tgt}")
+
+
 
     except Exception as e:
         logger.error(f"⚠️ RAG Lookup skipped: {e}", exc_info=True)
@@ -406,8 +502,25 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         logger.info(json.dumps(log_entry, ensure_ascii=False))
 
         # --- 4a. PREPARE PAYLOAD ---
+        # Strip only the "CONTEXT: ...\nIMPORTANT: ..." prefix block injected by
+        # gpt-po-translator. We use a targeted regex so we don't accidentally remove
+        # the library's own JSON format instructions that follow the prefix.
+        # (The old find('[') approach was too aggressive and stripped those instructions too.)
+        cleaned_source_text = re.sub(
+            r'^CONTEXT:.*?(?=\nProvide only|\nTexts to translate:|\[)',
+            '',
+            source_text,
+            flags=re.DOTALL
+        ).lstrip()
+
+        def _clean_user_message(msg: Dict[str, Any]) -> Dict[str, Any]:
+            """Replace raw content with the prefix-stripped version for the last user message."""
+            if msg.get('role') == 'user' and msg.get('content') == source_text:
+                return {**msg, 'content': cleaned_source_text}
+            return msg
+
         new_messages = [{"role": "system", "content": final_system_content}]
-        new_messages += [m for m in messages if m.get('role') != 'system']
+        new_messages += [_clean_user_message(m) for m in messages if m.get('role') != 'system']
 
         logger.info(f"FINAL_PAYLOAD: {json.dumps({'model': requested_model, 'messages': new_messages}, ensure_ascii=False)}")
 
@@ -456,7 +569,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
                     logger.warning(f"🚨 LLM RETURNED EMPTY STRING! Finish Reason: {choice.finish_reason}")
             
             raw_content = response.choices[0].message.content or ""
-            sneak_peek = raw_content[:150].strip().replace('\n', ' ')
+            sneak_peek = raw_content[:250].strip().replace('\n', ' ')
             logger.info(f"raw_output_sneak_peek: {sneak_peek}")
             # -----------------------------
 

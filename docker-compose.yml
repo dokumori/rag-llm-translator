@@ -72,6 +72,8 @@ services:
       dockerfile: ./services/toolbox/Dockerfile
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
     command: tail -f /dev/null
+    env_file:
+      - .env
     environment:
       - LLM_API_TOKEN=${LLM_API_TOKEN}
       - LLM_BASE_URL=${LLM_BASE_URL}
@@ -87,7 +89,6 @@ services:
       - OPENAI_BASE_URL=http://rag-proxy:5000/v1
       - POST_PROCESS_INPUT_DIR=/app/po/output
       - POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED:-false}
-      - POST_PROCESS_PLUGINS=${POST_PROCESS_PLUGINS}
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app/src:/app/shared:/app/services/rag-proxy/src
       - PYTHONUNBUFFERED=1

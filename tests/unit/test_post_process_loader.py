@@ -19,13 +19,13 @@ def test_disabled_via_env(capsys):
             assert "Post-processing is disabled" in captured.out
 
 def test_plugin_loading():
-    """Test that plugins are loaded based on env var."""
+    """Test that plugins are loaded based on language-specific env var."""
     with patch.dict(os.environ, {
         "POST_PROCESSING_ENABLED": "true",
-        "POST_PROCESS_PLUGINS": "test_plugin",
+        "POST_PROCESS_PLUGINS_JA": "test_plugin",
         "POST_PROCESS_INPUT_DIR": "/tmp"
     }):
-        with patch.object(sys, 'argv', ["script", "dummy_file.po"]):
+        with patch.object(sys, 'argv', ["script", "dummy_file.po", "--lang", "ja"]):
             with patch("os.path.isfile", return_value=True):
                 with patch('post_process.load_plugin') as mock_load:
                     with patch('post_process.process_single_file') as mock_process:
@@ -42,10 +42,10 @@ def test_plugin_loading_with_whitespace():
     """Test that plugins are loaded correctly even with whitespace in the env var."""
     with patch.dict(os.environ, {
         "POST_PROCESSING_ENABLED": "true",
-        "POST_PROCESS_PLUGINS": " plugin1 , plugin2 ",
+        "POST_PROCESS_PLUGINS_ES": " plugin1 , plugin2 ",
         "POST_PROCESS_INPUT_DIR": "/tmp"
     }):
-        with patch.object(sys, 'argv', ["script", "dummy.po"]):
+        with patch.object(sys, 'argv', ["script", "dummy.po", "--lang", "es"]):
             with patch("os.path.isfile", return_value=True):
                 with patch('post_process.load_plugin') as mock_load:
                     with patch('post_process.process_single_file'):
@@ -62,10 +62,10 @@ def test_invalid_plugin_name(capsys):
     """Test that invalid plugins are skipped with a warning."""
     with patch.dict(os.environ, {
         "POST_PROCESSING_ENABLED": "true",
-        "POST_PROCESS_PLUGINS": "valid_plugin, invalid_plugin",
+        "POST_PROCESS_PLUGINS_JA": "valid_plugin, invalid_plugin",
         "POST_PROCESS_INPUT_DIR": "/tmp"
     }):
-        with patch.object(sys, 'argv', ["script", "dummy.po"]):
+        with patch.object(sys, 'argv', ["script", "dummy.po", "--lang", "ja"]):
             with patch("os.path.isfile", return_value=True):
                 # Mock load_plugin to return None for invalid_plugin
                 original_load = post_process.load_plugin
@@ -123,3 +123,88 @@ def test_name_conflict(capsys):
             captured = capsys.readouterr()
             assert "Duplicate plugin names detected" in captured.out
             assert "foo" in captured.out
+
+
+# --- Per-language plugin resolution tests ---
+
+def test_resolve_plugins_lang_specific():
+    """Language-specific env var returns the configured plugins."""
+    with patch.dict(os.environ, {
+        "POST_PROCESS_PLUGINS_JA": "ja_plugin1,ja_plugin2",
+    }):
+        result = post_process.resolve_plugins("ja")
+        assert result == ["ja_plugin1", "ja_plugin2"]
+
+
+def test_resolve_plugins_no_lang_returns_empty():
+    """No lang argument returns empty list (language is required)."""
+    result = post_process.resolve_plugins(None)
+    assert result == []
+
+
+def test_resolve_plugins_lang_with_no_env_returns_empty():
+    """Lang provided but no matching env var returns empty list."""
+    with patch.dict(os.environ, {}, clear=False):
+        # Ensure no FR-specific var is set
+        os.environ.pop("POST_PROCESS_PLUGINS_FR", None)
+        result = post_process.resolve_plugins("fr")
+        assert result == []
+
+
+def test_resolve_plugins_empty_string_returns_empty():
+    """Explicitly empty language-specific var means no plugins (opt-out)."""
+    with patch.dict(os.environ, {
+        "POST_PROCESS_PLUGINS_ZH": "",
+    }):
+        result = post_process.resolve_plugins("zh")
+        assert result == []
+
+
+def test_resolve_plugins_hyphenated_lang():
+    """Hyphenated language code maps correctly (pt-br -> PT_BR)."""
+    with patch.dict(os.environ, {
+        "POST_PROCESS_PLUGINS_PT_BR": "pt_br_plugin",
+    }):
+        result = post_process.resolve_plugins("pt-br")
+        assert result == ["pt_br_plugin"]
+
+
+def test_main_with_lang_flag():
+    """End-to-end: --lang flag routes to language-specific plugins."""
+    with patch.dict(os.environ, {
+        "POST_PROCESSING_ENABLED": "true",
+        "POST_PROCESS_PLUGINS_JA": "ja_plugin",
+        "POST_PROCESS_INPUT_DIR": "/tmp",
+    }):
+        with patch.object(sys, 'argv', ["script", "dummy.po", "--lang", "ja"]):
+            with patch("os.path.isfile", return_value=True):
+                with patch('post_process.check_plugin_conflicts'):
+                    with patch('post_process.load_plugin') as mock_load:
+                        with patch('post_process.process_single_file'):
+                            mock_load.return_value = MagicMock()
+                            post_process.main()
+
+                            # Should load the JA-specific plugin
+                            mock_load.assert_called_once_with("ja_plugin")
+
+
+def test_main_without_lang_flag_exits_cleanly(capsys):
+    """End-to-end: no --lang flag means no plugins resolve, exits cleanly."""
+    with patch.dict(os.environ, {
+        "POST_PROCESSING_ENABLED": "true",
+        "POST_PROCESS_INPUT_DIR": "/tmp",
+    }):
+        with patch.object(sys, 'argv', ["script", "dummy.po"]):
+            with patch('post_process.check_plugin_conflicts'):
+                with patch('sys.exit') as mock_exit:
+                    mock_exit.side_effect = SystemExit
+                    try:
+                        post_process.main()
+                    except SystemExit:
+                        pass
+
+                    # Should exit with 0 (no plugins configured)
+                    mock_exit.assert_called_with(0)
+                    captured = capsys.readouterr()
+                    assert "No plugins configured" in captured.out
+

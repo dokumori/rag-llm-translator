@@ -88,14 +88,14 @@ class TestCorePostProcess(unittest.TestCase):
     @patch('post_process.load_plugin')
     @patch('post_process.process_single_file')
     def test_plugin_loading(self, mock_process, mock_load, mock_conflicts):
-        """Test that plugins are loaded based on env var."""
+        """Test that plugins are loaded based on language-specific env var."""
         with patch.dict(os.environ, {
             "POST_PROCESSING_ENABLED": "true",
-            "POST_PROCESS_PLUGINS": "test_plugin",
+            "POST_PROCESS_PLUGINS_JA": "test_plugin",
             "POST_PROCESS_INPUT_DIR": "/tmp" # Just in case
         }):
             # Mock sys.argv to avoid path error or exit
-            with patch.object(sys, 'argv', ["script", "dummy_file.po"]):
+            with patch.object(sys, 'argv', ["script", "dummy_file.po", "--lang", "ja"]):
                 # Mock file existence check
                 with patch("os.path.isfile", return_value=True):
                     # Mock loading success
@@ -132,10 +132,10 @@ class TestCorePostProcess(unittest.TestCase):
 
         with patch.dict(os.environ, {
             "POST_PROCESSING_ENABLED": "true",
-            "POST_PROCESS_PLUGINS": "test_plugin",
+            "POST_PROCESS_PLUGINS_JA": "test_plugin",
             "POST_PROCESS_INPUT_DIR": "/tmp"
         }):
-            with patch.object(sys, 'argv', ["script", "/tmp"]):
+            with patch.object(sys, 'argv', ["script", "/tmp", "--lang", "ja"]):
                 post_process.main()
                 
                 # Verify shared utility was called to replace glob

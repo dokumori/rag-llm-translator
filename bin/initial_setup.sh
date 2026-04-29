@@ -31,57 +31,7 @@ TM_THRESHOLD=0.27
 # See docs/3_RAG_performance_analysis.md before changing this value.
 RAG_STRICT_DISTANCE_THRESHOLD=0.15
 
-# Prompt for Post-Processing
-echo ""
-echo "===================================================================="
-echo " ⚙️  POST-PROCESSING PLUGINS"
-echo "   (Refer to docs/2_post_processing.md for details)"
-echo "===================================================================="
-read -p "Enable Post-Processing? [y/N] (default: No): " ENABLE_POST_PROC
-case "$ENABLE_POST_PROC" in
-  [yY][eE][sS]|[yY]) POST_PROCESSING_ENABLED=true ;;
-  *) POST_PROCESSING_ENABLED=false ;;
-esac
 
-# Initialize to empty string to prevent issues if disabled
-POST_PROCESS_PLUGINS=""
-
-if [ "$POST_PROCESSING_ENABLED" = "true" ]; then
-    # Dynamic Plugin Discovery
-    # Look in default and custom plugin directories
-    PLUGIN_DIR_DEFAULT="./services/toolbox/src/plugins/default"
-    PLUGIN_DIR_CUSTOM="./services/toolbox/src/plugins/custom"
-    
-    # helper to list python files without extension
-    list_plugins() {
-        find "$1" -maxdepth 1 -name "*.py" -not -name "__init__.py" -exec basename {} .py \; 2>/dev/null
-    }
-
-    PLUGINS_DEFAULT=$(list_plugins "$PLUGIN_DIR_DEFAULT" | tr '\n' ',')
-    PLUGINS_CUSTOM=$(list_plugins "$PLUGIN_DIR_CUSTOM" | tr '\n' ',')
-    
-    # Combine and trim trailing commas
-    ALL_PLUGINS="${PLUGINS_DEFAULT}${PLUGINS_CUSTOM}"
-    ALL_PLUGINS=${ALL_PLUGINS%,} 
-    
-    # Add space after commas for display
-    ALL_PLUGINS_DISPLAY=$(echo "$ALL_PLUGINS" | sed 's/,/, /g')
-    
-    # Default to PLUGINS_DEFAULT only
-    DEFAULT_SUGGESTION=${PLUGINS_DEFAULT%,}
-    DEFAULT_SUGGESTION=$(echo "$DEFAULT_SUGGESTION" | sed 's/,/, /g')
-
-    echo "🔌 Available Plugins:"
-    echo "$ALL_PLUGINS_DISPLAY" | tr ',' '\n' | while read -r plugin; do
-        if [ -n "$plugin" ]; then
-            echo "   - $plugin"
-        fi
-    done
-    echo "   Enter a comma-separated list of plugins to run."
-    echo "   (Note: Plugins will be executed in the order you list)."
-    read -p "Plugins to run [default: $DEFAULT_SUGGESTION]: " CHECK_PLUGINS
-    POST_PROCESS_PLUGINS=${CHECK_PLUGINS:-$DEFAULT_SUGGESTION}
-fi
 
 # 1. Detect actual UID/GID to ensure the container matches the host user
 DETECTED_UID=$(id -u)
@@ -94,8 +44,16 @@ cat > "${PROJECT_ROOT}/.env" << EOF
 LLM_API_TOKEN=${LLM_API_TOKEN}
 LLM_BASE_URL=${LLM_BASE_URL}
 BULK_SIZE=${BULK_SIZE}
-POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED}
-POST_PROCESS_PLUGINS=${POST_PROCESS_PLUGINS}
+# --- Post-Processing (Optional) ----------------------------------------
+# To configure post-processing plugins, run:
+#   bash bin/setup_post_processing.sh
+#
+# Or uncomment and edit manually. Plugins are per-language:
+# POST_PROCESS_PLUGINS_JA=spacing_around_drupal_variables,jp_en_spacing
+# POST_PROCESS_PLUGINS_ES=spacing_around_drupal_variables
+# See docs/2_post_processing.md for details.
+# ------------------------------------------------------------------------
+POST_PROCESSING_ENABLED=false
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
 TM_THRESHOLD=${TM_THRESHOLD}
 RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
@@ -114,6 +72,7 @@ sudo chown -R ${DETECTED_UID}:${DETECTED_GID} "${PROJECT_ROOT}/data"
 chmod -R 775 "${PROJECT_ROOT}/data"
 
 echo "✅ Setup complete. Project root: ${PROJECT_ROOT}"
+echo "To enable post-processing, run 'bash bin/setup_post_processing.sh'."
 echo "If you want to run a demo, run 'bash bin/demo_prep.sh'."
 echo "Refer to readme.MD for how to run the translation process."
 echo "You can now run 'docker compose up -d'"
