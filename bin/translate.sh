@@ -3,9 +3,20 @@
 
 # Executes the translation pipeline
 
-# Load environment variables
+# Load environment variables safely — xargs performs word-splitting which breaks
+# values containing spaces or shell metacharacters.
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
+  while IFS= read -r line; do
+    # Skip blank lines and comments
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    # Skip UID/GID which may conflict with system values
+    case "$line" in
+      UID=*|GID=*) continue ;;
+    esac
+    export "$line"
+  done < .env
 fi
 
 set -e
