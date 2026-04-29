@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_RETRIES = 2
-BULK_SIZE = os.environ.get("BULK_SIZE", "15")
+_bulk_size_raw = os.environ.get("BULK_SIZE", "15")
+try:
+    BULK_SIZE = int(_bulk_size_raw)
+except ValueError:
+    logging.getLogger(__name__).warning(
+        "⚠️ BULK_SIZE env var '%s' is not a valid integer; defaulting to 15.", _bulk_size_raw
+    )
+    BULK_SIZE = 15
 
 
 def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str, str]:
@@ -73,7 +80,7 @@ def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]
         "--folder", temp_folder,
         "--lang", target_lang,
         "--bulk",
-        "--bulksize", BULK_SIZE
+        "--bulksize", str(BULK_SIZE)
     ]
 
 
