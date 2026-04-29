@@ -3,7 +3,10 @@ import os
 import glob
 import argparse
 import importlib.util
+import logging
 from core.utils import find_po_files
+
+logger = logging.getLogger(__name__)
 
 def check_plugin_conflicts():
     """
@@ -24,8 +27,10 @@ def check_plugin_conflicts():
 
     intersection = default_plugins.intersection(custom_plugins)
     if intersection:
-        print(f"❌ Error: Duplicate plugin names detected in 'default' and 'custom' directories: {intersection}")
-        print("ℹ️ Plugin names must be globally unique. Please rename the custom plugin(s).")
+        logger.error(
+            "❌ Duplicate plugin names detected in 'default' and 'custom' directories: %s", intersection
+        )
+        logger.error("ℹ️ Plugin names must be globally unique. Please rename the custom plugin(s).")
         sys.exit(1)
 
 
@@ -48,7 +53,7 @@ def load_plugin(plugin_name):
     elif os.path.exists(default_path):
         target_path = default_path
     else:
-        print(f"⚠️ Plugin '{plugin_name}' not found. Skipping.")
+        logger.warning("⚠️ Plugin '%s' not found. Skipping.", plugin_name)
         return None
 
     try:
@@ -57,7 +62,7 @@ def load_plugin(plugin_name):
         spec.loader.exec_module(module)
         return module
     except Exception as e:
-        print(f"❌ Failed to load plugin '{plugin_name}': {e}")
+        logger.error("❌ Failed to load plugin '%s': %s", plugin_name, e)
         return None
 
 def resolve_plugins(lang: str | None = None) -> list[str]:
@@ -71,7 +76,7 @@ def resolve_plugins(lang: str | None = None) -> list[str]:
     "no plugins for this language".
     """
     if not lang:
-        print("ℹ️  No --lang provided. Cannot resolve plugins. Skipping.")
+        logger.info("ℹ️  No --lang provided. Cannot resolve plugins. Skipping.")
         return []
 
     # Normalise: "pt-br" → "PT_BR"
@@ -79,20 +84,20 @@ def resolve_plugins(lang: str | None = None) -> list[str]:
     lang_specific = os.environ.get(env_key)
 
     if lang_specific is None:
-        print(f"ℹ️  No plugin config found for '{lang}' ({env_key}). Skipping.")
+        logger.info("ℹ️  No plugin config found for '%s' (%s). Skipping.", lang, env_key)
         return []
 
     plugins = [p.strip() for p in lang_specific.split(',') if p.strip()]
     if plugins:
-        print(f"🔌 Plugins for '{lang}': {plugins}")
+        logger.info("🔌 Plugins for '%s': %s", lang, plugins)
     else:
-        print(f"ℹ️  Plugin config for '{lang}' is explicitly empty. No plugins to run.")
+        logger.info("ℹ️  Plugin config for '%s' is explicitly empty. No plugins to run.", lang)
     return plugins
 
 
-def process_single_file(file_path, loaded_plugins):
+def process_single_file(file_path: str, loaded_plugins: list) -> None:
     try:
-        print(f"🔧 Processing: {os.path.basename(file_path)}...")
+        logger.info("🔧 Processing: %s...", os.path.basename(file_path))
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
@@ -102,15 +107,15 @@ def process_single_file(file_path, loaded_plugins):
                 if hasattr(plugin, 'run'):
                     content = plugin.run(content)
                 else:
-                    print(f"⚠️ Plugin module does not have a 'run' function. Skipping.")
+                    logger.warning("⚠️ Plugin module does not have a 'run' function. Skipping.")
             except Exception as e:
-                 print(f"❌ Error running plugin: {e}")
+                logger.error("❌ Error running plugin: %s", e)
 
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
-        print(f"✅ Processed: {file_path}")
+        logger.info("✅ Processed: %s", file_path)
     except Exception as e:
-        print(f"❌ Failed to process {file_path}: {e}")
+        logger.error("❌ Failed to process %s: %s", file_path, e)
 
 def main():
     # --- Configuration ---
@@ -122,7 +127,7 @@ def main():
     # Check if enabled
     enabled_str = os.environ.get("POST_PROCESSING_ENABLED", "true").lower()
     if enabled_str not in ("true", "1", "yes"):
-        print(f"ℹ️ Post-processing is disabled via environment variable. Skipping.")
+        logger.info("ℹ️ Post-processing is disabled via environment variable. Skipping.")
         sys.exit(0)
 
     # Parse arguments
@@ -143,7 +148,7 @@ def main():
     # Resolve plugins via precedence chain
     plugin_names = resolve_plugins(args.lang)
     if not plugin_names:
-        print("ℹ️ No plugins configured. Exiting.")
+        logger.info("ℹ️ No plugins configured. Exiting.")
         sys.exit(0)
 
     loaded_plugins = []
@@ -153,13 +158,13 @@ def main():
             loaded_plugins.append(module)
 
     if not loaded_plugins:
-        print("⚠️ No valid plugins loaded. Exiting.")
+        logger.warning("⚠️ No valid plugins loaded. Exiting.")
         sys.exit(0)
 
     # Input Path
     input_path = args.input_path
     if input_path is None:
-        print(f"⚠️ No path provided. Defaulting to: {POST_PROCESS_INPUT_DIR}")
+        logger.warning("⚠️ No path provided. Defaulting to: %s", POST_PROCESS_INPUT_DIR)
         input_path = POST_PROCESS_INPUT_DIR
 
     files_to_process = []
@@ -171,11 +176,11 @@ def main():
         # Find all .po files in the folder (top level only) via shared utility
         files_to_process = find_po_files(input_path, recursive=False)
     else:
-        print(f"❌ Error: Path not found: {input_path}")
+        logger.error("❌ Error: Path not found: %s", input_path)
         sys.exit(1)
 
     if not files_to_process:
-        print(f"⚠️ No .po files found in {input_path}")
+        logger.warning("⚠️ No .po files found in %s", input_path)
         sys.exit(0)
 
     for po_file in files_to_process:

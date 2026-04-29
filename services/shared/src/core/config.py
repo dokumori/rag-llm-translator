@@ -32,7 +32,9 @@ class Config:
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
     
     # --- Embedding Model ---
-    EMBEDDING_MODEL_NAME: str = "BAAI/bge-large-en-v1.5"
+    # WARNING: Changing this after data has been ingested will invalidate all vectors in ChromaDB.
+    # If you change the model, you must reset and re-ingest all collections.
+    EMBEDDING_MODEL_NAME: str = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
     
     # --- Localization ---
     # No default — target language must be provided explicitly per-request

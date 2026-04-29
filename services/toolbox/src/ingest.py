@@ -58,9 +58,9 @@ def generate_content_hash(text: str, langcode: str = "", msgctxt: str = "") -> s
 
 def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
     """Yields successive n-sized chunks from iterable."""
-    l = len(iterable)
-    for ndx in range(0, l, n):
-        yield iterable[ndx:min(ndx + n, l)]
+    total = len(iterable)
+    for ndx in range(0, total, n):
+        yield iterable[ndx:min(ndx + n, total)]
 
 
 def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bool:
@@ -113,8 +113,13 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
             else:
                 col.delete(where={"langcode": langcode})
                 logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
-        except Exception:
-            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist or could not be accessed.")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "does not exist" in err_msg or "not found" in err_msg:
+                logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist. Nothing to delete.")
+            else:
+                logger.error(f"❌ Reset failed for '{COLLECTION_NAME}': {e}", exc_info=True)
+                raise
 
     if skip_ingest:
         return
@@ -226,8 +231,13 @@ def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool 
             else:
                 col.delete(where={"langcode": langcode})
                 logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
-        except Exception:
-            logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist or could not be accessed.")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "does not exist" in err_msg or "not found" in err_msg:
+                logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist. Nothing to delete.")
+            else:
+                logger.error(f"❌ Reset failed for '{COLLECTION_NAME}': {e}", exc_info=True)
+                raise
 
     if skip_ingest:
         return

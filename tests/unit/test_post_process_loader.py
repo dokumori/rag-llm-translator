@@ -1,22 +1,24 @@
 import os
 import sys
+import logging
 import unittest
 from unittest.mock import patch, MagicMock
 import post_process
 
-def test_disabled_via_env(capsys):
+def test_disabled_via_env(caplog):
     """Test that the script exits early if the optional flag is disabled."""
     with patch.dict(os.environ, {"POST_PROCESSING_ENABLED": "false"}):
         with patch('sys.exit') as mock_exit:
             mock_exit.side_effect = SystemExit
-            try:
-                post_process.main()
-            except SystemExit:
-                pass
-            
+            # caplog captures log records emitted by the 'post_process' logger
+            with caplog.at_level(logging.INFO, logger='post_process'):
+                try:
+                    post_process.main()
+                except SystemExit:
+                    pass
+
             mock_exit.assert_called_with(0)
-            captured = capsys.readouterr()
-            assert "Post-processing is disabled" in captured.out
+            assert "Post-processing is disabled" in caplog.text
 
 def test_plugin_loading():
     """Test that plugins are loaded based on language-specific env var."""
@@ -90,39 +92,40 @@ def test_invalid_plugin_name(capsys):
                         # The side_effect returns a Mock for valid_plugin, so it is "truthy"
                         pass
 
-def test_name_conflict(capsys):
+def test_name_conflict(caplog):
     """Test that duplicate plugin names cause an exit."""
     with patch("post_process.os.path.abspath") as mock_abspath, \
          patch("post_process.os.path.dirname") as mock_dirname, \
          patch("post_process.os.path.isdir", return_value=True), \
          patch("post_process.glob.glob") as mock_glob, \
          patch("sys.exit") as mock_exit:
-            
-            mock_exit.side_effect = SystemExit
-            
-            # Setup paths
-            mock_abspath.return_value = "/app/src/post_process.py"
-            mock_dirname.return_value = "/app/src"
-            
-            # Setup glob to return conflict
-            def glob_side_effect(path):
-                if "default" in path:
-                    return ["/app/src/plugins/default/foo.py"]
-                if "custom" in path:
-                    return ["/app/src/plugins/custom/foo.py"]
-                return []
-            
-            mock_glob.side_effect = glob_side_effect
-            
+
+        mock_exit.side_effect = SystemExit
+
+        # Setup paths
+        mock_abspath.return_value = "/app/src/post_process.py"
+        mock_dirname.return_value = "/app/src"
+
+        # Setup glob to return a conflict
+        def glob_side_effect(path):
+            if "default" in path:
+                return ["/app/src/plugins/default/foo.py"]
+            if "custom" in path:
+                return ["/app/src/plugins/custom/foo.py"]
+            return []
+
+        mock_glob.side_effect = glob_side_effect
+
+        # caplog captures ERROR-level records from the 'post_process' logger
+        with caplog.at_level(logging.ERROR, logger='post_process'):
             try:
                 post_process.check_plugin_conflicts()
             except SystemExit:
                 pass
-            
-            mock_exit.assert_called_with(1)
-            captured = capsys.readouterr()
-            assert "Duplicate plugin names detected" in captured.out
-            assert "foo" in captured.out
+
+        mock_exit.assert_called_with(1)
+        assert "Duplicate plugin names detected" in caplog.text
+        assert "foo" in caplog.text
 
 
 # --- Per-language plugin resolution tests ---
@@ -188,7 +191,7 @@ def test_main_with_lang_flag():
                             mock_load.assert_called_once_with("ja_plugin")
 
 
-def test_main_without_lang_flag_exits_cleanly(capsys):
+def test_main_without_lang_flag_exits_cleanly(caplog):
     """End-to-end: no --lang flag means no plugins resolve, exits cleanly."""
     with patch.dict(os.environ, {
         "POST_PROCESSING_ENABLED": "true",
@@ -198,13 +201,12 @@ def test_main_without_lang_flag_exits_cleanly(capsys):
             with patch('post_process.check_plugin_conflicts'):
                 with patch('sys.exit') as mock_exit:
                     mock_exit.side_effect = SystemExit
-                    try:
-                        post_process.main()
-                    except SystemExit:
-                        pass
+                    with caplog.at_level(logging.INFO, logger='post_process'):
+                        try:
+                            post_process.main()
+                        except SystemExit:
+                            pass
 
                     # Should exit with 0 (no plugins configured)
                     mock_exit.assert_called_with(0)
-                    captured = capsys.readouterr()
-                    assert "No plugins configured" in captured.out
-
+                    assert "No plugins configured" in caplog.text
