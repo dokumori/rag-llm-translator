@@ -60,27 +60,28 @@ class TestIngest(unittest.TestCase):
         mock_exists.return_value = True
         mock_glob.return_value = [Path("glossary.csv")]  # Simulate finding one file
 
-        # FIX: Return list of dicts to avoid 'string indices must be integers' error
+        # Include all columns that process_glossary normalises (source, target, context).
+        # Deduplication key is (source, context), so both 'Apple' rows share the same key.
         mock_dict_reader.return_value = [
-            {'source': 'Apple', 'target': 'Apfel'},
-            {'source': 'Apple', 'target': 'Alternative'},
-            {'source': 'Orange', 'target': 'Apfelsine'}
+            {'source': 'Apple', 'target': 'Apfel',       'context': ''},
+            {'source': 'Apple', 'target': 'Alternative', 'context': ''},  # duplicate key — skipped
+            {'source': 'Orange', 'target': 'Apfelsine',  'context': ''}
         ]
 
         mock_client = MagicMock()
         mock_ef = MagicMock()
 
-        # Trigger processing
-        ingest.process_glossary(mock_client, mock_ef, Path("glossary.csv"))
+        # Pass a valid langcode string
+        ingest.process_glossary(mock_client, mock_ef, "de")
 
         # Check deduplication: Apple should only have Apfel
         mock_ingest.assert_called_once()
 
-        # Verify the batching function was called with the Correct deduplicated data
+        # Verify the batching function was called with the correct deduplicated data.
         # Arguments: collection, ids, documents, metadatas, batch_size, label
         call_args = mock_ingest.call_args[0]
 
-        # FIX: Metadatas is at index 3, not 2
+        # Metadatas is at index 3
         metadata = call_args[3]
 
         self.assertEqual(len(metadata), 2)  # Apple, Orange
