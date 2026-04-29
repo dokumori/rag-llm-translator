@@ -264,9 +264,27 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                 except Exception as ctx_err:
                     logger.warning(f"   ⚠️ Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
 
-                # --- Fallback: lang-only (no context restriction) ---
-                fallback_kwargs = {**base_kwargs, "where": lang_filter}
-                return collection.query(**fallback_kwargs), False
+                # --- Fallback: context-free entries only ---
+                # Using lang-only would risk returning entries for a *different* msgctxt.
+                # Instead, restrict the fallback to entries that have no context at all,
+                # which are safe to apply regardless of the caller's context.
+                ctx_free_kwargs = {
+                    **base_kwargs,
+                    "where": {"$and": [{"langcode": target_lang}, {context_meta_key: ""}]}
+                }
+                try:
+                    ctx_free_res = collection.query(**ctx_free_kwargs)
+                    has_any = any(doc_list for doc_list in ctx_free_res.get("documents", []))
+                    if has_any:
+                        logger.info(f"   ↩️  Context-free fallback succeeded (no '{batch_context}' entries found).")
+                        return ctx_free_res, False
+                    else:
+                        logger.info(f"   ⚠️ Context-free fallback also returned no results; using lang-only filter.")
+                except Exception as fb_err:
+                    logger.warning(f"   ⚠️ Context-free fallback failed ({fb_err}); using lang-only filter.")
+
+                # Last resort: full lang-only filter (catches pre-isolation ingested entries)
+                return collection.query(**{**base_kwargs, "where": lang_filter}), False
 
             elif lang_filter:
                 # No batch_context: restrict to context-free entries only
@@ -313,7 +331,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                 if gloss_res['documents']:
                     for j, doc_list in enumerate(gloss_res['documents']):
                         if doc_list:
-                            orig_idx = group_indices[j]
+                            item_index = group_indices[j]  # Original batch index for log correlation
                             query_text = group_original_texts[j]
                             dist = gloss_res['distances'][j][0]
                             src = doc_list[0]
@@ -332,7 +350,9 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                                 is_accepted = is_semantic_match
 
                             matches_log.append({
-                                "type": "glossary", "context": item_context if gloss_ctx_used else "", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                                "type": "glossary", "item_index": item_index, "context": item_context if gloss_ctx_used else "",
+                                "untranslated_string": query_text, "rag_context": src, "tgt": tgt,
+                                "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                             })
 
                             if is_accepted:
@@ -364,7 +384,7 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                 if tm_res['documents']:
                     for j, doc_list in enumerate(tm_res['documents']):
                         if doc_list:
-                            orig_idx = group_indices[j]
+                            item_index = group_indices[j]  # Original batch index for log correlation
                             query_text = group_original_texts[j]
                             dist = tm_res['distances'][j][0]
                             src = doc_list[0]
@@ -382,7 +402,9 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
                                 is_accepted = is_semantic_match
 
                             matches_log.append({
-                                "type": "tm", "context": item_context if tm_ctx_used else "", "untranslated_string": query_text, "rag_context": src, "tgt": tgt, "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
+                                "type": "tm", "item_index": item_index, "context": item_context if tm_ctx_used else "",
+                                "untranslated_string": query_text, "rag_context": src, "tgt": tgt,
+                                "dist": dist, "accepted": is_accepted, "no_shared_words": not has_shared_words
                             })
 
                             if is_accepted:
