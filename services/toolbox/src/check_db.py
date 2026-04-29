@@ -6,6 +6,7 @@ docker compose exec toolbox python3 /app/src/check_db.py
 '''
 
 import chromadb
+from collections import Counter
 from core.config import Config
 from infrastructure import get_chroma_client
 
@@ -13,20 +14,33 @@ from infrastructure import get_chroma_client
 # We use the hostname 'chroma' and port 8000 as per your compose file
 client = get_chroma_client()
 
-try:
-    # Check TM Collection
-    tm_col = client.get_collection(Config.TM_COLLECTION)
-    count = tm_col.count()
-    print(f"✅ Collection 'app_tm' exists.")
-    print(f"📊 Total items in TM: {count}")
-except Exception as e:
-    print(f"❌ Collection 'app_tm' does NOT exist: {e}")
+def check_and_print_stats(collection_name: str, display_name: str) -> None:
+    try:
+        col = client.get_collection(collection_name)
+        count = col.count()
+        print(f"✅ Collection '{display_name}' exists.")
+        print(f"📊 Total items in {display_name}: {count}")
+        
+        if count > 0:
+            results = col.get(include=["metadatas"], limit=count)
+            metadatas = results.get("metadatas", [])
+            
+            if metadatas:
+                # Count occurrences per langcode, defaulting to 'unknown' if missing
+                lang_counts = Counter(
+                    str(meta.get("langcode", "unknown")).strip() 
+                    for meta in metadatas if meta is not None
+                )
+                
+                print("   Breakdown by language:")
+                for lang, freq in lang_counts.most_common():
+                    print(f"   - {lang}: {freq}")
+    except Exception as e:
+        print(f"❌ Collection '{display_name}' does NOT exist: {e}")
 
-try:
-    # Check Glossary Collection
-    gloss_col = client.get_collection(Config.GLOSSARY_COLLECTION)
-    count = gloss_col.count()
-    print(f"✅ Collection 'app_glossary' exists.")
-    print(f"📊 Total items in Glossary: {count}")
-except Exception as e:
-    print(f"❌ Collection 'app_glossary' does NOT exist: {e}")
+# Check TM Collection
+check_and_print_stats(Config.TM_COLLECTION, 'app_tm')
+print()
+
+# Check Glossary Collection
+check_and_print_stats(Config.GLOSSARY_COLLECTION, 'app_glossary')
