@@ -198,7 +198,7 @@ class TestIngest(unittest.TestCase):
 
         # Test Case 1: Glossary Only
         mock_args.return_value = MagicMock(
-            glossary_only=True, tm_only=False, reset=False, lang="ja")
+            glossary_only=True, tm_only=False, reset=False, reset_only=False, lang="ja")
         ingest.main()
         mock_gloss.assert_called_once()
         mock_tm.assert_not_called()
@@ -208,7 +208,7 @@ class TestIngest(unittest.TestCase):
 
         # Test Case 2: TM Only
         mock_args.return_value = MagicMock(
-            glossary_only=False, tm_only=True, reset=False, lang="ja")
+            glossary_only=False, tm_only=True, reset=False, reset_only=False, lang="ja")
         ingest.main()
         mock_gloss.assert_not_called()
         mock_tm.assert_called_once()
@@ -222,7 +222,7 @@ class TestIngest(unittest.TestCase):
     def test_main_reset_flow(self, mock_pre_flight, mock_tm, mock_gloss, mock_ef, mock_chroma, mock_args):
         """Verifies that reset flag is passed down."""
         mock_args.return_value = MagicMock(
-            glossary_only=False, tm_only=False, reset=True, lang="ja")
+            glossary_only=False, tm_only=False, reset=True, reset_only=False, lang="ja")
         ingest.main()
 
         # Check that reset=True was passed to both
