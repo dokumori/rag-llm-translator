@@ -9,7 +9,3 @@ Translate technical strings for software application UI translation from English
     - Maintain all HTML tags exactly as they appear in the source.
 - **Punctuation**: Match the punctuation style of the source string (e.g., if the source ends in a period, the translation must end in the appropriate equivalent).
 - **Format Preservation**: Your output must be compatible with `.po` file standards.
-
-# Output Format
-- Output ONLY the translated string.
-- Do not provide explanations, notes, or alternatives.
