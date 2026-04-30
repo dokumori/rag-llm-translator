@@ -76,41 +76,18 @@ def test_parse_input_payload_delimiter_stripping():
     assert result == [{"text": "Hello", "context": ""}]
 
 # --- global_context extraction tests ---
-# NOTE: These tests are tightly coupled to gpt-po-translator's prompt format.
-# Specifically, the regex in parse_input_payload depends on the exact wording:
-#   "CONTEXT: <value>\nIMPORTANT: Choose the translation..."
-# If gpt-po-translator changes its prompt structure, these tests will catch the regression.
-# See: python_gpt_po/services/translation_service.py :: get_translation_prompt()
-
-# This is the exact context prefix gpt-po-translator (2.0.4) emits when a msgctxt is present.
-_GPT_PO_CONTEXT_PREFIX = (
-    "CONTEXT: {context}\n"
-    "IMPORTANT: Choose the translation that matches this specific context and usage. "
-    "Do not use a literal dictionary translation if the context requires "
-    "a different word form or meaning.\n\n"
-)
-
-
-def _make_bulk_prompt(context: str, texts: list) -> str:
-    """Simulate the exact user message gpt-po-translator sends in bulk mode with a context."""
-    import json
-    prefix = _GPT_PO_CONTEXT_PREFIX.format(context=context)
-    return (
-        f"{prefix}"
-        "Translate the following list of texts from English to Japanese. "
-        "Provide only the translations in a JSON array format, maintaining the original order.\n\n"
-        "Texts to translate:\n"
-        + json.dumps(texts)
-    )
+# These tests verify that context values carried inside dict items are correctly
+# extracted, regardless of surrounding prompt prose.
 
 
 def test_parse_input_payload_global_context_applied_to_all_strings():
     """
-    When gpt-po-translator sends a bulk request with a CONTEXT prefix (from msgctxt),
-    all string items in the batch should receive that context.
-    This reflects the run_gpt_po.py guarantee: all items in a batch share the same context.
+    When po_translator sends a batch where all items share the same msgctxt,
+    each dict item carries that context explicitly.
     """
-    source_text = _make_bulk_prompt(context="context1", texts=["String A", "String B"])
+    import json
+    items = [{"text": "String A", "context": "context1"}, {"text": "String B", "context": "context1"}]
+    source_text = "Translate the following:\n" + json.dumps(items)
     result = app.parse_input_payload(source_text)
     assert len(result) == 2
     assert result[0] == {"text": "String A", "context": "context1"}
@@ -119,16 +96,11 @@ def test_parse_input_payload_global_context_applied_to_all_strings():
 
 def test_parse_input_payload_no_context_prefix_yields_empty_context():
     """
-    When gpt-po-translator sends a bulk request WITHOUT a CONTEXT prefix
-    (i.e., all strings in the batch had no msgctxt), context should be empty string.
+    When po_translator sends a batch with no msgctxt, context is the empty string.
     """
     import json
-    source_text = (
-        "Translate the following list of texts from English to Japanese. "
-        "Provide only the translations in a JSON array format.\n\n"
-        "Texts to translate:\n"
-        + json.dumps(["String without context"])
-    )
+    items = [{"text": "String without context", "context": ""}]
+    source_text = "Translate the following:\n" + json.dumps(items)
     result = app.parse_input_payload(source_text)
     assert len(result) == 1
     assert result[0] == {"text": "String without context", "context": ""}
@@ -136,19 +108,14 @@ def test_parse_input_payload_no_context_prefix_yields_empty_context():
 
 def test_parse_input_payload_dict_item_context_takes_priority_over_global():
     """
-    If individual dict items carry a non-empty 'context' key, that value wins.
-    An item with "context": "" (explicitly empty — meaning no msgctxt in the .po file)
-    must stay empty and NOT inherit the global_context extracted from the prompt prefix.
-    The global_context only applies to plain-string items (non-dict payloads).
+    Each dict item owns its context value independently.
+    An item with "context": "" stays empty; an item with a value keeps it.
     """
     import json
-    prefix = _GPT_PO_CONTEXT_PREFIX.format(context="global_ctx")
     items = [{"text": "Hello", "context": "item_ctx"}, {"text": "World", "context": ""}]
-    source_text = prefix + json.dumps(items)
+    source_text = json.dumps(items)
     result = app.parse_input_payload(source_text)
-    # "item_ctx" is explicit — it wins
     assert result[0]["context"] == "item_ctx"
-    # "" is an explicit empty string (no msgctxt) — it must NOT inherit global_ctx
     assert result[1]["context"] == ""
 
 
