@@ -16,7 +16,7 @@ The core of the system is **ChromaDB**, a vector database that stores semantic r
 
 ### The RAG Proxy
 The **RAG Proxy** acts as an intermediary between the translation tool and the LLM (OpenAI).
-* **Purpose**: While the `gpt-po-translator` tool is excellent for robustly handling `.po` files, it lacks native support for external glossaries. The proxy solves this by intercepting translation requests (defaulting to `http://rag-proxy:5000/v1`) and augmenting them with context from the vector store.
+* **Purpose**: The proxy acts as an intermediary between the translation driver and the LLM. It intercepts OpenAI-compatible requests from `po_translator.py` and augments them with context retrieved from the vector store before forwarding to the upstream LLM.
 * **Token Optimisation**: By dynamically retrieving only the most relevant matches for a specific string, the proxy avoids sending an entire static glossary with every request, significantly reducing API costs and latency.
 
 ---
@@ -37,7 +37,7 @@ flowchart TD
 
     subgraph Translation ["Stage 2: Translation (translate_runner.py)"]
         G[Source .po File] --> H[Isolation /tmp/...]
-        H --> I[gpt-po-translator]
+        H --> I[po_translator.py]
         I -->|Request| J[RAG Proxy]
         J <-->|Query Context| D
         J <-->|Forward Request & Return Response| K[LLM / OpenAI]
@@ -59,8 +59,8 @@ The `ingest.py` script populates the vector store with two types of reference da
 ### Stage 2: Translation
 The `translate_runner.py` script manages the core translation logic:
 1. **File Isolation**: To prevent accidental modification of source data, the script copies the target `.po` file to a randomised temporary directory for processing.
-2. **RAG Augmentation**: The script routes requests through the **RAG Proxy**, which performs a semantic query against ChromaDB. It retrieves glossary terms and past translations that are most similar to the current string and includes them in the LLM prompt.
-3. **Output Generation**: Translated files are saved to `data/translations/output`.
+2. **RAG Augmentation**: The script routes requests through the **RAG Proxy**, which performs a semantic query against ChromaDB. It retrieves glossary terms and past translations most similar to the current string and includes them in the LLM prompt.
+3. **Translation Driver**: `po_translator.py` uses `polib` to load the `.po` file, groups untranslated entries by `msgctxt`, and sends batches via the OpenAI SDK to the RAG proxy endpoint. Translations are written back to the file incrementally after each batch.
     * **Caution**: This output directory is wiped and refreshed every time `translate.sh` is executed.
 
 ### Stage 3: post-processing (optional)

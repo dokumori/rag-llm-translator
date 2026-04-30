@@ -96,14 +96,12 @@ def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
     """
     Extracts the content to be translated using the 'Sliding Window' JSON parsing logic.
     Returns a cleaned list of dictionary objects with 'text' and 'context'.
+
+    The payload is expected to be a JSON array of {"text": ..., "context": ...} dicts
+    as produced by po_translator.py. The sliding window handles any surrounding
+    prose the LLM might have added before or after the array.
     """
     query_payload: List[Any] = []
-    
-    # Extract global context from gpt-po-translator prompt prefix if present
-    global_context = ""
-    context_match = re.search(r"CONTEXT:\s*(.*?)\nIMPORTANT: Choose the translation", source_text)
-    if context_match:
-        global_context = context_match.group(1).strip()
 
     start_indices = [i for i, char in enumerate(source_text) if char == '[']
 
@@ -128,33 +126,22 @@ def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
             except Exception:
                 pass
 
-    # Fallback: Treat as single item if no JSON list was identified
+    # Fallback: treat the whole message as a single plain-text item
     if not query_payload:
-        query_payload = [source_text.strip()]
+        query_payload = [{"text": source_text.strip(), "context": ""}]
 
-    # Clean the content by removing the "Text to translate:\n" prefix if present
-    delimiter = "Text to translate:\n"
     cleaned_payload: List[Dict[str, str]] = []
-    
     for item in query_payload:
-        text = ""
-        context = ""
-        
         if isinstance(item, dict):
-            # Extract text and developer-provided context (msgctxt) from gpt-po-translator 2.0.4+
             text = item.get("text", "") or item.get("string", "") or ""
-            raw_context = item.get("context", None)
-            context = raw_context if raw_context is not None else global_context
-        elif isinstance(item, str):
-            text = item
-            context = global_context
+            context = item.get("context", "")
         else:
             text = str(item)
-            context = global_context
-            
-        if delimiter in text:
-            text = text.split(delimiter)[-1]
-            
+            context = ""
+
+        if text.startswith("Text to translate:\n"):
+            text = text[len("Text to translate:\n"):]
+
         cleaned_payload.append({"text": text, "context": context})
 
     return cleaned_payload
@@ -425,6 +412,19 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
     return rag_content, matches_log
 
 
+# Hard-coded output format contract.
+# This is appended to *every* system prompt so the LLM always returns the
+# JSON array that po_translator._parse_translations() expects, regardless
+# of which language-specific .md file is loaded.
+FORMAT_INSTRUCTION = (
+    "\n\n## Output Format (MANDATORY)\n"
+    "Return ONLY a JSON array of translated strings in the same order as the "
+    "input, e.g. [\"translation1\", \"translation2\"].\n"
+    "Do NOT wrap the array in markdown code fences.\n"
+    "Do NOT add explanations, notes, or alternatives outside the array."
+)
+
+
 def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str, target_lang: str) -> str:
     """Combines instructions, RAG context, and original system message."""
     expert_instructions = get_system_prompt_from_md(target_lang)
@@ -434,7 +434,11 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
         original_system = " ".join([s.get('text', '')
                                    for s in original_system if 'text' in s])
 
-    return f"{expert_instructions}\n\n{rag_content}\n\n## Additional Instructions:\n{original_system}"
+    return (
+        f"{expert_instructions}\n\n{rag_content}\n\n"
+        f"## Additional Instructions:\n{original_system}"
+        f"{FORMAT_INSTRUCTION}"
+    )
 
 # --- Helper: Extract Language from Path ---
 
@@ -524,25 +528,8 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         logger.info(json.dumps(log_entry, ensure_ascii=False))
 
         # --- 4a. PREPARE PAYLOAD ---
-        # Strip only the "CONTEXT: ...\nIMPORTANT: ..." prefix block injected by
-        # gpt-po-translator. We use a targeted regex so we don't accidentally remove
-        # the library's own JSON format instructions that follow the prefix.
-        # (The old find('[') approach was too aggressive and stripped those instructions too.)
-        cleaned_source_text = re.sub(
-            r'^CONTEXT:.*?(?=\nProvide only|\nTexts to translate:|\[)',
-            '',
-            source_text,
-            flags=re.DOTALL
-        ).lstrip()
-
-        def _clean_user_message(msg: Dict[str, Any]) -> Dict[str, Any]:
-            """Replace raw content with the prefix-stripped version for the last user message."""
-            if msg.get('role') == 'user' and msg.get('content') == source_text:
-                return {**msg, 'content': cleaned_source_text}
-            return msg
-
         new_messages = [{"role": "system", "content": final_system_content}]
-        new_messages += [_clean_user_message(m) for m in messages if m.get('role') != 'system']
+        new_messages += [m for m in messages if m.get('role') != 'system']
 
         logger.info(f"FINAL_PAYLOAD: {json.dumps({'model': requested_model, 'messages': new_messages}, ensure_ascii=False)}")
 

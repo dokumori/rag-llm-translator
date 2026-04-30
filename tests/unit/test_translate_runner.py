@@ -74,12 +74,11 @@ def test_validate_output_file(tmp_path):
         f.write("content")
     assert validate_output_file(file_path) is True
 
-@patch('translate_runner.execute_translation')
-@patch('translate_runner.prepare_command')
-def test_process_single_file_success(mock_prepare, mock_execute, tmp_path):
+@patch('translate_runner.translate_po_file')
+def test_process_single_file_success(mock_translate, tmp_path):
     """
     Tests a successful end-to-end file translation process.
-    Mocks the translation execution and verifies the file is correctly
+    Mocks translate_po_file and verifies the file is correctly
     copied to the final destination with the expected name.
     """
     input_base_dir = tmp_path / "input"
@@ -95,12 +94,10 @@ def test_process_single_file_success(mock_prepare, mock_execute, tmp_path):
         model_slug="slug", rag_mode="rag", timestamp="ts"
     )
 
-    # Mock success. Because shutil.copy2 copies the original content to the temp path
-    # before execute_translation is called, the file will exist and have non-zero size,
-    # so `validate_output_file` will correctly pass without needing a mock!
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_execute.return_value = mock_result
+    # translate_po_file returns True on success. Because shutil.copy2 copies the original
+    # content to the temp path before translation runs, the file will exist with non-zero
+    # size, so validate_output_file will pass without needing its own mock.
+    mock_translate.return_value = True
 
     success = process_single_file(str(src_file), str(output_base_dir), ctx)
 
@@ -110,9 +107,8 @@ def test_process_single_file_success(mock_prepare, mock_execute, tmp_path):
     assert final_output.exists()
     assert final_output.read_text() == "original content"
 
-@patch('translate_runner.execute_translation')
-@patch('translate_runner.prepare_command')
-def test_process_single_file_failure(mock_prepare, mock_execute, tmp_path):
+@patch('translate_runner.translate_po_file')
+def test_process_single_file_failure(mock_translate, tmp_path):
     """
     Tests the failure path of the single file translation process.
     Ensures that when translation fails, the function returns False and
@@ -131,10 +127,8 @@ def test_process_single_file_failure(mock_prepare, mock_execute, tmp_path):
         model_slug="slug", rag_mode="rag", timestamp="ts"
     )
 
-    # Mock failure
-    mock_result = MagicMock()
-    mock_result.returncode = 1
-    mock_execute.return_value = mock_result
+    # translate_po_file returns False on failure
+    mock_translate.return_value = False
 
     success = process_single_file(str(src_file), str(output_base_dir), ctx)
 

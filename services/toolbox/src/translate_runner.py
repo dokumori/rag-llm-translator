@@ -1,15 +1,13 @@
-import sys
 import os
-import subprocess
 import shutil
 import argparse
 import logging
 import tempfile
-import time
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict
 from core.config import load_models_config
 from core.utils import find_po_files
+from po_translator import translate_po_file
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -17,6 +15,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
     level=logging.INFO
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)  # suppress verbose HTTP request lines
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -29,6 +28,8 @@ except ValueError:
         "⚠️ BULK_SIZE env var '%s' is not a valid integer; defaulting to 15.", _bulk_size_raw
     )
     BULK_SIZE = 15
+
+
 
 
 def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str, str]:
@@ -66,79 +67,6 @@ def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str,
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
 
     return env
-
-def prepare_command(model: str, target_lang: str, temp_folder: str) -> List[str]:
-    """Prepares the gpt-po-translator command arguments."""
-    # We use a custom wrapper to monkey-patch python_gpt_po's context handling.
-    wrapper_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_gpt_po.py")
-
-    return [
-        sys.executable,
-        wrapper_script,
-        "--provider", "openai",
-        "--model", model,
-        "--folder", temp_folder,
-        "--lang", target_lang,
-        "--bulk",
-        "--bulksize", str(BULK_SIZE)
-    ]
-
-
-
-def execute_translation(cmd: List[str], env: Dict[str, str], max_retries: int = MAX_RETRIES) -> subprocess.CompletedProcess:
-    """
-    Executes the translation command with retries.
-    Returns the result object if successful, or raises Exception after retries exhausted.
-    """
-    attempt = 0
-    last_exception = None
-
-    while attempt <= max_retries:
-        try:
-            # Clear previous attempt state
-            last_exception = None
-            last_result = None
-
-            # capture_output = set True to allow logging of stdout/stderr
-            result = subprocess.run(
-                cmd,
-                env=env,
-                capture_output=True,
-                text=True
-            )
-            
-            last_result = result
-
-            logger.info(f"Stdout: {result.stdout}")
-            logger.info(f"Stderr: {result.stderr}")
-
-            if result.returncode == 0:
-                return result
-
-            logger.warning(
-                f"Attempt {attempt + 1} failed with exit code {result.returncode}.")
-            logger.warning(f"STDERR: {result.stderr}")
-
-        except Exception as e:
-            # Clear previous attempt state
-            last_result = None
-            last_exception = e
-            logger.error(f"Attempt {attempt + 1} raised exception: {e}")
-
-        attempt += 1
-        if attempt <= max_retries:
-            wait_time = 2 ** attempt  # Exponential backoff: 2s, 4s
-            logger.info(f"Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-
-    # Return the last failed result if we have one, otherwise raise the system error
-    if last_result is not None:
-        return last_result
-    elif last_exception:
-        raise last_exception
-    else:
-        raise Exception(f"Command failed after {max_retries} retries.")
-
 
 def check_dry_run(model_id: str) -> bool:
     """Checks if the specified model is marked for dry run in the models config."""
@@ -189,23 +117,26 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
     final_dest_file = generate_output_filepath(output_base_dir, filename, ctx.model_slug, ctx.rag_mode, ctx.timestamp)
 
     try:
-        # Create a temporary working directory to isolate this file's
-        # translation (which will be handled by gpt-po-translator)
+        # Create a temporary working directory to isolate this file's translation
         with tempfile.TemporaryDirectory() as temp_work_dir:
             temp_file_path = os.path.join(temp_work_dir, filename)
-            
+
             # Copy the original file to the temporary workspace
             shutil.copy2(src_file, temp_file_path)
 
-            # Prepare the shell command and execute the translation tool
-            cmd = prepare_command(ctx.model, ctx.target_lang, temp_work_dir)
-            result = execute_translation(cmd, ctx.env)
+            # Run the translation using the custom in-process driver
+            ok = translate_po_file(
+                file_path=temp_file_path,
+                model=ctx.model,
+                target_lang=ctx.target_lang,
+                env=ctx.env,
+                max_retries=MAX_RETRIES,
+                bulk_size=BULK_SIZE,
+            )
 
-            # If the tool finished successfully, validate the results
-            if result.returncode == 0:
+            if ok:
                 if validate_output_file(temp_file_path):
                     try:
-                        # Move the translated file from the temp directory to the final output path
                         shutil.copy2(temp_file_path, final_dest_file)
                         logger.info(f"   ✅ Saved to: {final_dest_file}")
                         return True
@@ -215,7 +146,7 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
                 else:
                     return False
             else:
-                logger.error(f"   ❌ Tool execution failed for {filename} (Exit Code: {result.returncode})")
+                logger.error(f"   ❌ Translation failed for {filename}")
                 return False
 
     except Exception as e:
