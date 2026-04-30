@@ -24,13 +24,6 @@ ENV PYTHONUNBUFFERED=1
 # Copy installed dependencies from builder
 COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
 
-# Pre-Bake Embedding Model
-ARG EMBEDDING_MODEL_NAME=BAAI/bge-large-en-v1.5
-ENV EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
-ENV HF_HOME=/app/data/cache/huggingface
-
-COPY services/shared/scripts/download_model.py /app/download_model.py
-RUN python /app/download_model.py && rm /app/download_model.py && chmod -R 777 /app/data/cache
 
 # Create logs directory
 RUN mkdir -p /app/data/logs && chmod 777 /app/data/logs
