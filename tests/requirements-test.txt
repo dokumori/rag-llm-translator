@@ -6,4 +6,4 @@
 #   → A minimal stub in tests/custom/chromadb/ shadows the real package so
 #     source modules can be imported; all actual DB calls are mocked.
 
-snowballstemmer==2.2.0
+snowballstemmer~=3.0
