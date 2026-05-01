@@ -291,6 +291,7 @@ def _process_batch(
     messages = [{"role": "user", "content": prompt}]
 
     for attempt in range(max_retries + 1):
+        # --- API call (retriable: network errors, rate limits, timeouts) ---
         try:
             response = client.chat.completions.create(
                 model=model,
@@ -301,9 +302,6 @@ def _process_batch(
             logger.debug("Raw LLM response:\n%s", content)
             if tracker is not None:
                 tracker.record(response.usage)
-            translations = _parse_translations(content, expected_count=len(texts))
-            return True, translations
-
         except Exception as exc:
             logger.error(
                 "   ⚠️  Batch attempt %d/%d failed: %s",
@@ -313,8 +311,21 @@ def _process_batch(
                 wait = 2 ** (attempt + 1)  # 2s, 4s
                 logger.debug("   ⏳ Retrying in %ds...", wait)
                 time.sleep(wait)
+            continue
+
+        # --- Parsing (non-retriable: retrying the same prompt yields the same output) ---
+        try:
+            translations = _parse_translations(content, expected_count=len(texts))
+            return True, translations
+        except ValueError as exc:
+            logger.error(
+                "   ❌ Parse failure (non-retriable): %s | Raw response: %.300s",
+                exc, content,
+            )
+            return False, []
 
     return False, []
+
 
 
 def _parse_translations(content: str, expected_count: int) -> List[str]:
