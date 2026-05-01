@@ -119,16 +119,17 @@ def process_single_file(file_path: str, loaded_plugins: list) -> None:
 
 def main():
     # --- Configuration ---
-    check_plugin_conflicts()
-
     POST_PROCESS_INPUT_DIR = os.environ.get(
         "POST_PROCESS_INPUT_DIR", "/app/po/output")
 
-    # Check if enabled
+    # Check if enabled first — a disabled feature should be a complete no-op,
+    # so the conflict check (which may sys.exit) must not run when disabled.
     enabled_str = os.environ.get("POST_PROCESSING_ENABLED", "true").lower()
     if enabled_str not in ("true", "1", "yes"):
         logger.info("ℹ️ Post-processing is disabled via environment variable. Skipping.")
         return False
+
+    check_plugin_conflicts()
 
     # Parse arguments
     parser = argparse.ArgumentParser(
