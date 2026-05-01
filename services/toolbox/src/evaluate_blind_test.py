@@ -197,7 +197,9 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
             model=model,
             messages=[{"role": "user", "content": system_prompt}],
             temperature=0,
-            response_format={"type": "json_object"} if "gpt-" in model.lower() else None
+            # Only pass response_format for GPT models that support json_object mode;
+            # passing None explicitly can cause errors with some provider SDKs.
+            **({"response_format": {"type": "json_object"}} if "gpt-" in model.lower() else {})
         )
         if tracker is not None:
             tracker.record(response.usage)
@@ -435,6 +437,7 @@ def main():
     # Check if this model is marked as a dry run in the models config
     is_dry_run = False
     judge_name = args.model
+    models_list: list = []  # initialise before try so it is always defined below
     try:
         models_list = load_models_config()
         for m in models_list:
