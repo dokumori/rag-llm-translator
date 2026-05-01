@@ -5,10 +5,12 @@ with automated cleaning, deduplication, and incremental loading.
 Each ingested entry is tagged with a `langcode` metadata field so
 that the RAG proxy can filter retrieval results by target language.
 TM entries also store `msgctxt` (Drupal disambiguation context).
+
+All embedding and ChromaDB writes are delegated to the rag-proxy
+via its /api/ingest/* HTTP endpoints, so this module does NOT
+require sentence-transformers or PyTorch.
 '''
 
-import chromadb
-from chromadb.utils import embedding_functions
 import polib
 import csv
 import logging
@@ -16,32 +18,23 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
-from typing import List, Dict, Generator, Any, Tuple, Set, Optional
+from typing import List, Dict, Generator, Any, Tuple, Set
 from core.config import Config
 from core.utils import find_po_files
 from core import paths
-from infrastructure import get_chroma_client, get_embedding_function
+from ingest_client import IngestClient
 
 # --- Configuration ---
-MODEL_NAME = Config.EMBEDDING_MODEL_NAME
 CHROMA_HOST = Config.CHROMA_HOST
 CHROMA_PORT = Config.CHROMA_PORT
+# The rag-proxy base URL — used by IngestClient for all ChromaDB operations.
+RAG_PROXY_URL = os.environ.get("RAG_PROXY_URL", "http://rag-proxy:5000")
 
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
 logger = logging.getLogger(__name__)
 
-# Silence noisy third-party libraries and model loading output
+# Silence noisy third-party libraries
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("chromadb").setLevel(logging.WARNING)
-logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-logging.getLogger("transformers").setLevel(logging.WARNING)
-os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 # --- Helpers ---
 
@@ -65,7 +58,7 @@ def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
 
 def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bool:
     """
-    Validates input files before performing expensive operations.
+    Validates input files and directory structure before performing expensive operations.
     Returns True if checks pass, False otherwise.
     """
     logger.info("🔍 Running Pre-flight Checks...")
@@ -84,10 +77,16 @@ def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bo
                 "👉 Please provide only ONE CSV file or combine them into one.")
             return False
         elif len(csv_files) == 1:
-            logger.info(
-                f"   ✅ Single glossary file found: {csv_files[0].name}")
+            logger.info(f"   ✅ Single glossary file found: {csv_files[0].name}")
         else:
-             logger.info("   ℹ️  No glossary CSV found (Glossary step will skip gracefully).")
+            logger.info("   ℹ️  No glossary CSV found (Glossary step will skip gracefully).")
+
+    if run_tm:
+        po_files = find_po_files(str(source_dir), recursive=True)
+        if not po_files:
+            logger.warning(f"   ⚠️  No .po files found under {source_dir} (TM step will be empty).")
+        else:
+            logger.info(f"   ✅ Found {len(po_files)} .po file(s) for TM ingestion.")
 
     logger.info("✅ Pre-flight Checks Passed.")
     return True
@@ -95,7 +94,7 @@ def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bo
 # --- Glossary Processor ---
 
 
-def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
+def process_glossary(client: IngestClient, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
     """
     Reads, cleans, deduplicates, and incrementally ingests glossary terms.
     If reset is True, deletes existing collection first.
@@ -105,33 +104,10 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
     COLLECTION_NAME = Config.GLOSSARY_COLLECTION
 
     if reset:
-        try:
-            col = client.get_collection(COLLECTION_NAME)
-            if langcode == "all":
-                client.delete_collection(COLLECTION_NAME)
-                logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
-            else:
-                col.delete(where={"langcode": langcode})
-                logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "does not exist" in err_msg or "not found" in err_msg:
-                logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist. Nothing to delete.")
-            else:
-                logger.error(f"❌ Reset failed for '{COLLECTION_NAME}': {e}", exc_info=True)
-                raise
+        client.reset_collection(COLLECTION_NAME, langcode)
+        logger.info(f"   🗑️  Reset: Cleared '{COLLECTION_NAME}' for langcode='{langcode}'.")
 
     if skip_ingest:
-        return
-
-    try:
-        gloss_col = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"}
-        )
-    except Exception as e:
-        logger.error(f"❌ Failed to get/create glossary collection: {e}")
         return
 
     # Resolve path via unified path helper
@@ -204,14 +180,14 @@ def process_glossary(client: chromadb.HttpClient, ef: Any, langcode: str, reset:
         })
 
     # Batch and Incremental Load
-    _ingest_batches(gloss_col, ids, documents, metadatas,
+    _ingest_batches(client, COLLECTION_NAME, ids, documents, metadatas,
                     batch_size=200, label="Glossary")
     logger.info("✅ Glossary Ingestion Complete.")
 
 
 # --- TM Processor ---
 
-def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
+def process_tm(client: IngestClient, langcode: str, reset: bool = False, skip_ingest: bool = False) -> None:
     """
     Recursively finds PO files, deduplicates by (msgid, msgctxt), and incrementally ingests.
     If reset is True, deletes existing collection first.
@@ -223,33 +199,10 @@ def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool 
     COLLECTION_NAME = Config.TM_COLLECTION
 
     if reset:
-        try:
-            col = client.get_collection(COLLECTION_NAME)
-            if langcode == "all":
-                client.delete_collection(COLLECTION_NAME)
-                logger.info(f"   🗑️  Reset: Deleted existing '{COLLECTION_NAME}' collection.")
-            else:
-                col.delete(where={"langcode": langcode})
-                logger.info(f"   🗑️  Reset: Deleted entries for language '{langcode}' in '{COLLECTION_NAME}'.")
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "does not exist" in err_msg or "not found" in err_msg:
-                logger.info(f"   ℹ️  Reset: Collection '{COLLECTION_NAME}' did not exist. Nothing to delete.")
-            else:
-                logger.error(f"❌ Reset failed for '{COLLECTION_NAME}': {e}", exc_info=True)
-                raise
+        client.reset_collection(COLLECTION_NAME, langcode)
+        logger.info(f"   🗑️  Reset: Cleared '{COLLECTION_NAME}' for langcode='{langcode}'.")
 
     if skip_ingest:
-        return
-
-    try:
-        tm_col = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"}
-        )
-    except Exception as e:
-        logger.error(f"❌ Failed to get/create TM collection: {e}")
         return
 
     source_dir = Path(paths.tm_source_dir(langcode))
@@ -327,12 +280,12 @@ def process_tm(client: chromadb.HttpClient, ef: Any, langcode: str, reset: bool 
         })
 
     # Batch and Incremental Load
-    _ingest_batches(tm_col, ids, documents, metadatas,
+    _ingest_batches(client, COLLECTION_NAME, ids, documents, metadatas,
                     batch_size=400, label="TM")
     logger.info("✅ TM Ingestion Complete.")
 
 
-def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metadatas: List[Dict], batch_size: int, label: str) -> None:
+def _ingest_batches(client: IngestClient, collection_name: str, ids: List[str], documents: List[str], metadatas: List[Dict], batch_size: int, label: str) -> None:
     """
     Helper to handle batching and incremental loading (skipping existing IDs).
     """
@@ -350,8 +303,7 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
 
         # Incremental Check: Check which IDs already exist
         try:
-            existing_records = collection.get(ids=ch_ids, include=[])
-            existing_ids = set(existing_records['ids'])
+            existing_ids = client.check_existing_ids(collection_name, ch_ids)
         except Exception as e:
             logger.warning(
                 f"Failed to check existence for batch, attempting upsert all. Error: {e}")
@@ -373,9 +325,10 @@ def _ingest_batches(collection: Any, ids: List[str], documents: List[str], metad
         # Upsert ONLY new
         if new_ids:
             try:
-                collection.add(ids=new_ids, documents=new_docs,
-                               metadatas=new_meta)
-                total_new += len(new_ids)
+                added = client.add_documents(
+                    collection_name, new_ids, new_docs, new_meta
+                )
+                total_new += added
             except Exception as e:
                 logger.error(
                     f"❌ Error adding batch to {label}: {e}", exc_info=True)
@@ -398,10 +351,14 @@ def main() -> None:
     parser.add_argument("--lang", required=True,
                         help="Target language code (e.g. ja, it). "
                              "Determines which data/tm_source/{lang}/ directory to read from.")
-    parser.add_argument("--glossary-only", action="store_true",
-                        help="Only ingest the glossary CSV.")
-    parser.add_argument("--tm-only", action="store_true",
-                        help="Only ingest the .po files.")
+
+    # --glossary-only and --tm-only are mutually exclusive; omitting both runs both.
+    scope_group = parser.add_mutually_exclusive_group()
+    scope_group.add_argument("--glossary-only", action="store_true",
+                             help="Only ingest the glossary CSV.")
+    scope_group.add_argument("--tm-only", action="store_true",
+                             help="Only ingest the .po files.")
+
     parser.add_argument("--reset", action="store_true",
                         help="Delete existing collections before ingestion (Cleanup dupes).")
     parser.add_argument("--reset-only", action="store_true",
@@ -411,17 +368,8 @@ def main() -> None:
     langcode = args.lang
     logger.info(f"🌐 Target language: {langcode}")
 
-    run_glossary = True
-    run_tm = True
-
-    if args.glossary_only:
-        run_tm = False
-    if args.tm_only:
-        run_glossary = False
-    if args.glossary_only and args.tm_only:
-        logger.warning("⚠️  Both flags set. Running BOTH.")
-        run_glossary = True
-        run_tm = True
+    run_glossary = not args.tm_only
+    run_tm = not args.glossary_only
     if args.reset_only:
         run_glossary = False
         run_tm = False
@@ -431,37 +379,33 @@ def main() -> None:
         logger.error("🛑 Pre-flight checks failed. Exiting.")
         return
 
-    try:
-        client = get_chroma_client()
-    except Exception as e:
-        logger.critical(
-             f"❌ Failed to connect to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}. Error: {e}")
-        return
-
-    try:
-        embedding_fn = get_embedding_function()
-    except Exception as e:
-        logger.critical(f"❌ Failed to load embedding model: {e}")
-        return
+    # Use the IngestClient to delegate embedding + storage to the rag-proxy.
+    client = IngestClient(RAG_PROXY_URL)
+    logger.info(f"🔌 Using rag-proxy at {RAG_PROXY_URL} for ingestion.")
 
     is_reset = args.reset or args.reset_only
 
     if is_reset:
         # For reset only, we still need to process the deletion logic
         if args.reset_only:
-            process_glossary(client, embedding_fn, langcode, reset=True, skip_ingest=True)
-            process_tm(client, embedding_fn, langcode, reset=True, skip_ingest=True)
+            process_glossary(client, langcode, reset=True, skip_ingest=True)
+            process_tm(client, langcode, reset=True, skip_ingest=True)
             logger.info("🎉 Reset Finished.")
             return
 
     if run_glossary:
-        process_glossary(client, embedding_fn, langcode, reset=args.reset)
+        process_glossary(client, langcode, reset=args.reset)
 
     if run_tm:
-        process_tm(client, embedding_fn, langcode, reset=args.reset)
+        process_tm(client, langcode, reset=args.reset)
 
     logger.info("🎉 Ingestion Pipeline Finished.")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()

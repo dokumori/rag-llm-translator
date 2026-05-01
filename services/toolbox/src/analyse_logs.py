@@ -133,7 +133,7 @@ def main() -> None:
     if duplicates_removed > 0:
         print(
             f"🔁 Deduplicated: {duplicates_removed} duplicate RAG matches removed "
-            f"({len(rag_data) + duplicates_removed} → {len(unique_rag_data)} unique).", file=sys.stderr)
+            f"({len(rag_data)} → {len(unique_rag_data)} unique).", file=sys.stderr)
     rag_data = unique_rag_data
 
     # Separate Matches and Misses

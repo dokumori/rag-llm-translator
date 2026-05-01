@@ -1,0 +1,92 @@
+{
+  // Renovate Bot Configuration
+  // Docs: https://docs.renovatebot.com/configuration-options/
+  //
+  // HOW IT WORKS:
+  //   1. Renovate scans this repo on the schedule defined below.
+  //   2. When a dependency has a newer version, it opens a PR automatically.
+  //   3. You review and merge (or close) the PR like any normal PR.
+  //   4. A "Dependency Dashboard" issue is created in your repo to track
+  //      all pending updates in one place.
+  //
+  // WHAT IT MONITORS:
+  //   - services/rag-proxy/requirements.txt    (pip)
+  //   - services/toolbox/requirements.txt      (pip)
+  //   - tests/requirements-test.txt            (pip)
+  //   - services/rag-proxy/Dockerfile          (Docker base image + digest)
+  //   - services/toolbox/Dockerfile            (Docker base image + digest)
+  //   - docker-compose.yml                     (service images like ChromaDB)
+
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // --- Base Presets ---
+  // "config:recommended" gives sensible defaults (e.g., semantic commit messages,
+  // ignoring node_modules, pinning Docker digests).
+  "extends": [
+    "config:recommended"
+  ],
+
+  // --- Schedule ---
+  // Check for updates once a week to keep PR noise low.
+  // Runs every Monday before 8 AM in your timezone.
+  "schedule": ["before 8am on monday"],
+  "timezone": "Europe/Amsterdam",
+
+  // --- PR Behavior ---
+  // Cap open Renovate PRs to avoid overwhelming your review queue.
+  "prConcurrentLimit": 5,
+
+  // Labels applied to every Renovate PR for easy filtering in GitHub.
+  "labels": ["dependencies", "renovate"],
+
+  // --- Grouping Rules ---
+  // These rules control how updates are batched into PRs.
+  // Without grouping, each dependency gets its own PR — noisy in a multi-service repo.
+  "packageRules": [
+    //
+    // 1. Group all minor + patch pip updates into ONE PR.
+    //    e.g., Flask 3.1.1→3.1.2 and openai 2.0.4→2.0.5 land in the same PR.
+    //    This keeps your services in sync (same openai version everywhere).
+    //
+    {
+      "description": "Group minor/patch pip updates across all services",
+      "matchManagers": ["pip_requirements"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "pip minor and patch updates"
+    },
+
+    //
+    // 2. Major pip updates get their OWN PR (one per package).
+    //    Major bumps (e.g., Flask 3.x → 4.x) may have breaking changes,
+    //    so they deserve individual review. Tagged with "breaking" label.
+    //
+    {
+      "description": "Major pip updates get individual PRs for careful review",
+      "matchManagers": ["pip_requirements"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "renovate", "breaking"]
+    },
+
+    //
+    // 3. Group Docker base image updates.
+    //    Both Dockerfiles use the same python:3.10-slim-bookworm image,
+    //    so digest/version bumps are grouped into one PR.
+    //
+    {
+      "description": "Group Docker base image updates (digest and version)",
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker base images"
+    },
+
+    //
+    // 4. Docker Compose service image updates (e.g., ChromaDB).
+    //    As you add more services to docker-compose.yml, their image
+    //    updates will be grouped here.
+    //
+    {
+      "description": "Docker Compose service image updates",
+      "matchManagers": ["docker-compose"],
+      "groupName": "docker compose images"
+    }
+  ]
+}

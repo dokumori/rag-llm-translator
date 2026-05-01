@@ -33,28 +33,17 @@ except ValueError:
 
 
 
-def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str, str]:
-    """Returns the environment configuration for the translation tool."""
+def get_env_config(target_lang: str, skip_rag: bool = False) -> Dict[str, str]:
+    """
+    Builds the environment dict for the translation tool.
+    target_lang must already be validated by the caller.
+    """
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = "dummy"
 
-    # Allow override via environment variable, default to http://rag-proxy:5000/v1
-    base_url = os.environ.get("OPENAI_BASE_URL", "http://rag-proxy:5000/v1")
-
-    # Prefer explicitly-passed target_lang (from CLI arg) over env var.
-    # This lets translate.sh pass the freshly-read .env value without
-    # requiring a container restart/rebuild.
-    if target_lang is None:
-        target_lang = os.environ.get("TARGET_LANG")
-    if not target_lang:
-        raise ValueError(
-            "❌ TARGET_LANG is not set. "
-            "Set it in your .env file (e.g. TARGET_LANG=ja) and re-run."
-        )
-
     # Encode target language in URL path so rag-proxy receives it per-request.
-    # This follows the same pattern as skip_rag: the OpenAI SDK appends
-    # /chat/completions after the base_url, so path segments survive intact.
+    # The OpenAI SDK appends /chat/completions after base_url, so path segments survive intact.
+    base_url = os.environ.get("OPENAI_BASE_URL", "http://rag-proxy:5000/v1")
     base_url = f"{base_url.rstrip('/')}/lang_{target_lang}"
 
     if skip_rag:
@@ -62,11 +51,9 @@ def get_env_config(target_lang: str = None, skip_rag: bool = False) -> Dict[str,
         base_url = f"{base_url.rstrip('/')}/skip_rag"
 
     env["OPENAI_BASE_URL"] = base_url
-    # Also propagate as an env var so any child process sees the same value
     env["TARGET_LANG"] = target_lang
 
     logger.info(f"🔧 Config: OPENAI_BASE_URL = {base_url}")
-
     return env
 
 def check_dry_run(model_id: str) -> bool:

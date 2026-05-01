@@ -67,21 +67,16 @@ class TestDrupalVariablesPlugin(unittest.TestCase):
 class TestCorePostProcess(unittest.TestCase):
     
     def test_disabled_via_env(self):
-        """Test that the script exits early if the optional flag is disabled."""
+        """Test that main() returns False when post-processing is disabled via env."""
         with patch.dict(os.environ, {"POST_PROCESSING_ENABLED": "false"}):
-            with patch('post_process.sys.exit', side_effect=SystemExit) as mock_exit:
-                # assertLogs captures records emitted by the 'post_process' logger
-                with self.assertLogs('post_process', level='INFO') as log_cm:
-                    with self.assertRaises(SystemExit):
-                        post_process.main()
+            with self.assertLogs('post_process', level='INFO') as log_cm:
+                result = post_process.main()
 
-                # Should call sys.exit(0)
-                mock_exit.assert_called_with(0)
-                # Verify the expected log message was emitted
-                self.assertTrue(
-                    any('Post-processing is disabled' in line for line in log_cm.output),
-                    f"Expected 'Post-processing is disabled' in log output.\nActual: {log_cm.output}"
-                )
+            self.assertFalse(result)
+            self.assertTrue(
+                any('Post-processing is disabled' in line for line in log_cm.output),
+                f"Expected 'Post-processing is disabled' in log output.\nActual: {log_cm.output}"
+            )
 
     @patch('post_process.check_plugin_conflicts')
     @patch('post_process.load_plugin')

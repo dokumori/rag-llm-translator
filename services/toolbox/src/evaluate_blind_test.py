@@ -17,6 +17,7 @@ import logging
 import argparse
 from typing import List, Dict, Any, Tuple
 import datetime
+import requests
 from openai import OpenAI
 from core.config import load_models_config
 from core.utils import find_po_files
@@ -29,13 +30,27 @@ except ImportError:
     print("❌ Error: polib is required. Run: pip install polib")
     sys.exit(1)
 
-# In the toolbox container, /app/services/rag-proxy/src is in PYTHONPATH
-try:
-    from app import perform_rag_lookup
-except ImportError:
-    # Fallback if run from host
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "rag-proxy", "src")))
-    from app import perform_rag_lookup
+# The rag-proxy base URL — RAG lookups are delegated over HTTP.
+RAG_PROXY_URL = os.environ.get("RAG_PROXY_URL", "http://rag-proxy:5000")
+
+
+def perform_rag_lookup_via_proxy(
+    items: List[Dict[str, str]],
+    target_lang: str = "",
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Calls the rag-proxy's /api/rag-lookup endpoint to retrieve RAG context.
+    This replaces the direct import of `from app import perform_rag_lookup`,
+    eliminating the need for sentence-transformers in the toolbox container.
+    """
+    resp = requests.post(
+        f"{RAG_PROXY_URL}/api/rag-lookup",
+        json={"items": items, "target_lang": target_lang},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("rag_context", ""), data.get("matches", [])
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -128,7 +143,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
     # 1. Re-Retrieve Context from ChromaDB
     try:
         # Use new context-aware dictionary payload format
-        rag_context, _ = perform_rag_lookup([{"text": source_text, "context": source_context}])
+        rag_context, _ = perform_rag_lookup_via_proxy([{"text": source_text, "context": source_context}])
         if not rag_context.strip():
             logger.info(f"⏭️ Skipping '{source_text[:30]}...' (No RAG context or Guardrail rejected)")
             return None
@@ -197,7 +212,9 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
             model=model,
             messages=[{"role": "user", "content": system_prompt}],
             temperature=0,
-            response_format={"type": "json_object"} if "gpt-" in model.lower() else None
+            # Only pass response_format for GPT models that support json_object mode;
+            # passing None explicitly can cause errors with some provider SDKs.
+            **({"response_format": {"type": "json_object"}} if "gpt-" in model.lower() else {})
         )
         if tracker is not None:
             tracker.record(response.usage)
@@ -435,6 +452,7 @@ def main():
     # Check if this model is marked as a dry run in the models config
     is_dry_run = False
     judge_name = args.model
+    models_list: list = []  # initialise before try so it is always defined below
     try:
         models_list = load_models_config()
         for m in models_list:

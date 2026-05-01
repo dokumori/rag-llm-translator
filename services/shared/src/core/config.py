@@ -1,24 +1,21 @@
 import os
 import json
 import logging
-from dataclasses import dataclass
 from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-@dataclass
+
 class Config:
     """Centralized configuration for the application."""
-    
-    # --- ChromaDB Configuration ---
+
+    # --- ChromaDB ---
     CHROMA_HOST: str = os.environ.get("CHROMA_HOST", "chroma")
     CHROMA_PORT: int = int(os.environ.get("CHROMA_PORT", 8000))
-    
-    # Collections
     TM_COLLECTION: str = os.environ.get("TM_COLLECTION", "app_tm")
     GLOSSARY_COLLECTION: str = os.environ.get("GLOSSARY_COLLECTION", "app_glossary")
 
-    # --- LLM Configuration ---
+    # --- LLM ---
     LLM_API_TOKEN: str = os.environ.get("LLM_API_TOKEN", "")
     LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "")
     TM_THRESHOLD: float = float(os.environ.get("TM_THRESHOLD", 0.27))
@@ -30,19 +27,19 @@ class Config:
     MODELS_CONFIG_PATH: str = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models/models.json")
     CUSTOM_MODELS_CONFIG_PATH: str = os.environ.get("CUSTOM_MODELS_CONFIG_PATH", "/app/config/models/custom/models.json")
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
-    
-    # --- Embedding Model ---
+
+    # --- Embedding ---
     # WARNING: Changing this after data has been ingested will invalidate all vectors in ChromaDB.
     # If you change the model, you must reset and re-ingest all collections.
     EMBEDDING_MODEL_NAME: str = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
-    
+
     # --- Localization ---
     # No default — target language must be provided explicitly per-request
     # (via URL path, CLI argument, etc.) to prevent cross-language contamination.
     TARGET_LANG: str = os.environ.get("TARGET_LANG", "")
-    
+
     @classmethod
-    def log_config(cls):
+    def log_config(cls) -> None:
         """Logs critical configuration values for debugging."""
         logger.info(f"🔧 Config: CHROMA_HOST={cls.CHROMA_HOST}:{cls.CHROMA_PORT}")
         logger.info(f"🔧 Config: TM_THRESHOLD={cls.TM_THRESHOLD}, GLOSSARY_THRESHOLD={cls.GLOSSARY_THRESHOLD}")
@@ -65,7 +62,7 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
     if custom_path is None:
         custom_path = Config.CUSTOM_MODELS_CONFIG_PATH
 
-    # 1. Load base models
+    # Load base models
     base_models: List[Dict[str, Any]] = []
     if os.path.exists(models_path):
         try:
@@ -76,7 +73,14 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
     else:
         logger.warning(f"⚠️ Models config file not found at: {models_path}")
 
-    # 2. Merge custom overrides (if file exists)
+    # Custom override strategy: when custom/models.json exists it
+    # REPLACES the base model list entirely — not merges with it.  Only the single
+    # dry-run sentinel from the base file is carried over so that test/dry-run mode
+    # always works regardless of what the custom file contains.
+    #
+    # Practical implication: any model you want available at runtime must be listed
+    # in custom/models.json when that file exists.  Adding a model only to the base
+    # models.json has no effect while a custom file is present.
     if os.path.exists(custom_path):
         try:
             with open(custom_path, "r", encoding="utf-8") as f:
@@ -84,7 +88,7 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
             custom_ids = {m["id"] for m in custom_models if "id" in m}
 
             dry_run = next((m for m in base_models if m.get("is_dry_run")), None)
-            
+
             final_models = list(custom_models)
             if dry_run and dry_run.get("id") not in custom_ids:
                 final_models.append(dry_run)
