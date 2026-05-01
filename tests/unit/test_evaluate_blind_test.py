@@ -76,7 +76,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         self.assertEqual(with_rag_files, ["rag.po"])
         self.assertEqual(without_rag_files, ["no_rag.po"])
 
-    @patch("evaluate_blind_test.perform_rag_lookup")
+    @patch("evaluate_blind_test.perform_rag_lookup_via_proxy")
     @patch("evaluate_blind_test.random.choice")
     def test_evaluate_translation_with_rag_winner(self, mock_choice, mock_rag_lookup):
         """Test evaluation logic when the LLM successfully chooses A (which is mapped to with_rag)."""
@@ -128,7 +128,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         self.assertEqual(result["source"], "Hello World")
         self.assertEqual(result["with_rag_translation"], "Bonjour le monde")
 
-    @patch("evaluate_blind_test.perform_rag_lookup")
+    @patch("evaluate_blind_test.perform_rag_lookup_via_proxy")
     @patch("evaluate_blind_test.random.choice")
     def test_evaluate_translation_without_rag_winner(self, mock_choice, mock_rag_lookup):
         """
@@ -171,7 +171,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
         self.assertEqual(result["with_rag_context"], 2)
         self.assertEqual(result["with_rag_fluency"], 2)
 
-    @patch("evaluate_blind_test.perform_rag_lookup")
+    @patch("evaluate_blind_test.perform_rag_lookup_via_proxy")
     def test_evaluate_translation_skipped_no_context(self, mock_rag_lookup):
         """Test evaluation skipping when there is no valid RAG context."""
         # Mock empty RAG context
