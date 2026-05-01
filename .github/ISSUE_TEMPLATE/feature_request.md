@@ -2,19 +2,22 @@
 name: Feature request
 about: Suggest an idea for this project
 title: ''
-labels: ''
-assignees: dokumori
+labels: 'enhancement'
+assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+### Description of the feature
+(A clear and concise description of the feature you want. What is the new functionality or capability you are looking for?)
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+### Reason / What will be improved
+(Why do you need this feature? Describe the problem it solves or the workflow it improves. For example: "It would be much easier to..." or "Currently, the RAG translation pipeline lacks...")
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+### Proposed Solution (Optional)
+(If you have a specific implementation in mind, please describe it. How should it work in the context of the translation pipeline or RAG proxy?)
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+### Alternatives Considered (Optional)
+(A clear and concise description of any alternative solutions or workarounds you've considered or are currently using.)
+
+### Additional context
+(Add any other context, examples of PO file entries, or mockups about the feature request here.)
