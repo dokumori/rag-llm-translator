@@ -128,7 +128,7 @@ def main():
     enabled_str = os.environ.get("POST_PROCESSING_ENABLED", "true").lower()
     if enabled_str not in ("true", "1", "yes"):
         logger.info("ℹ️ Post-processing is disabled via environment variable. Skipping.")
-        sys.exit(0)
+        return False
 
     # Parse arguments
     parser = argparse.ArgumentParser(
@@ -149,7 +149,7 @@ def main():
     plugin_names = resolve_plugins(args.lang)
     if not plugin_names:
         logger.info("ℹ️ No plugins configured. Exiting.")
-        sys.exit(0)
+        return False
 
     loaded_plugins = []
     for name in plugin_names:
@@ -159,7 +159,7 @@ def main():
 
     if not loaded_plugins:
         logger.warning("⚠️ No valid plugins loaded. Exiting.")
-        sys.exit(0)
+        return False
 
     # Input Path
     input_path = args.input_path
@@ -177,14 +177,16 @@ def main():
         files_to_process = find_po_files(input_path, recursive=False)
     else:
         logger.error("❌ Error: Path not found: %s", input_path)
-        sys.exit(1)
+        return False
 
     if not files_to_process:
         logger.warning("⚠️ No .po files found in %s", input_path)
-        sys.exit(0)
+        return False
 
     for po_file in files_to_process:
         process_single_file(po_file, loaded_plugins)
+    return True
 
 if __name__ == "__main__":
-    main()
+    if not main():
+        sys.exit(1)

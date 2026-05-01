@@ -6,19 +6,13 @@ from unittest.mock import patch, MagicMock
 import post_process
 
 def test_disabled_via_env(caplog):
-    """Test that the script exits early if the optional flag is disabled."""
+    """Test that main() returns False (exits cleanly) when the flag is disabled."""
     with patch.dict(os.environ, {"POST_PROCESSING_ENABLED": "false"}):
-        with patch('sys.exit') as mock_exit:
-            mock_exit.side_effect = SystemExit
-            # caplog captures log records emitted by the 'post_process' logger
-            with caplog.at_level(logging.INFO, logger='post_process'):
-                try:
-                    post_process.main()
-                except SystemExit:
-                    pass
+        with caplog.at_level(logging.INFO, logger='post_process'):
+            result = post_process.main()
 
-            mock_exit.assert_called_with(0)
-            assert "Post-processing is disabled" in caplog.text
+        assert result is False
+        assert "Post-processing is disabled" in caplog.text
 
 def test_plugin_loading():
     """Test that plugins are loaded based on language-specific env var."""
@@ -192,21 +186,16 @@ def test_main_with_lang_flag():
 
 
 def test_main_without_lang_flag_exits_cleanly(caplog):
-    """End-to-end: no --lang flag means no plugins resolve, exits cleanly."""
+    """End-to-end: no --lang flag means no plugins resolve; main() returns False cleanly."""
     with patch.dict(os.environ, {
         "POST_PROCESSING_ENABLED": "true",
         "POST_PROCESS_INPUT_DIR": "/tmp",
     }):
         with patch.object(sys, 'argv', ["script", "dummy.po"]):
             with patch('post_process.check_plugin_conflicts'):
-                with patch('sys.exit') as mock_exit:
-                    mock_exit.side_effect = SystemExit
-                    with caplog.at_level(logging.INFO, logger='post_process'):
-                        try:
-                            post_process.main()
-                        except SystemExit:
-                            pass
+                with caplog.at_level(logging.INFO, logger='post_process'):
+                    result = post_process.main()
 
-                    # Should exit with 0 (no plugins configured)
-                    mock_exit.assert_called_with(0)
-                    assert "No plugins configured" in caplog.text
+                # Should return False (no plugins configured) without calling sys.exit
+                assert result is False
+                assert "No plugins configured" in caplog.text

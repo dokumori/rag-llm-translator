@@ -27,12 +27,6 @@ MODEL_NAME = Config.EMBEDDING_MODEL_NAME
 CHROMA_HOST = Config.CHROMA_HOST
 CHROMA_PORT = Config.CHROMA_PORT
 
-# --- Logging Setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
 logger = logging.getLogger(__name__)
 
 # Silence noisy third-party libraries and model loading output
@@ -65,7 +59,7 @@ def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
 
 def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bool:
     """
-    Validates input files before performing expensive operations.
+    Validates input files and directory structure before performing expensive operations.
     Returns True if checks pass, False otherwise.
     """
     logger.info("🔍 Running Pre-flight Checks...")
@@ -84,10 +78,16 @@ def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bo
                 "👉 Please provide only ONE CSV file or combine them into one.")
             return False
         elif len(csv_files) == 1:
-            logger.info(
-                f"   ✅ Single glossary file found: {csv_files[0].name}")
+            logger.info(f"   ✅ Single glossary file found: {csv_files[0].name}")
         else:
-             logger.info("   ℹ️  No glossary CSV found (Glossary step will skip gracefully).")
+            logger.info("   ℹ️  No glossary CSV found (Glossary step will skip gracefully).")
+
+    if run_tm:
+        po_files = find_po_files(str(source_dir), recursive=True)
+        if not po_files:
+            logger.warning(f"   ⚠️  No .po files found under {source_dir} (TM step will be empty).")
+        else:
+            logger.info(f"   ✅ Found {len(po_files)} .po file(s) for TM ingestion.")
 
     logger.info("✅ Pre-flight Checks Passed.")
     return True
@@ -398,10 +398,14 @@ def main() -> None:
     parser.add_argument("--lang", required=True,
                         help="Target language code (e.g. ja, it). "
                              "Determines which data/tm_source/{lang}/ directory to read from.")
-    parser.add_argument("--glossary-only", action="store_true",
-                        help="Only ingest the glossary CSV.")
-    parser.add_argument("--tm-only", action="store_true",
-                        help="Only ingest the .po files.")
+
+    # --glossary-only and --tm-only are mutually exclusive; omitting both runs both.
+    scope_group = parser.add_mutually_exclusive_group()
+    scope_group.add_argument("--glossary-only", action="store_true",
+                             help="Only ingest the glossary CSV.")
+    scope_group.add_argument("--tm-only", action="store_true",
+                             help="Only ingest the .po files.")
+
     parser.add_argument("--reset", action="store_true",
                         help="Delete existing collections before ingestion (Cleanup dupes).")
     parser.add_argument("--reset-only", action="store_true",
@@ -411,17 +415,8 @@ def main() -> None:
     langcode = args.lang
     logger.info(f"🌐 Target language: {langcode}")
 
-    run_glossary = True
-    run_tm = True
-
-    if args.glossary_only:
-        run_tm = False
-    if args.tm_only:
-        run_glossary = False
-    if args.glossary_only and args.tm_only:
-        logger.warning("⚠️  Both flags set. Running BOTH.")
-        run_glossary = True
-        run_tm = True
+    run_glossary = not args.tm_only
+    run_tm = not args.glossary_only
     if args.reset_only:
         run_glossary = False
         run_tm = False
@@ -464,4 +459,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     main()
