@@ -1,11 +1,16 @@
 {
   "_comment": "Copy this file to config/models/custom/models.json to override the default models.",
   "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended. **Please note that this translator is not yet compatible with OpenAI's o1 / o3 / GPT-5 models.**",
+  "_pricing_note": "Add a 'pricing' object to enable token cost estimation. Rates are in USD per 1,000 tokens. Omit 'pricing' entirely if the cost is unknown or not applicable.",
   "models": [
     {
       "id": "gpt-4.1-2025-04-14",
       "name": "GPT 4.1",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.002,
+        "completion_per_1k_tokens": 0.008
+      }
     }
   ]
 }

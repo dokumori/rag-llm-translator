@@ -20,6 +20,7 @@ import datetime
 from openai import OpenAI
 from core.config import load_models_config
 from core.utils import find_po_files
+from core.token_tracker import TokenTracker, build_price_table_from_config
 
 # Attempt to import tools for getting context from db
 try:
@@ -119,7 +120,7 @@ def format_file_info(file_paths: List[str]) -> str:
         info.append(f"{fname} (in {dname}/)")
     return ", ".join(info)
 
-def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False) -> Dict[str, Any]:
+def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False, tracker: TokenTracker = None) -> Dict[str, Any]:
     """Calls the Judge LLM to evaluate the pair, or returns mock data on dry run."""
     source_text = sample["source"]
     source_context = sample.get("context", "")
@@ -198,6 +199,8 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
             temperature=0,
             response_format={"type": "json_object"} if "gpt-" in model.lower() else None
         )
+        if tracker is not None:
+            tracker.record(response.usage)
         
         response_text = response.choices[0].message.content.strip()
         
@@ -255,7 +258,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         logger.error(f"Evaluation failed for string: {source_text[:50]}... Error: {e}")
         return None
 
-def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool) -> List[Dict[str, Any]]:
+def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool, tracker: TokenTracker = None) -> List[Dict[str, Any]]:
     """Runs the primary evaluation loop, calling the judge LLM for each sample."""
     target_evals = min(limit, len(paired_data)) if limit > 0 else len(paired_data)
     target_str = str(target_evals) if limit > 0 else "ALL"
@@ -268,7 +271,7 @@ def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, 
             break
             
         logger.info(f"⏳ Evaluating [{successful_evals + 1}/{target_str}] (Attempt {idx}/{len(paired_data)})...")
-        eval_result = evaluate_translation(client, model, sample, prompt_template, dry_run=is_dry_run)
+        eval_result = evaluate_translation(client, model, sample, prompt_template, dry_run=is_dry_run, tracker=tracker)
         if eval_result:
             results.append(eval_result)
             successful_evals += 1
@@ -457,7 +460,19 @@ def main():
         base_url=os.environ.get("LLM_BASE_URL")
     )
 
-    results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run)
+    tracker = TokenTracker(model=args.model)
+    # Pricing: read from models config, keyed by exact model ID
+    try:
+        _price_table = build_price_table_from_config(models_list)
+        _prompt_rate, _completion_rate = _price_table.get(args.model, (None, None))
+        tracker = TokenTracker(
+            model=args.model,
+            cost_per_1k_prompt=_prompt_rate,
+            cost_per_1k_completion=_completion_rate,
+        )
+    except Exception:
+        pass  # tracker already set above with no pricing
+    results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run, tracker=tracker)
     metrics = calculate_metrics(results)
     
     with_rag_info = format_file_info(with_rag_files)
@@ -467,6 +482,9 @@ def main():
     model_slug = "dry-run" if is_dry_run else judge_name.lower().replace(" ", "-")
     
     save_reports(output_dir, model_slug, results, metrics, judge_name, args.model, with_rag_info, without_rag_info, is_dry_run)
+    tracker.print_summary()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    tracker.save(os.path.join(output_dir, f"token_usage_{timestamp}_{model_slug}.json"))
 
 if __name__ == "__main__":
     main()
