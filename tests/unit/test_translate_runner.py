@@ -14,6 +14,7 @@ from translate_runner import (
     process_single_file,
     TranslationContext
 )
+from core.token_tracker import TokenTracker
 
 @pytest.mark.parametrize("mock_return, expected", [
     ([{"id": "model_a", "is_dry_run": True}], True),
@@ -91,7 +92,8 @@ def test_process_single_file_success(mock_translate, tmp_path):
 
     ctx = TranslationContext(
         model="model", target_lang="ja", env={"OPENAI_API_KEY": "dummy"},
-        model_slug="slug", rag_mode="rag", timestamp="ts"
+        model_slug="slug", rag_mode="rag", timestamp="ts",
+        tracker=TokenTracker(model="model"),
     )
 
     # translate_po_file returns True on success. Because shutil.copy2 copies the original
@@ -124,7 +126,8 @@ def test_process_single_file_failure(mock_translate, tmp_path):
 
     ctx = TranslationContext(
         model="model", target_lang="ja", env={"OPENAI_API_KEY": "dummy"},
-        model_slug="slug", rag_mode="rag", timestamp="ts"
+        model_slug="slug", rag_mode="rag", timestamp="ts",
+        tracker=TokenTracker(model="model"),
     )
 
     # translate_po_file returns False on failure

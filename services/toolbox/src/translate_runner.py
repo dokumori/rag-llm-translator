@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Dict
 from core.config import load_models_config
 from core.utils import find_po_files
+from core.token_tracker import TokenTracker, build_price_table_from_config
 from po_translator import translate_po_file
 
 # --- Logging Configuration ---
@@ -95,6 +96,7 @@ class TranslationContext:
     model_slug: str
     rag_mode: str
     timestamp: str
+    tracker: TokenTracker
 
 
 def validate_output_file(file_path: str) -> bool:
@@ -132,6 +134,7 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
                 env=ctx.env,
                 max_retries=MAX_RETRIES,
                 bulk_size=BULK_SIZE,
+                tracker=ctx.tracker,
             )
 
             if ok:
@@ -191,13 +194,27 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
     success_count = 0
     failure_count = 0
 
+    # Build tracker: pricing comes from models.json
+    try:
+        _models_cfg = load_models_config()
+        _price_table = build_price_table_from_config(_models_cfg)
+        _prompt_rate, _completion_rate = _price_table.get(model, (None, None))
+    except Exception:
+        _prompt_rate, _completion_rate = None, None
+    tracker = TokenTracker(
+        model=model,
+        cost_per_1k_prompt=_prompt_rate,
+        cost_per_1k_completion=_completion_rate,
+    )
+
     ctx = TranslationContext(
         model=model,
         target_lang=target_lang,
         env=env,
         model_slug=model_slug,
         rag_mode=rag_mode,
-        timestamp=timestamp
+        timestamp=timestamp,
+        tracker=tracker,
     )
 
     for index, src_file in enumerate(po_files, 1):
@@ -215,6 +232,9 @@ def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: s
     logger.info("🎉 Translation run complete.")
     logger.info(f"📊 Summary: {success_count} Success, {failure_count} Failed, {total_files} Total")
     logger.info("=" * 30)
+    tracker.print_summary()
+    usage_path = os.path.join(output_base_dir, f"token_usage_{timestamp}_{model_slug}.json")
+    tracker.save(usage_path)
 
 
 if __name__ == "__main__":

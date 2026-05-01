@@ -38,6 +38,7 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import polib
 from openai import OpenAI
+from core.token_tracker import TokenTracker
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ def translate_po_file(
     env: Dict[str, str],
     max_retries: int = 2,
     bulk_size: Optional[int] = None,
+    tracker: Optional[TokenTracker] = None,
 ) -> bool:
     """
     Translates all untranslated (and fuzzy) entries in a .po file.
@@ -157,6 +159,8 @@ def translate_po_file(
         max_retries:  Number of retry attempts per batch on API failure.
         bulk_size:    Maximum slots per LLM request (note: plural entries expand
                       into multiple slots, so a single POEntry may consume N slots).
+        tracker:      Optional TokenTracker to accumulate token usage across
+                      all batches.  Pass None to skip tracking (default).
 
     Returns:
         True if all batches completed without fatal errors, False otherwise.
@@ -215,7 +219,8 @@ def translate_po_file(
                 "   ↳ Sending batch of %d slot(s) (context=%s)", len(batch), ctx_label
             )
             ok, translations = _process_batch(
-                client, model, [s.text for s in batch], ctx, max_retries
+                client, model, [s.text for s in batch], ctx, max_retries,
+                tracker=tracker,
             )
             if not ok:
                 logger.error(
@@ -260,12 +265,17 @@ def _process_batch(
     texts: List[str],
     ctx: str,
     max_retries: int,
+    tracker: Optional[TokenTracker] = None,
 ) -> Tuple[bool, List[str]]:
     """
     Sends one batch of plain source strings to the LLM and returns translations.
 
     Every item is a flat string — plural entries have already been expanded into
     individual slots by the caller, so no nested arrays are needed here.
+
+    Args:
+        tracker: Optional TokenTracker.  If provided, ``response.usage`` is
+                 recorded after every successful API call.
 
     Returns:
         (True, [translation, ...]) on success.
@@ -289,6 +299,8 @@ def _process_batch(
             )
             content = response.choices[0].message.content or ""
             logger.debug("Raw LLM response:\n%s", content)
+            if tracker is not None:
+                tracker.record(response.usage)
             translations = _parse_translations(content, expected_count=len(texts))
             return True, translations
 

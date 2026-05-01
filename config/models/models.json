@@ -1,49 +1,89 @@
 {
+  "_pricing_note": "Rates in USD per 1,000 tokens as of 2026-05-01. Claude/Gemini/Mistral: official list prices. Llama 4 Maverick & Kimi K2.5: averaged across 3 provider samples (Together AI, Groq/Fireworks, OpenRouter / Moonshot AI) — actual costs may differ.",
   "models": [
     {
       "id": "claude-3-5-haiku",
       "name": "Claude 3.5 Haiku",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0008,
+        "completion_per_1k_tokens": 0.004
+      }
     },
     {
       "id": "claude-3-5-sonnet",
       "name": "Claude 3.5 Sonnet",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.003,
+        "completion_per_1k_tokens": 0.015
+      }
     },
     {
       "id": "claude-sonnet-4-20250514-v1",
       "name": "Claude Sonnet 4",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.003,
+        "completion_per_1k_tokens": 0.015
+      }
     },
     {
       "id": "claude-opus-4-20250514-v1",
       "name": "Claude Opus 4",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.015,
+        "completion_per_1k_tokens": 0.075
+      }
     },
     {
       "id": "claude-4-6-sonnet",
-      "name": "Claude 4.6 Sonnet",
-      "is_dry_run": false
+      "name": "Claude Sonnet 4.6",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.003,
+        "completion_per_1k_tokens": 0.015
+      }
     },
     {
       "id": "gemini-2.5-pro",
       "name": "Gemini 2.5 Pro",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.00125,
+        "completion_per_1k_tokens": 0.01,
+        "_note": "Google list price for <=200k token context. Prompts >200k: $0.0025/$0.015 per 1k tokens."
+      }
     },
     {
       "id": "mistral-large-2402-v1",
       "name": "Mistral Large",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.004,
+        "completion_per_1k_tokens": 0.012
+      }
     },
     {
       "id": "llama4-maverick-17b-instruct-v1",
       "name": "Llama 4 Maverick (17B-Instruct-v1)",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.000207,
+        "completion_per_1k_tokens": 0.000717,
+        "_note": "Average of 3 providers: Together AI ($0.27/$0.85), Groq/Fireworks ($0.15/$0.60), market mid ($0.20/$0.70) per 1M tokens."
+      }
     },
     {
       "id": "kimi-k2.5",
       "name": "Kimi K2.5",
-      "is_dry_run": false
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.000517,
+        "completion_per_1k_tokens": 0.0026,
+        "_note": "Average of 3 sources: OpenRouter ($0.45/$2.00), Together AI ($0.50/$2.80), Moonshot AI official ($0.60/$3.00) per 1M tokens."
+      }
     },
     {
       "id": "claude-opus-4-5-20251101",
