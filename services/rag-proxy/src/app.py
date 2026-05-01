@@ -602,6 +602,172 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         return jsonify({"error": str(e)}), 500
 
 
+# --- RAG Lookup API ---
+# Exposes perform_rag_lookup over HTTP so toolbox scripts (e.g. evaluate_blind_test.py)
+# can retrieve RAG context without importing the rag-proxy's app module directly.
+
+@app.route('/api/rag-lookup', methods=['POST'])
+def api_rag_lookup() -> Union[Response, Tuple[Response, int]]:
+    """
+    Retrieves RAG context (glossary + TM matches) for a list of query items.
+
+    Body:
+        items (list[dict]): List of {"text": ..., "context": ...} dicts.
+        target_lang (str, optional): Target language code for filtering.
+
+    Returns:
+        rag_context (str): The XML-formatted context string.
+        matches (list[dict]): Detailed match log entries.
+    """
+    try:
+        data = request.json or {}
+        items = data.get("items", [])
+        target_lang = data.get("target_lang", "")
+
+        if not items:
+            return jsonify({"error": "'items' is required"}), 400
+
+        rag_context, matches = perform_rag_lookup(items, target_lang=target_lang)
+        return jsonify({
+            "rag_context": rag_context,
+            "matches": matches,
+        })
+    except Exception as e:
+        logger.error(f"❌ RAG lookup API failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# --- Ingestion API ---
+# These endpoints let the toolbox delegate embedding + ChromaDB writes
+# to the rag-proxy, keeping the toolbox image lightweight (no PyTorch/sentence-transformers).
+
+@app.route('/api/ingest/reset', methods=['POST'])
+def ingest_reset() -> Union[Response, Tuple[Response, int]]:
+    """
+    Resets a ChromaDB collection or deletes entries for a specific language.
+
+    Body:
+        collection (str): Collection name (e.g. "app_glossary", "app_tm").
+        langcode (str): Language code. Use "all" to delete the entire collection.
+    """
+    try:
+        data = request.json or {}
+        collection_name = data.get("collection", "")
+        langcode = data.get("langcode", "")
+
+        if not collection_name or not langcode:
+            return jsonify({"error": "Both 'collection' and 'langcode' are required"}), 400
+
+        client = get_chroma_client()
+
+        try:
+            col = client.get_collection(collection_name)
+            if langcode == "all":
+                client.delete_collection(collection_name)
+                logger.info(f"🗑️  Ingest API: Deleted entire collection '{collection_name}'.")
+            else:
+                col.delete(where={"langcode": langcode})
+                logger.info(f"🗑️  Ingest API: Deleted '{langcode}' entries from '{collection_name}'.")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "does not exist" in err_msg or "not found" in err_msg:
+                logger.info(f"ℹ️  Ingest API: Collection '{collection_name}' does not exist. Nothing to delete.")
+            else:
+                raise
+
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"❌ Ingest reset failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ingest/check-ids', methods=['POST'])
+def ingest_check_ids() -> Union[Response, Tuple[Response, int]]:
+    """
+    Checks which IDs already exist in a collection (for incremental loading).
+
+    Body:
+        collection (str): Collection name.
+        ids (list[str]): List of document IDs to check.
+
+    Returns:
+        existing_ids (list[str]): IDs that already exist in the collection.
+    """
+    try:
+        data = request.json or {}
+        collection_name = data.get("collection", "")
+        ids = data.get("ids", [])
+
+        if not collection_name or not ids:
+            return jsonify({"error": "'collection' and 'ids' are required"}), 400
+
+        client = get_chroma_client()
+
+        try:
+            col = client.get_or_create_collection(
+                name=collection_name,
+                embedding_function=get_embedding_function(),
+                metadata={"hnsw:space": "cosine"}
+            )
+            existing = col.get(ids=ids, include=[])
+            return jsonify({"existing_ids": existing["ids"]})
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to check IDs in '{collection_name}': {e}")
+            return jsonify({"existing_ids": []})
+
+    except Exception as e:
+        logger.error(f"❌ Ingest check-ids failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ingest/add', methods=['POST'])
+def ingest_add() -> Union[Response, Tuple[Response, int]]:
+    """
+    Embeds and stores documents in a ChromaDB collection.
+    The rag-proxy handles embedding so the caller doesn't need sentence-transformers.
+
+    Body:
+        collection (str): Collection name.
+        ids (list[str]): Document IDs.
+        documents (list[str]): Document texts to embed.
+        metadatas (list[dict]): Metadata for each document.
+
+    Returns:
+        added (int): Number of documents added.
+    """
+    try:
+        data = request.json or {}
+        collection_name = data.get("collection", "")
+        ids = data.get("ids", [])
+        documents = data.get("documents", [])
+        metadatas = data.get("metadatas", [])
+
+        if not collection_name or not ids or not documents:
+            return jsonify({"error": "'collection', 'ids', and 'documents' are required"}), 400
+
+        if len(ids) != len(documents):
+            return jsonify({"error": "ids and documents must have the same length"}), 400
+
+        client = get_chroma_client()
+        col = client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=get_embedding_function(),
+            metadata={"hnsw:space": "cosine"}
+        )
+
+        kwargs = {"ids": ids, "documents": documents}
+        if metadatas:
+            kwargs["metadatas"] = metadatas
+
+        col.add(**kwargs)
+        logger.info(f"📥 Ingest API: Added {len(ids)} documents to '{collection_name}'.")
+
+        return jsonify({"added": len(ids)})
+    except Exception as e:
+        logger.error(f"❌ Ingest add failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health_check() -> Tuple[Response, int]:
     """
