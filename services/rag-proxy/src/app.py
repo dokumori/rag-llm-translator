@@ -295,11 +295,22 @@ def _process_collection(
         for j, doc_list in enumerate(res["documents"]):
             if not doc_list:
                 continue
+            # Guard: ChromaDB should always return parallel lists, but defend
+            # against a missing/empty distances or metadatas entry to avoid
+            # IndexError being silently swallowed by perform_rag_lookup's broad
+            # except handler (which would zero out all RAG context).
+            if not res["distances"][j] or not res["metadatas"][j]:
+                logger.warning(
+                    "   ⚠️ Skipping result %d: distances or metadatas list is empty "
+                    "(collection may be missing embeddings).", j
+                )
+                continue
             item_index = group_indices[j]
             query_text = group_original_texts[j]
             dist = res["distances"][j][0]
             src = doc_list[0]
             tgt = res["metadatas"][j][0].get("target", "")
+
 
             # Guardrail: reject if no shared stems unless distance is extremely low
             is_semantic_match = dist < threshold
