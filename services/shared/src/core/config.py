@@ -73,7 +73,14 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
     else:
         logger.warning(f"⚠️ Models config file not found at: {models_path}")
 
-    # Merge custom overrides if present
+    # Custom override strategy: when custom/models.json exists it
+    # REPLACES the base model list entirely — not merges with it.  Only the single
+    # dry-run sentinel from the base file is carried over so that test/dry-run mode
+    # always works regardless of what the custom file contains.
+    #
+    # Practical implication: any model you want available at runtime must be listed
+    # in custom/models.json when that file exists.  Adding a model only to the base
+    # models.json has no effect while a custom file is present.
     if os.path.exists(custom_path):
         try:
             with open(custom_path, "r", encoding="utf-8") as f:
