@@ -65,13 +65,20 @@ def cleanup(ingest_client):
 class TestRagLookupAPIConnectivity:
     """Smoke tests: the endpoint is reachable and handles edge cases."""
 
+    # Use a langcode that will never have ingested data, ensuring these tests
+    # are isolated from whatever production data sits in app_glossary / app_tm.
+    EMPTY_LANG = "zz_empty_test"
+
     def test_returns_empty_context_when_no_data(self):
         """With no ingested data, the endpoint should return an empty context string."""
-        result = rag_lookup([{"text": "Hello", "context": ""}])
+        result = rag_lookup(
+            [{"text": "Hello", "context": ""}],
+            target_lang=self.EMPTY_LANG,
+        )
 
         assert "rag_context" in result
         assert "matches" in result
-        # No data ingested → context should be empty
+        # No data ingested for this langcode → context should be empty
         assert result["rag_context"].strip() == ""
 
     def test_rejects_empty_items(self):
@@ -85,11 +92,14 @@ class TestRagLookupAPIConnectivity:
 
     def test_multiple_items_in_single_request(self):
         """The endpoint should accept multiple items in one request."""
-        result = rag_lookup([
-            {"text": "Save", "context": ""},
-            {"text": "Cancel", "context": ""},
-            {"text": "Delete", "context": ""},
-        ])
+        result = rag_lookup(
+            [
+                {"text": "Save", "context": ""},
+                {"text": "Cancel", "context": ""},
+                {"text": "Delete", "context": ""},
+            ],
+            target_lang=self.EMPTY_LANG,
+        )
 
         assert "rag_context" in result
         assert isinstance(result["matches"], list)
