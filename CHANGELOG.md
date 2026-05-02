@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-05-02
+
+### Changed
+- **`docker-compose`**: bumped `chromadb/chroma` Docker image from `1.4.1` to `1.5.8` (Renovate).
+- **`toolbox`**: updated `chromadb` Python package to `1.5.8` (Renovate).
+- **`toolbox`**: updated `pytest` from `~8.3` to `~9.0` (Renovate).
+
 ## [3.2.0] - 2026-05-01
 
 ### Added
