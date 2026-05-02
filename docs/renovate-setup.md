@@ -19,22 +19,34 @@ Renovate is an automated dependency update tool. Once installed, it:
 4. Select **"Only select repositories"** → pick `drupal-rag-project`
 5. Click **Install**
 
-### Step 2: Wait for the Onboarding PR
+### Step 2: Verify Renovate is Active
 
-Within a few minutes, Renovate opens an **onboarding PR** in your repo titled:
+What happens next depends on whether a Renovate config file already exists:
 
-> **Configure Renovate**
+**If `renovate.json5` does NOT exist yet:**
 
-This PR shows you:
-- What dependencies Renovate detected
-- What PRs it *would* open based on your config
-- A preview of the Dependency Dashboard
+Within a few minutes, Renovate opens an **onboarding PR** titled **"Configure Renovate"**.
+This PR proposes a default config and shows which dependencies were detected.
+Merge it to activate Renovate.
 
-**Merge this PR** to activate Renovate.
+**If `renovate.json5` already exists (our case):**
 
-> [!NOTE]
-> Renovate detects that `renovate.json5` already exists in your repo and will use it.
-> The onboarding PR may just confirm the config rather than propose a new one.
+Renovate **skips the onboarding PR** entirely. It considers the repo already configured
+and will run on the schedule defined in the config (`before 8am on monday`).
+No PR will appear until the first scheduled run finds outdated dependencies.
+
+To verify that Renovate is connected and working:
+
+1. Go to [developer.mend.io](https://developer.mend.io/) and sign in with GitHub
+2. Find your repo — it should show **Enabled** and **onboarded**
+3. **Check that Dependency Updates is NOT set to "Silent"** (see warning below)
+4. *(Optional)* To trigger an immediate test run, temporarily set `"schedule": ["at any time"]`
+   in `renovate.json5`, push, wait for Renovate to run, then revert the schedule
+
+> [!WARNING]
+> On the Mend dashboard, the **Dependency Updates (Renovate)** setting defaults to **Silent**
+> on the Community (Free) plan. Silent mode means Renovate runs but **never creates PRs or issues**.
+> Go to **SETTINGS** on the dashboard and change it to **Enabled**, otherwise nothing will happen.
 
 ### Step 3: Done ✅
 

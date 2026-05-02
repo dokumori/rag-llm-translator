@@ -25,10 +25,6 @@ logger = logging.getLogger(__name__)
 
 RAG_PROXY_URL = os.environ.get("RAG_PROXY_URL", "http://rag-proxy:5000")
 
-# Dedicated test collections to avoid polluting production data.
-TEST_GLOSSARY = "test_rag_lookup_glossary"
-TEST_TM = "test_rag_lookup_tm"
-
 
 @pytest.fixture
 def ingest_client():
@@ -46,32 +42,23 @@ def rag_lookup(items, target_lang=""):
     return resp.json()
 
 
-@pytest.fixture(autouse=True)
-def cleanup(ingest_client):
-    """Cleans up test collections before and after each test."""
-    for col in [TEST_GLOSSARY, TEST_TM]:
-        try:
-            ingest_client.reset_collection(col, "all")
-        except Exception:
-            pass
-    yield
-    for col in [TEST_GLOSSARY, TEST_TM]:
-        try:
-            ingest_client.reset_collection(col, "all")
-        except Exception:
-            pass
-
-
 class TestRagLookupAPIConnectivity:
     """Smoke tests: the endpoint is reachable and handles edge cases."""
 
+    # Use a langcode that will never have ingested data, ensuring these tests
+    # are isolated from whatever production data sits in app_glossary / app_tm.
+    EMPTY_LANG = "zz_empty_test"
+
     def test_returns_empty_context_when_no_data(self):
         """With no ingested data, the endpoint should return an empty context string."""
-        result = rag_lookup([{"text": "Hello", "context": ""}])
+        result = rag_lookup(
+            [{"text": "Hello", "context": ""}],
+            target_lang=self.EMPTY_LANG,
+        )
 
         assert "rag_context" in result
         assert "matches" in result
-        # No data ingested → context should be empty
+        # No data ingested for this langcode → context should be empty
         assert result["rag_context"].strip() == ""
 
     def test_rejects_empty_items(self):
@@ -85,11 +72,14 @@ class TestRagLookupAPIConnectivity:
 
     def test_multiple_items_in_single_request(self):
         """The endpoint should accept multiple items in one request."""
-        result = rag_lookup([
-            {"text": "Save", "context": ""},
-            {"text": "Cancel", "context": ""},
-            {"text": "Delete", "context": ""},
-        ])
+        result = rag_lookup(
+            [
+                {"text": "Save", "context": ""},
+                {"text": "Cancel", "context": ""},
+                {"text": "Delete", "context": ""},
+            ],
+            target_lang=self.EMPTY_LANG,
+        )
 
         assert "rag_context" in result
         assert isinstance(result["matches"], list)
@@ -133,21 +123,12 @@ class TestRagLookupAPIWithData:
 
         yield
 
-        # Cleanup: remove only our test entries
-        try:
-            from chromadb import HttpClient
-            client = HttpClient(
-                host=os.environ.get("CHROMA_HOST", "chroma"),
-                port=int(os.environ.get("CHROMA_PORT", 8000)),
-            )
-            for col_name in ["app_glossary", "app_tm"]:
-                try:
-                    col = client.get_collection(col_name)
-                    col.delete(where={"langcode": self.LANG})
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Cleanup: remove only our test entries via the same IngestClient
+        for col_name in ["app_glossary", "app_tm"]:
+            try:
+                ingest_client.reset_collection(col_name, self.LANG)
+            except Exception:
+                pass
 
     def test_glossary_match_returned(self):
         """Querying a seeded glossary term should return matching context."""
