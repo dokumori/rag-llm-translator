@@ -8,8 +8,8 @@ echo "===================================================================="
 echo " ⚙️ LLM INFORMATION"
 echo "===================================================================="
 # Prompt for credentials
-read -p "Enter LLM API Token: " LLM_API_TOKEN
 read -p "Enter LLM base URL: " LLM_BASE_URL
+read -p "Enter LLM API Token: " LLM_API_TOKEN
 
 
 echo ""
