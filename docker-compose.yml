@@ -1,7 +1,7 @@
 services:
   chroma:
     container_name: chroma
-    image: chromadb/chroma:1.4.1
+    image: chromadb/chroma:1.5.8
     environment:
       - CHROMA_PATH=/data
       - ANONYMIZED_TELEMETRY=FALSE
