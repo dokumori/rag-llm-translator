@@ -156,43 +156,14 @@ def test_proxy_to_db_communication(app_client):
 
     # 2. Test RAG Flow (Chat Completion)
     # This verifies the internal get_chroma_client() logic works during a request.
+    # Dry-run in app.py happens AFTER RAG, so using a dry-run model still
+    # exercises the full ChromaDB lookup path without hitting the upstream LLM.
     logger.info(
         "🧪 Testing Proxy -> Real DB connection via /v1/chat/completions...")
     payload = {
-        "model": "deepseek-r1-v1",
+        "model": "claude-opus-4-5-20251101",
         "messages": [{"role": "user", "content": "Hello World"}],
-        # Use dry-run to avoid hitting upstream LLM, but still trigger RAG lookup logic?
-        # Actually dry-run in app.py logic happens AFTER RAG.
-        # 'perform_rag_lookup' is called before 'dry run check'.
-        # So using a dry-run model is perfect: it tests RAGDB connectivity but mocks the expensive LLM.
-        "model": "deepseek-r1-v1"  # This might NOT be dry-run.
-        # Let's use a real model ID but rely on the fact that if RAG fails, it logs error
-        # and continues. We just want 200 OK.
-        # To be safe regarding upstream costs, we can use the "dry-run" model if it's configured.
-        # But we want to ensure 'perform_rag_lookup' is called.
-        # In app.py:
-        #   log_entry["input_text"] = ...
-        #   rag_content, rag_matches = perform_rag_lookup(...)
-        #   ...
-        #   if model_meta.get("is_dry_run"): ...
-        # So correct, RAG is performed FIRST.
     }
-
-    # We'll use a standard request. If upstream fails (no API key in test env?), it returns 502/500.
-    # But wait, we are inside the container integration test. The upstream might fail.
-    # We should use a dry-run model ID if available to avoid upstream fail.
-    # Based on app.py, dry-run is a property of the model config.
-    # We don't know the exact dry-run model ID from here without reading config.
-    # But we can try a request and even if it fails upstream (502), it proves RAG passed (or failed gracefully).
-    # Actually, let's just assert we get *a* response (even error) but strictly check logs?
-    # No, let's stick to /health for robust assertions and just ping /v1/models (which reads config)?
-    # The prompt asked to query 'app_tm' or 'app_glossary'.
-    # I will stick to the payload request.
-
-    # If we use a model we know is dry run, like "claude-opus-4-5-20251101" from previous tests?
-    # Let's try that.
-
-    payload["model"] = "claude-opus-4-5-20251101"
     response = app_client.post('/v1/chat/completions', json=payload)
 
     # Even if it's 200 (Dry Run) or 502 (Upstream Fail), provided it's not 503 (DB Fail).
