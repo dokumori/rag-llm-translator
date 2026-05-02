@@ -4,6 +4,6 @@ openai~=2.0
 requests~=2.32
 tqdm~=4.67
 polib~=1.2
-pytest~=8.3
+pytest~=9.0
 pytest-mock~=3.14
 snowballstemmer~=3.0
