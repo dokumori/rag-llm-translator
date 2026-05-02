@@ -25,10 +25,6 @@ logger = logging.getLogger(__name__)
 
 RAG_PROXY_URL = os.environ.get("RAG_PROXY_URL", "http://rag-proxy:5000")
 
-# Dedicated test collections to avoid polluting production data.
-TEST_GLOSSARY = "test_rag_lookup_glossary"
-TEST_TM = "test_rag_lookup_tm"
-
 
 @pytest.fixture
 def ingest_client():
@@ -44,22 +40,6 @@ def rag_lookup(items, target_lang=""):
     )
     resp.raise_for_status()
     return resp.json()
-
-
-@pytest.fixture(autouse=True)
-def cleanup(ingest_client):
-    """Cleans up test collections before and after each test."""
-    for col in [TEST_GLOSSARY, TEST_TM]:
-        try:
-            ingest_client.reset_collection(col, "all")
-        except Exception:
-            pass
-    yield
-    for col in [TEST_GLOSSARY, TEST_TM]:
-        try:
-            ingest_client.reset_collection(col, "all")
-        except Exception:
-            pass
 
 
 class TestRagLookupAPIConnectivity:
@@ -143,21 +123,12 @@ class TestRagLookupAPIWithData:
 
         yield
 
-        # Cleanup: remove only our test entries
-        try:
-            from chromadb import HttpClient
-            client = HttpClient(
-                host=os.environ.get("CHROMA_HOST", "chroma"),
-                port=int(os.environ.get("CHROMA_PORT", 8000)),
-            )
-            for col_name in ["app_glossary", "app_tm"]:
-                try:
-                    col = client.get_collection(col_name)
-                    col.delete(where={"langcode": self.LANG})
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Cleanup: remove only our test entries via the same IngestClient
+        for col_name in ["app_glossary", "app_tm"]:
+            try:
+                ingest_client.reset_collection(col_name, self.LANG)
+            except Exception:
+                pass
 
     def test_glossary_match_returned(self):
         """Querying a seeded glossary term should return matching context."""
