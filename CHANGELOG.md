@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`chromadb-ui`**: lightweight web-based admin interface added as a Docker Compose service on port `3001` for visual browsing and querying of ChromaDB collections.
+- **`docs`**: documentation for the ChromaDB Admin UI.
+- **`rag-proxy`**: endpoint to list language codes stored in the glossary and TM collections.
+- **`toolbox`**: `IngestClient` support for querying available languages from the vector DB.
+- **`tests`**: ChromaDB stubs package for unit tests (replaces the `custom/` directory).
+- Unit tests for the languages endpoint and for `--reset-only` scope flags.
+- Custom plugin test discovery: plugin submodules can now ship their own `tests/` directories.
+
+### Changed
+- **`ingest.sh`**: reset flow now prompts for scope (TM / Glossary / All) and dynamically discovers available languages from the vector DB, with a filesystem fallback.
+- **`chroma`**: config file mounted into the container for CORS pre-configuration.
+- **`tests/pytest.ini`**: stub path updated from `custom` to `stubs`; plugin paths added.
+
 ## [3.2.1] - 2026-05-02
 
 ### Changed
