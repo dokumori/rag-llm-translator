@@ -681,6 +681,52 @@ def ingest_reset() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/ingest/languages', methods=['GET'])
+def ingest_languages() -> Union[Response, Tuple[Response, int]]:
+    """
+    Lists distinct language codes found in the glossary and TM collections.
+
+    Returns:
+        glossary_langs (list[str]): Language codes in the glossary collection.
+        tm_langs (list[str]): Language codes in the TM collection.
+        all_langs (list[str]): Union of both, sorted alphabetically.
+    """
+    try:
+        client = get_chroma_client()
+        existing_collections = [c.name for c in client.list_collections()]
+
+        glossary_langs: set = set()
+        tm_langs: set = set()
+
+        for col_name, lang_set in [
+            (Config.GLOSSARY_COLLECTION, glossary_langs),
+            (Config.TM_COLLECTION, tm_langs),
+        ]:
+            if col_name not in existing_collections:
+                continue
+            try:
+                col = client.get_collection(col_name)
+                # Fetch all metadata to extract unique langcodes.
+                # limit=0 doesn't work in ChromaDB, so we use a large limit.
+                results = col.get(include=["metadatas"])
+                for meta in results.get("metadatas", []):
+                    lc = (meta or {}).get("langcode", "")
+                    if lc:
+                        lang_set.add(lc)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not read languages from '{col_name}': {e}")
+
+        all_langs = sorted(glossary_langs | tm_langs)
+        return jsonify({
+            "glossary_langs": sorted(glossary_langs),
+            "tm_langs": sorted(tm_langs),
+            "all_langs": all_langs,
+        })
+    except Exception as e:
+        logger.error(f"❌ Ingest languages failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/ingest/check-ids', methods=['POST'])
 def ingest_check_ids() -> Union[Response, Tuple[Response, int]]:
     """

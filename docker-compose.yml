@@ -11,6 +11,7 @@ services:
       - "${CHROMA_PORT}:8000"
     volumes:
       - chroma_data:/data
+      - ./config/chroma/config.yaml:/config.yaml:ro
     healthcheck:
       test: [ "CMD-SHELL", "grep -q '00000000:1F40 00000000:0000 0A' /proc/net/tcp || exit 1" ]
       interval: 10s
@@ -110,6 +111,19 @@ services:
         # Prevents toolbox scripts from failing due to database connection errors during boot
         condition: service_healthy
       rag-proxy:
+        condition: service_healthy
+
+  chromadb-ui:
+    build:
+      context: https://github.com/BlackyDrum/chromadb-ui.git
+      dockerfile: Dockerfile
+    container_name: chromadb-ui
+    ports:
+      - "3001:80"
+    networks:
+      - app_network
+    depends_on:
+      chroma:
         condition: service_healthy
 
 networks:

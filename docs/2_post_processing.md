@@ -84,7 +84,26 @@ If a naming collision occurs — for instance, if `jp_en_spacing.py` exists in b
 * **`jp_en_spacing`**: Implements "Waou" spacing (和欧間), inserting spaces between Japanese and Alphanumeric characters while respecting specific exception rules for punctuation and units.
 
 ### Creating Custom Plugins
-To add a new feature, create a `.py` file in `services/toolbox/src/plugins/custom/`. The file **must** contain a `run` function:
+
+Custom plugins are managed as **git submodules** mounted at `services/toolbox/src/plugins/custom/<your-plugin>/`.
+Each submodule is a self-contained repository that ships both the plugin code and its tests together.
+
+#### Expected Submodule Structure
+
+```
+services/toolbox/src/plugins/custom/
+└── my-plugin/                 ← git submodule root
+    ├── my_plugin.py           ← plugin module (must expose run(text) -> str)
+    └── tests/
+        ├── unit/
+        │   └── test_my_plugin.py
+        └── integration/       ← optional; auto-skipped without --run-integration
+            └── test_my_plugin_integration.py
+```
+
+#### Plugin Contract
+
+The plugin file **must** contain a `run` function:
 
 ```python
 import re
@@ -93,6 +112,14 @@ def run(text):
     # Your custom logic here
     # Example: change 'Apple' to 'Orange' in all msgstr
     return re.sub(r'msgstr "Apple"', r'msgstr "Orange"', text)
+```
+
+#### Adding a Submodule
+
+```bash
+git submodule add https://github.com/your-org/my-plugin.git \
+    services/toolbox/src/plugins/custom/my-plugin
+git submodule update --init --recursive
 ```
 
 ---
@@ -105,11 +132,26 @@ Tests are built using `pytest` and are structured to allow isolated testing of c
 
 Located in `tests/unit/plugins/`, these verify the logic of the default plugins provided with the framework.
 
-### Custom Tests
+### Custom Plugin Tests
 
-If you write custom plugins, you should write matching tests to ensure your regular expression rules do not break existing translations.
-* **Storage Location**: `tests/custom/`.
-* **Git Status**: This directory is ignored by Git (except for `.gitkeep`), ensuring your project-specific tests remain local to your environment.
+Tests for custom plugins **live inside the plugin submodule itself**, co-located with the plugin code. This keeps the submodule self-contained and eliminates the split-location problem that arises with git submodules.
+
+* **Storage Location**: `services/toolbox/src/plugins/custom/<your-plugin>/tests/`
+* **Discovery**: `pytest.ini` configures `testpaths` to include `../services/toolbox/src/plugins/custom`, so all plugin tests are discovered automatically alongside the standard test suite.
+* **Integration tests**: Place integration tests in a `tests/integration/` subdirectory inside the submodule. The root `conftest.py` auto-marks and auto-skips them unless `--run-integration` is passed.
+* **Git Status**: The entire `services/toolbox/src/plugins/custom/` tree is git-ignored in the host repo; your submodule has its own history.
+
+#### Import Paths in Plugin Tests
+
+The `pythonpath` in `pytest.ini` includes `../services/toolbox/src` and `../services/toolbox/src/plugins/custom`, so your plugin tests can import using either:
+
+```python
+# Absolute from toolbox/src root
+from plugins.custom.my_plugin import my_plugin
+
+# Or as a top-level module (preferred inside the submodule)
+import my_plugin
+```
 
 ### Running Tests
 

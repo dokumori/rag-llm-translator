@@ -355,9 +355,9 @@ def main() -> None:
     # --glossary-only and --tm-only are mutually exclusive; omitting both runs both.
     scope_group = parser.add_mutually_exclusive_group()
     scope_group.add_argument("--glossary-only", action="store_true",
-                             help="Only ingest the glossary CSV.")
+                             help="Only process the glossary CSV.")
     scope_group.add_argument("--tm-only", action="store_true",
-                             help="Only ingest the .po files.")
+                             help="Only process the .po files.")
 
     parser.add_argument("--reset", action="store_true",
                         help="Delete existing collections before ingestion (Cleanup dupes).")
@@ -368,11 +368,9 @@ def main() -> None:
     langcode = args.lang
     logger.info(f"🌐 Target language: {langcode}")
 
+    # Determine which collections to act on (applies to both ingest and reset)
     run_glossary = not args.tm_only
     run_tm = not args.glossary_only
-    if args.reset_only:
-        run_glossary = False
-        run_tm = False
 
     # --- Pre-Flight Check ---
     if not args.reset_only and not pre_flight_check(run_glossary, run_tm, langcode=langcode):
@@ -388,8 +386,10 @@ def main() -> None:
     if is_reset:
         # For reset only, we still need to process the deletion logic
         if args.reset_only:
-            process_glossary(client, langcode, reset=True, skip_ingest=True)
-            process_tm(client, langcode, reset=True, skip_ingest=True)
+            if run_glossary:
+                process_glossary(client, langcode, reset=True, skip_ingest=True)
+            if run_tm:
+                process_tm(client, langcode, reset=True, skip_ingest=True)
             logger.info("🎉 Reset Finished.")
             return
 
