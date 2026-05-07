@@ -81,9 +81,9 @@ data/**
 config/prompts/custom/*.md
 !config/prompts/custom/.gitkeep
 
-# Custom plugins and tests
+# Custom plugins are added as git submodules under services/toolbox/src/plugins/custom/.
+# Their tests live inside the submodule itself (co-located).
 services/toolbox/src/plugins/custom
-tests/custom
 
 # Pyrefly
 pyrefly.toml
