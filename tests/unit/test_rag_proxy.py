@@ -554,3 +554,108 @@ def test_perform_rag_lookup_stem_match_acceptance(mock_get_ef, mock_get_chroma):
     assert glossary_log['accepted'] is True
     assert "掲載する" in content
 
+
+# --- Part 6: /api/ingest/languages Endpoint Tests ---
+
+
+class TestIngestLanguagesEndpoint:
+    """
+    Unit tests for GET /api/ingest/languages.
+
+    Verifies that the endpoint correctly discovers distinct language codes
+    stored as metadata in the glossary and TM collections, and handles
+    edge cases (missing collections, empty collections) gracefully.
+    """
+
+    @patch('app.get_chroma_client')
+    def test_returns_correct_language_sets(self, mock_get_chroma, client):
+        """Returns per-collection and union language sets from metadata."""
+        mock_chroma = MagicMock()
+
+        col_g = MagicMock()
+        col_g.name = Config.GLOSSARY_COLLECTION
+        col_t = MagicMock()
+        col_t.name = Config.TM_COLLECTION
+
+        mock_chroma.list_collections.return_value = [col_g, col_t]
+        mock_chroma.get_collection.side_effect = (
+            lambda name: col_g if name == Config.GLOSSARY_COLLECTION else col_t
+        )
+
+        # Glossary has ja + it (ja appears twice — deduplication required)
+        col_g.get.return_value = {
+            "metadatas": [
+                {"langcode": "ja"},
+                {"langcode": "it"},
+                {"langcode": "ja"},
+            ]
+        }
+        # TM has ja + de
+        col_t.get.return_value = {
+            "metadatas": [
+                {"langcode": "ja"},
+                {"langcode": "de"},
+            ]
+        }
+
+        mock_get_chroma.return_value = mock_chroma
+
+        response = client.get('/api/ingest/languages')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["glossary_langs"] == ["it", "ja"]          # sorted, deduplicated
+        assert data["tm_langs"] == ["de", "ja"]                 # sorted
+        assert data["all_langs"] == ["de", "it", "ja"]          # union, sorted
+
+    @patch('app.get_chroma_client')
+    def test_missing_collection_is_skipped_gracefully(self, mock_get_chroma, client):
+        """If one collection does not exist in ChromaDB it is silently skipped."""
+        mock_chroma = MagicMock()
+
+        # Only the TM collection exists
+        col_t = MagicMock()
+        col_t.name = Config.TM_COLLECTION
+        mock_chroma.list_collections.return_value = [col_t]
+        mock_chroma.get_collection.return_value = col_t
+
+        col_t.get.return_value = {"metadatas": [{"langcode": "fr"}]}
+
+        mock_get_chroma.return_value = mock_chroma
+
+        response = client.get('/api/ingest/languages')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["glossary_langs"] == []       # glossary absent → empty
+        assert data["tm_langs"] == ["fr"]
+        assert data["all_langs"] == ["fr"]
+
+    @patch('app.get_chroma_client')
+    def test_empty_collections_return_empty_lists(self, mock_get_chroma, client):
+        """Collections that exist but hold no documents return empty lang lists."""
+        mock_chroma = MagicMock()
+
+        col_g = MagicMock()
+        col_g.name = Config.GLOSSARY_COLLECTION
+        col_t = MagicMock()
+        col_t.name = Config.TM_COLLECTION
+
+        mock_chroma.list_collections.return_value = [col_g, col_t]
+        mock_chroma.get_collection.side_effect = (
+            lambda name: col_g if name == Config.GLOSSARY_COLLECTION else col_t
+        )
+
+        col_g.get.return_value = {"metadatas": []}
+        col_t.get.return_value = {"metadatas": []}
+
+        mock_get_chroma.return_value = mock_chroma
+
+        response = client.get('/api/ingest/languages')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["glossary_langs"] == []
+        assert data["tm_langs"] == []
+        assert data["all_langs"] == []
+

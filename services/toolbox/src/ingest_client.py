@@ -66,3 +66,21 @@ class IngestClient:
             "metadatas": metadatas,
         })
         return result.get("added", 0)
+
+    def _get(self, path: str) -> Dict[str, Any]:
+        """Sends a GET request and returns the JSON response."""
+        url = f"{self.base_url}{path}"
+        resp = requests.get(url, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_languages(self) -> Dict[str, Any]:
+        """Returns language codes found in the vector DB collections.
+
+        Returns a dict with keys:
+            glossary_langs (list[str]): Languages in the glossary collection.
+            tm_langs (list[str]): Languages in the TM collection.
+            all_langs (list[str]): Union of both, sorted.
+        """
+        return self._get("/api/ingest/languages")
+

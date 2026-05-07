@@ -230,6 +230,73 @@ class TestIngest(unittest.TestCase):
         self.assertTrue(mock_gloss.call_args[1]['reset'])
         self.assertTrue(mock_tm.call_args[1]['reset'])
 
+class TestMainResetOnlyScope(unittest.TestCase):
+    """
+    Verifies that --reset-only respects the --glossary-only / --tm-only scope flags.
+
+    Before the change, --reset-only always wiped both collections regardless of
+    scope. Now it should only reset the requested collection type.
+    """
+
+    @patch("ingest.argparse.ArgumentParser.parse_args")
+    @patch("ingest.IngestClient")
+    @patch("ingest.process_glossary")
+    @patch("ingest.process_tm")
+    def test_reset_only_resets_both_by_default(
+        self, mock_tm, mock_gloss, mock_ingest_client, mock_args
+    ):
+        """--reset-only with no scope flag resets both glossary and TM."""
+        mock_args.return_value = MagicMock(
+            glossary_only=False, tm_only=False,
+            reset=False, reset_only=True, lang="ja"
+        )
+        ingest.main()
+
+        mock_gloss.assert_called_once_with(
+            mock_ingest_client.return_value, "ja", reset=True, skip_ingest=True
+        )
+        mock_tm.assert_called_once_with(
+            mock_ingest_client.return_value, "ja", reset=True, skip_ingest=True
+        )
+
+    @patch("ingest.argparse.ArgumentParser.parse_args")
+    @patch("ingest.IngestClient")
+    @patch("ingest.process_glossary")
+    @patch("ingest.process_tm")
+    def test_reset_only_tm_only_skips_glossary(
+        self, mock_tm, mock_gloss, mock_ingest_client, mock_args
+    ):
+        """--reset-only --tm-only resets TM only; glossary is untouched."""
+        mock_args.return_value = MagicMock(
+            glossary_only=False, tm_only=True,
+            reset=False, reset_only=True, lang="ja"
+        )
+        ingest.main()
+
+        mock_tm.assert_called_once_with(
+            mock_ingest_client.return_value, "ja", reset=True, skip_ingest=True
+        )
+        mock_gloss.assert_not_called()
+
+    @patch("ingest.argparse.ArgumentParser.parse_args")
+    @patch("ingest.IngestClient")
+    @patch("ingest.process_glossary")
+    @patch("ingest.process_tm")
+    def test_reset_only_glossary_only_skips_tm(
+        self, mock_tm, mock_gloss, mock_ingest_client, mock_args
+    ):
+        """--reset-only --glossary-only resets glossary only; TM is untouched."""
+        mock_args.return_value = MagicMock(
+            glossary_only=True, tm_only=False,
+            reset=False, reset_only=True, lang="ja"
+        )
+        ingest.main()
+
+        mock_gloss.assert_called_once_with(
+            mock_ingest_client.return_value, "ja", reset=True, skip_ingest=True
+        )
+        mock_tm.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
