@@ -92,35 +92,99 @@ case $choice in
   1) FLAGS="" ;;
   2) FLAGS="--glossary-only" ;;
   3) FLAGS="--tm-only" ;;
-  4) FLAGS="--reset-only" ;;
+  4) ;; # FLAGS is set below after reset scope is chosen
   *) echo "Invalid choice"; exit 1 ;;
 esac
 
-echo "----------------------------------------------------------------"
+# 5. For reset, ask what to delete and query languages from the vector DB
 if [ "$choice" -eq 4 ]; then
-  echo "Select language to reset:"
-else
-  echo "Select target language for ingestion:"
-fi
+  echo "----------------------------------------------------------------"
+  echo "What do you want to reset?"
+  echo "1) TM only"
+  echo "2) Glossary only"
+  echo "3) All (TM + Glossary)"
+  echo "----------------------------------------------------------------"
+  read -p "Choice [1-3]: " reset_scope
+  case $reset_scope in
+    1) FLAGS="--reset-only --tm-only"       ; SCOPE_KEY="tm_langs" ;;
+    2) FLAGS="--reset-only --glossary-only" ; SCOPE_KEY="glossary_langs" ;;
+    3) FLAGS="--reset-only"                 ; SCOPE_KEY="all_langs" ;;
+    *) echo "Invalid choice"; exit 1 ;;
+  esac
 
-lang_options=("${VALID_LANGS[@]}" "all")
-PS3="Enter the number of your choice: "
-select SELECTED_LANG in "${lang_options[@]}"; do
-  if [ -n "$SELECTED_LANG" ]; then
-    break
+  # Query vector DB for languages via the rag-proxy API.
+  echo ""
+  echo "🔍 Querying vector DB for ingested languages..."
+
+  LANG_QUERY_CMD="import os, sys; \
+from ingest_client import IngestClient; \
+url = os.environ.get('RAG_PROXY_URL', 'http://rag-proxy:5000'); \
+scope = sys.argv[1] if len(sys.argv) > 1 else 'all_langs'; \
+result = IngestClient(url).list_languages(); \
+print('\\n'.join(result.get(scope, [])))"
+
+  DB_LANGS=()
+  QUERY_FAILED=false
+  if DB_LANGS_OUTPUT=$(docker compose exec -T toolbox python3 -c "$LANG_QUERY_CMD" "$SCOPE_KEY" 2>/dev/null); then
+    if [ -n "$DB_LANGS_OUTPUT" ]; then
+      while IFS= read -r line; do
+        [ -n "$line" ] && DB_LANGS+=("$line")
+      done <<< "$DB_LANGS_OUTPUT"
+    fi
   else
-    echo "❌ Invalid option. Please try again."
+    QUERY_FAILED=true
   fi
-done
 
-if [ "$SELECTED_LANG" == "all" ]; then
-  if [ "$choice" -eq 4 ]; then
+  if [ "$QUERY_FAILED" = true ]; then
+    echo "⚠️  Could not query languages from the vector DB."
+    echo "   Falling back to filesystem-based language list."
+    echo "----------------------------------------------------------------"
+    echo "Select language to reset:"
+    lang_options=("${VALID_LANGS[@]}" "all")
+  elif [ ${#DB_LANGS[@]} -eq 0 ]; then
+    echo "ℹ️  No languages found in the vector DB for this scope. Nothing to reset."
+    exit 0
+  else
+    echo "📋 Languages in vector DB: ${DB_LANGS[*]}"
+    echo "----------------------------------------------------------------"
+    echo "Select language to reset:"
+    lang_options=("${DB_LANGS[@]}" "all")
+  fi
+
+  PS3="Enter the number of your choice: "
+  select SELECTED_LANG in "${lang_options[@]}"; do
+    if [ -n "$SELECTED_LANG" ]; then
+      break
+    else
+      echo "❌ Invalid option. Please try again."
+    fi
+  done
+
+  if [ "$SELECTED_LANG" == "all" ]; then
     TARGET_LANGS=("all")
   else
-    TARGET_LANGS=("${VALID_LANGS[@]}")
+    TARGET_LANGS=("$SELECTED_LANG")
   fi
 else
-  TARGET_LANGS=("$SELECTED_LANG")
+  # Non-reset flow: pick language from filesystem-based list
+  echo "----------------------------------------------------------------"
+  echo "Select target language for ingestion:"
+
+  lang_options=("${VALID_LANGS[@]}" "all")
+  PS3="Enter the number of your choice: "
+  select SELECTED_LANG in "${lang_options[@]}"; do
+    if [ -n "$SELECTED_LANG" ]; then
+      break
+    else
+      echo "❌ Invalid option. Please try again."
+    fi
+  done
+
+  if [ "$SELECTED_LANG" == "all" ]; then
+    TARGET_LANGS=("${VALID_LANGS[@]}")
+  else
+    TARGET_LANGS=("$SELECTED_LANG")
+  fi
 fi
 
 echo "🚀 Launching operation for ${#TARGET_LANGS[@]} language(s)..."
