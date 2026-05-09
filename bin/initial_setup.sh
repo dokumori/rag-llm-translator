@@ -57,7 +57,11 @@ POST_PROCESSING_ENABLED=false
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
 TM_THRESHOLD=${TM_THRESHOLD}
 RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
+# NOTE: These thresholds are calibrated for the default embedding model (BAAI/bge-large-en-v1.5).
+# If any threshold is set to 0.4, it has not been calibrated and must be recalibrated before use
+# in production. See docs/3_RAG_performance_analysis.md for instructions.
 CHROMA_PORT=8000
+EMBEDDING_MODEL_NAME=BAAI/bge-large-en-v1.5
 
 # User IDs for Docker Compose
 UID=${DETECTED_UID}
@@ -72,6 +76,22 @@ sudo chown -R ${DETECTED_UID}:${DETECTED_GID} "${PROJECT_ROOT}/data"
 chmod -R 775 "${PROJECT_ROOT}/data"
 
 echo "✅ Setup complete. Project root: ${PROJECT_ROOT}"
+echo ""
+echo "===================================================================="
+echo " 📦 EMBEDDING MODEL"
+echo "===================================================================="
+echo "Downloading the default embedding model (BAAI/bge-large-en-v1.5)."
+echo "This is a one-time download (~1.3GB). Run 'docker compose build' first."
+echo "To use a different model, see docs/7_embedding_model.md."
+read -p "Download model now? [Y/n]: " download_now
+download_now=${download_now:-Y}
+if [[ "$download_now" =~ ^[Yy]$ ]]; then
+    bash "${PROJECT_ROOT}/bin/download-model.sh"
+else
+    echo "⚠️  Skipped. Run 'bash bin/download-model.sh' before starting the stack."
+fi
+
+echo ""
 echo "To enable post-processing, run 'bash bin/setup_post_processing.sh'."
 echo "If you want to run a demo, run 'bash bin/demo_prep.sh'."
 echo "Refer to readme.MD for how to run the translation process."

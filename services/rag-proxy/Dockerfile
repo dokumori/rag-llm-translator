@@ -24,13 +24,14 @@ ENV PYTHONUNBUFFERED=1
 # Copy installed dependencies from builder
 COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
 
-# --- Pre-Bake Embedding Model ---
-ARG EMBEDDING_MODEL_NAME=BAAI/bge-large-en-v1.5
-ENV EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
+# --- Embedding Model Download Script ---
+# Kept permanently in the image so bin/download-model.sh can invoke it
+# to download models into the bind-mounted host cache (data/cache/huggingface/).
+# The model is NOT downloaded at build time — run bin/download-model.sh separately.
 ENV HF_HOME=/app/data/cache/huggingface
-
 COPY services/shared/scripts/download_model.py /app/download_model.py
-RUN python /app/download_model.py && rm /app/download_model.py && chmod -R 777 /app/data/cache
+COPY services/shared/scripts/check_collection_model.py /app/check_collection_model.py
+COPY services/shared/scripts/delete_collections.py /app/delete_collections.py
 
 # Copy source code
 COPY services/rag-proxy/src/ ./src/

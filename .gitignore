@@ -52,9 +52,8 @@ env/
 venv.bak/
 
 # --- Environment Variables (Security) ---
-.env
-.env.local
-.env.*.local
+# Matches .env, .env.local, .env-bk, .env.backup, .env_old, etc.
+*.env*
 
 # --- Docker ---
 docker-compose.override.yml

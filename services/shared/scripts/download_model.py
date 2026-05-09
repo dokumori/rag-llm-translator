@@ -1,22 +1,35 @@
 
 import os
 import logging
-from sentence_transformers import SentenceTransformer
 
-# Simple logging setup
-logging.basicConfig(level=logging.INFO)
+# Set root logger to WARNING before importing sentence_transformers/transformers
+# so their internal INFO/DEBUG chatter is suppressed.
+logging.basicConfig(level=logging.WARNING)
+
+# Silence specific chatty libraries that log at INFO even with the root set above,
+# because some of them call basicConfig themselves or use their own handlers.
+for lib in ("sentence_transformers", "transformers", "huggingface_hub", "torch", "filelock"):
+    logging.getLogger(lib).setLevel(logging.ERROR)
+
 logger = logging.getLogger("download_model")
+logger.setLevel(logging.INFO)
+
+# Attach a plain handler so our own messages still appear without a log-level prefix.
+_handler = logging.StreamHandler()
+_handler.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(_handler)
+logger.propagate = False
+
 
 def download():
-    # Fetch from env var, matching the ARG in Dockerfile
-    # Default matching our config default
     model_name = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
-    logger.info(f"💾 Pre-downloading model: {model_name}...")
-    
-    # This triggers the download to HF_HOME
+    logger.info(f"💾 Downloading model: {model_name}...")
+
+    from sentence_transformers import SentenceTransformer
     SentenceTransformer(model_name)
-    
+
     logger.info("✅ Model download complete.")
+
 
 if __name__ == "__main__":
     download()
