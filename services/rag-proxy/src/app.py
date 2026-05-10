@@ -85,10 +85,17 @@ def get_models_config() -> List[Dict[str, Any]]:
 # Log configuration at startup
 Config.log_config()
 
-if Config.EMBEDDING_MODEL_NAME != "BAAI/bge-large-en-v1.5":
+_UNCALIBRATED_SENTINEL = 0.4
+if (
+    Config.EMBEDDING_MODEL_NAME != Config.DEFAULT_EMBEDDING_MODEL
+    and Config.TM_THRESHOLD == _UNCALIBRATED_SENTINEL
+    and Config.GLOSSARY_THRESHOLD == _UNCALIBRATED_SENTINEL
+):
     logger.warning(
-        f"⚠️ Non-default embedding model: {Config.EMBEDDING_MODEL_NAME}. "
-        f"Verify thresholds are calibrated for this model — see docs/3_RAG_performance_analysis.md."
+        f"⚠️ Non-default embedding model in use ({Config.EMBEDDING_MODEL_NAME}) "
+        f"but thresholds appear uncalibrated (TM={Config.TM_THRESHOLD}, "
+        f"Glossary={Config.GLOSSARY_THRESHOLD}). "
+        f"Calibrate before using in production — see docs/3_RAG_performance_analysis.md."
     )
 
 

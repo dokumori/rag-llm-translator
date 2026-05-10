@@ -14,7 +14,7 @@ Invoked by bin/switch-embedding-model.sh to detect a mid-switch state where
 .env was already updated but the stale collections were never wiped.
 
 Usage (inside a rag-proxy container):
-  TARGET_MODEL="BAAI/bge-large-en-v1.5" python3 /app/check_collection_model.py
+  TARGET_MODEL="<your-embedding-model>" python3 /app/check_collection_model.py
 """
 
 import os
