@@ -167,7 +167,7 @@ cmd_dump() {
 #
 # See docs/7_embedding_model.md for guidance on model switching.
 # See docs/3_RAG_performance_analysis.md for threshold recalibration.
-EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
 TM_THRESHOLD=${TM_THRESHOLD:-}
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-}
 RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD:-}
@@ -222,7 +222,7 @@ cmd_restore() {
     # Extract the model short name from the filename and compare to current config.
     # Filenames: chroma_backup_YYYYMMDD_HHMMSS_<model-short>.tar.gz
     backup_model=$(basename "$target_file" .tar.gz | sed 's/^chroma_backup_[0-9]*_[0-9]*_//')
-    current_model=$(echo "${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}" | sed 's|.*/||')
+    current_model=$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')
 
     if [ -n "$backup_model" ] && [ "$backup_model" != "$current_model" ]; then
         echo ""
@@ -293,7 +293,7 @@ cd "$PROJECT_ROOT"
 load_env
 
 # Re-derive BACKUP_FILE now that .env is loaded (EMBEDDING_MODEL_NAME may have changed)
-MODEL_SHORT="$(echo "${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}" | sed 's|.*/||')"
+MODEL_SHORT="$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')"
 BACKUP_FILE="${BACKUP_DIR}/chroma_backup_${TIMESTAMP}_${MODEL_SHORT}.tar.gz"
 
 # Parse flags: shift through args to find -y

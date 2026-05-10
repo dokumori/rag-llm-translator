@@ -22,7 +22,7 @@ logger.propagate = False
 
 
 def download():
-    model_name = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
+    model_name = os.environ.get("EMBEDDING_MODEL_NAME", "")
     logger.info(f"💾 Downloading model: {model_name}...")
 
     from sentence_transformers import SentenceTransformer

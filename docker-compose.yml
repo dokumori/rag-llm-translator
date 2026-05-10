@@ -1,3 +1,9 @@
+# Load defaults first, then let .env override. This means .env.defaults is the
+# single source of truth for values like EMBEDDING_MODEL_NAME.
+env_file:
+  - .env.defaults
+  - .env
+
 services:
   chroma:
     container_name: chroma
@@ -36,7 +42,7 @@ services:
       - TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor
       - TORCH_COMPILE_DISABLE=1
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
-      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
       - PROMPTS_DIR=/app/config/prompts
       - MODELS_CONFIG_PATH=/app/config/models/models.json
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json

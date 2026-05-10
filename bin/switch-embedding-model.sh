@@ -63,7 +63,7 @@ if [ -z "$NEW_MODEL" ]; then
     exit 1
 fi
 
-CURRENT_MODEL="${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}"
+CURRENT_MODEL="$EMBEDDING_MODEL_NAME"
 
 # ---------------------------------------------------------------------------
 # Step 1: Blocklist check

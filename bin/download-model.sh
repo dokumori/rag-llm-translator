@@ -38,7 +38,7 @@ for arg in "$@"; do
             ;;
     esac
 done
-MODEL="${MODEL:-${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}}"
+MODEL="${MODEL:-$EMBEDDING_MODEL_NAME}"
 CACHE_DIR="${PROJECT_ROOT}/data/cache/huggingface"
 
 # --- Blocklist check (mirrors infrastructure.py) ---
