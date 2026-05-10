@@ -19,24 +19,44 @@ def check_and_print_stats(collection_name: str, display_name: str) -> None:
         col = client.get_collection(collection_name)
         count = col.count()
         print(f"✅ Collection '{display_name}' exists.")
+
+        # Surface the embedding model stored in the collection's metadata
+        col_metadata = col.metadata or {}
+        stored_model = col_metadata.get("embedding_model", None)
+        configured_model = Config.EMBEDDING_MODEL_NAME
+        if stored_model:
+            mismatch = stored_model != configured_model
+            if mismatch:
+                print(f"🔡 Embedding model: ⚠️  MISMATCH detected!")
+                print(f"   - model used for ingestion:          {stored_model}")
+                print(f"   - model currently used by the system: {configured_model}")
+            else:
+                print(f"🔡 Embedding model (collection): {stored_model}")
+        else:
+            print("🔡 Embedding model (collection): not set in metadata")
+
         print(f"📊 Total items in {display_name}: {count}")
-        
+
         if count > 0:
             results = col.get(include=["metadatas"], limit=count)
             metadatas = results.get("metadatas", [])
-            
+
             if metadatas:
                 # Count occurrences per langcode, defaulting to 'unknown' if missing
                 lang_counts = Counter(
-                    str(meta.get("langcode", "unknown")).strip() 
+                    str(meta.get("langcode", "unknown")).strip()
                     for meta in metadatas if meta is not None
                 )
-                
+
                 print("   Breakdown by language:")
                 for lang, freq in lang_counts.most_common():
                     print(f"   - {lang}: {freq}")
     except Exception as e:
         print(f"❌ Collection '{display_name}' does NOT exist: {e}")
+
+# Display configured embedding model
+print(f"🤖 Configured embedding model (env): {Config.EMBEDDING_MODEL_NAME or '(not set)'}")
+print()
 
 # Check TM Collection
 check_and_print_stats(Config.TM_COLLECTION, 'app_tm')
