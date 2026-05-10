@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-05-10
+
+### Added
+- **`bin/manage-backup.sh`**: new script to create and restore timestamped `.tar.gz` snapshots of the ChromaDB Docker volume (`chroma_data`). Supports `--dump`, `--restore [<file>]`, and `--list` subcommands; the `chroma` container is paused during dump for a consistent snapshot.
+- **`bin/switch-embedding-model.sh`**: new script to safely switch the text embedding model. It backs up the current ChromaDB state, deletes all collections, updates `EMBEDDING_MODEL_NAME` in `.env`, downloads the new model, and restarts `rag-proxy`.
+- **`bin/download-model.sh`**: helper script to pre-download a HuggingFace embedding model into `data/cache/huggingface/`.
+- **`services/shared/scripts/check_collection_model.py`**: utility that reports whether the model recorded in ChromaDB collection metadata matches the currently configured `EMBEDDING_MODEL_NAME`, with a clear mismatch warning.
+- **`services/shared/scripts/delete_collections.py`**: low-level utility to delete ChromaDB collections directly (used by the switch workflow, bypassing `rag-proxy`).
+- **`docs/7_embedding_model.md`**: comprehensive guide covering model requirements, tested compatible models, known incompatible model families, and the full model-switching workflow.
+- **`docs/6_chromadb_admin.md`**: backup and restore section documenting `manage-backup.sh` usage.
+
+### Changed
+- **`initial_setup.sh`**: `EMBEDDING_MODEL_NAME` is now read from `.env.defaults` instead of being hardcoded, preventing configuration drift.
+- **`rag-proxy`** (`infrastructure.py`): the default embedding model name is sourced from `.env.defaults` at runtime rather than hardcoded, ensuring a single source of truth.
+- **`bin/analyse.sh`**: extended with a pre-flight model-consistency check that aborts analysis when a ChromaDB/env mismatch is detected, guiding operators toward re-ingestion.
+- **`initial_setup.sh`**: removed the option to specify an embedding model at install time to reduce complexity; model selection is done post-install via `switch-embedding-model.sh`.
+- **`README.md`**: updated setup instructions and embedding model guidance.
+
+### Fixed
+- **`rag-proxy`**: resolved issue where an outdated embedding model remained active in a running container after switching, due to stale shell-environment variables surviving `docker compose` restarts.
+- **`check_db.py`**: now explicitly reports the active `EMBEDDING_MODEL_NAME` and highlights collection/env mismatches.
+
+## [3.3.0] - 2026-05-08
+(In the previous release, these changes were mistakenly left under 'unreleased')
+
 ### Added
 - **`chromadb-ui`**: lightweight web-based admin interface added as a Docker Compose service on port `3001` for visual browsing and querying of ChromaDB collections.
 - **`docs`**: documentation for the ChromaDB Admin UI.
