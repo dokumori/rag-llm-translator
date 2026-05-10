@@ -408,8 +408,29 @@ if [ "$LIVE_MODEL" != "$NEW_MODEL" ]; then
     echo "   Actual   : ${LIVE_MODEL:-<not set>}"
     echo ""
     echo "   This is the exact stale-environment bug. To fix:"
-    echo "     docker compose up -d --force-recreate rag-proxy"
+    echo "     docker compose up -d --force-recreate rag-proxy toolbox"
     exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Restart toolbox so it picks up the new EMBEDDING_MODEL_NAME.
+# toolbox depends on rag-proxy: service_healthy, so rag-proxy must be healthy
+# (confirmed above) before we recreate it.  Without this step, check_db.py
+# would still report the old model name from the stale container environment.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "===================================================================="
+echo " 🔄 Restarting toolbox..."
+echo "===================================================================="
+
+if ! docker compose up -d --force-recreate toolbox; then
+    echo ""
+    echo "⚠️  WARNING: Failed to recreate toolbox container."
+    echo "   rag-proxy is running correctly with '$NEW_MODEL',"
+    echo "   but toolbox still has the old model in its environment."
+    echo "   check_db.py may report a false mismatch until you run:"
+    echo "     docker compose up -d --force-recreate toolbox"
 fi
 
 echo ""

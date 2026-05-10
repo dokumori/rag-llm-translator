@@ -87,8 +87,8 @@ if [ -d "$SNAPSHOTS_DIR" ] && [ -n "$(ls -A "$SNAPSHOTS_DIR" 2>/dev/null)" ]; th
         echo ""
         echo "✅ Using cached model '$MODEL'."
         echo ""
-        echo "If you switched models, restart rag-proxy to pick up the change:"
-        echo "  docker compose up -d --force-recreate rag-proxy"
+        echo "If you switched models, restart rag-proxy and toolbox to pick up the change:"
+        echo "  docker compose up -d --force-recreate rag-proxy toolbox"
         exit 0
     fi
 
@@ -97,8 +97,8 @@ if [ -d "$SNAPSHOTS_DIR" ] && [ -n "$(ls -A "$SNAPSHOTS_DIR" 2>/dev/null)" ]; th
         echo ""
         echo "✅ Using cached model '$MODEL'. No download needed."
         echo ""
-        echo "If you switched models, restart rag-proxy to pick up the change:"
-        echo "  docker compose up -d --force-recreate rag-proxy"
+        echo "If you switched models, restart rag-proxy and toolbox to pick up the change:"
+        echo "  docker compose up -d --force-recreate rag-proxy toolbox"
         exit 0
     fi
     echo ""
@@ -142,5 +142,5 @@ docker compose run --no-deps --rm --quiet-pull \
 echo ""
 echo "✅ Model '$MODEL' downloaded to data/cache/huggingface/"
 echo ""
-echo "If you switched models, restart rag-proxy to pick up the change:"
-echo "  docker compose up -d --force-recreate rag-proxy"
+echo "If you switched models, restart rag-proxy and toolbox to pick up the change:"
+echo "  docker compose up -d --force-recreate rag-proxy toolbox"

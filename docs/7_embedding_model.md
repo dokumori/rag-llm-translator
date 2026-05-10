@@ -99,7 +99,7 @@ After the switch completes, follow these steps in order:
 ```bash
 bin/ingest.sh                                              # 1. re-ingest all data
 
-docker compose up -d --build --force-recreate rag-proxy    # 2. rebuild to clear old logs
+docker compose up -d --build --force-recreate rag-proxy toolbox  # 2. rebuild to clear old logs
 
 bin/translate.sh                                           # 3. dry-run to generate fresh RAG logs
 
@@ -168,8 +168,8 @@ for col in client.list_collections():
     print(f'Deleted: {col.name}')
 "
 
-# 2. Restart rag-proxy (collections are gone — no mismatch possible)
-docker compose up -d --force-recreate rag-proxy
+# 2. Restart rag-proxy and toolbox (collections are gone — no mismatch possible)
+docker compose up -d --force-recreate rag-proxy toolbox
 
 # 3. Re-ingest
 bin/ingest.sh

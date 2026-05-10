@@ -108,7 +108,7 @@ if [ -t 0 ]; then
       echo "   See docs/3_RAG_performance_analysis.md for the full workflow."
     else
       echo "🔄 Recreating rag-proxy container..."
-      if docker compose up -d --force-recreate rag-proxy; then
+      if docker compose up -d --force-recreate rag-proxy toolbox; then
         echo -n "⏳ Waiting for rag-proxy to become healthy"
         
         # Healthcheck polling loop (up to 90 seconds)
@@ -131,8 +131,8 @@ if [ -t 0 ]; then
           echo "You may need to check container logs or manually recreate it."
         fi
       else
-        echo "⚠️ Failed to recreate rag-proxy. You can purge manually with:"
-        echo "  docker compose up -d --force-recreate rag-proxy"
+        echo "⚠️ Failed to recreate containers. You can purge manually with:"
+        echo "  docker compose up -d --force-recreate rag-proxy toolbox"
       fi
     fi
   else
@@ -143,5 +143,5 @@ else
   echo ""
   echo "ℹ️ Non-interactive mode detected. Logs were kept."
   echo "Remember to purge them before your next analysis run to avoid mixed data."
-  echo "Manual purge: docker compose up -d --force-recreate rag-proxy"
+  echo "Manual purge: docker compose up -d --force-recreate rag-proxy toolbox"
 fi
