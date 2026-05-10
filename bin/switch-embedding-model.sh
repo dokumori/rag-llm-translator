@@ -240,8 +240,11 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 # Collections are already gone at this point. Rolling .env back to the old model
 # would create an *inverted* mismatch (old model in .env, new vectors in ChromaDB)
 # which is just as broken as the original problem.
-# If a later step fails, the correct recovery is always:
-#   bin/switch-embedding-model.sh <model>  (detects stale state and retries cleanly)
+#
+# If the download step fails after this point, re-running this script will NOT resume
+# the download (because ChromaDB is empty and .env matches). To recover, you must:
+#   1. bin/download-model.sh <new-model>
+#   2. docker compose up -d --force-recreate rag-proxy
 
 # Update EMBEDDING_MODEL_NAME (macOS-compatible: sed via temp file)
 TEMP_FILE=$(mktemp)
@@ -286,7 +289,20 @@ echo ""
 echo "===================================================================="
 echo " 💾 Step 4/5: Downloading new model..."
 echo "===================================================================="
-bash "$SCRIPT_DIR/download-model.sh" "$NEW_MODEL" -y
+if ! bash "$SCRIPT_DIR/download-model.sh" "$NEW_MODEL" -y; then
+    echo ""
+    echo "❌ ERROR: Model download failed!"
+    echo "   The system is in a partial state: ChromaDB has been wiped and .env"
+    echo "   is updated, but the new model files are missing."
+    echo ""
+    echo "   Re-running this switch script will NOT resume the download."
+    echo "   To fully recover and finish the process, you must manually run:"
+    echo ""
+    echo "     bin/download-model.sh $NEW_MODEL"
+    echo "     docker compose up -d --force-recreate rag-proxy"
+    echo ""
+    exit 1
+fi
 
 # All steps succeeded.
 
@@ -322,15 +338,28 @@ echo ""
 if [ "$CHROMA_STATUS" != "healthy" ]; then
     echo ""
     echo "❌ ChromaDB did not become healthy within ${chroma_timeout}s (status: ${CHROMA_STATUS})."
+    echo "   The model switch is almost complete — .env and model files are ready,"
+    echo "   but rag-proxy has not been restarted yet."
+    echo ""
+    echo "   To recover:"
+    echo "     1. Fix ChromaDB:  docker compose up -d chroma"
+    echo "     2. Restart proxy: docker compose up -d --force-recreate rag-proxy"
+    echo ""
     echo "   Check logs: docker compose logs chroma --tail=20"
-    echo "   Try restarting manually: docker compose up -d chroma"
-    echo "   Then re-run: bin/switch-embedding-model.sh $NEW_MODEL"
     exit 1
 fi
 echo "   ✅ ChromaDB is healthy."
 echo ""
 
-docker compose up -d --force-recreate rag-proxy
+if ! docker compose up -d --force-recreate rag-proxy; then
+    echo ""
+    echo "❌ Failed to recreate rag-proxy container."
+    echo "   The model switch is almost complete — .env and model files are ready."
+    echo ""
+    echo "   To recover, restart rag-proxy manually:"
+    echo "     docker compose up -d --force-recreate rag-proxy"
+    exit 1
+fi
 
 echo ""
 echo -n "⏳ Waiting for rag-proxy to become healthy"
@@ -355,11 +384,11 @@ echo ""
 if [ "$STATUS" != "healthy" ]; then
     echo ""
     echo "❌ rag-proxy failed to become healthy within $timeout seconds (status: $STATUS)."
-    echo "   The model files and .env have been updated, but the proxy is not serving traffic."
+    echo "   The model switch is complete (.env and model files are ready), but"
+    echo "   rag-proxy is not serving traffic yet."
     echo ""
     echo "   Check logs:  docker compose logs rag-proxy --tail=30"
-    echo "   Common cause: a stale collection in ChromaDB. Fix with:"
-    echo "     bin/switch-embedding-model.sh $NEW_MODEL"
+    echo "   To retry:    docker compose up -d --force-recreate rag-proxy"
     exit 1
 fi
 
