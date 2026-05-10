@@ -96,11 +96,16 @@ if [ -t 0 ]; then
       STALE_INFO=$(echo "$MISMATCH_RESULT" | grep '^MISMATCH:' | head -1 | cut -d: -f3-)
       echo ""
       echo "⚠️  Model mismatch detected — skipping recreate to avoid an unhealthy container."
-      echo "   Collections ingested with : $STALE_INFO"
-      echo "   Current .env model        : ${EMBEDDING_MODEL_NAME:-}"
+      echo "   ChromaDB still holds data ingested with an old model: $STALE_INFO"
+      echo "   Current .env model: ${EMBEDDING_MODEL_NAME:-}"
       echo ""
-      echo "   Fix with: bin/switch-embedding-model.sh ${EMBEDDING_MODEL_NAME:-<model>}"
-      echo "   Then re-run bin/analyse.sh."
+      echo "   ⚠️  The analysis above is invalid — it was generated from data"
+      echo "   ingested with a different model than the one currently configured."
+      echo ""
+      echo "   To fix, run the switch command to wipe the stale collections:"
+      echo "     bin/switch-embedding-model.sh ${EMBEDDING_MODEL_NAME:-<model>}"
+      echo ""
+      echo "   See docs/3_RAG_performance_analysis.md for the full workflow."
     else
       echo "🔄 Recreating rag-proxy container..."
       if docker compose up -d --force-recreate rag-proxy; then

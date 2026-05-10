@@ -392,6 +392,26 @@ if [ "$STATUS" != "healthy" ]; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Post-switch verification
+# Confirm that the running rag-proxy container actually loaded the new model.
+# This catches the exact bug where Docker Compose silently used a stale shell
+# variable (from the old load_env) instead of the updated .env value.
+# ---------------------------------------------------------------------------
+
+LIVE_MODEL=$(docker exec rag-proxy printenv EMBEDDING_MODEL_NAME 2>/dev/null || echo "")
+
+if [ "$LIVE_MODEL" != "$NEW_MODEL" ]; then
+    echo ""
+    echo "❌ VERIFICATION FAILED: rag-proxy is running with the wrong model!"
+    echo "   Expected : $NEW_MODEL"
+    echo "   Actual   : ${LIVE_MODEL:-<not set>}"
+    echo ""
+    echo "   This is the exact stale-environment bug. To fix:"
+    echo "     docker compose up -d --force-recreate rag-proxy"
+    exit 1
+fi
+
 echo ""
 echo "===================================================================="
 echo " ✅ Model switch complete!"
@@ -399,6 +419,8 @@ echo "===================================================================="
 echo ""
 echo "New model  : $NEW_MODEL"
 echo "Old model  : $CURRENT_MODEL"
+echo ""
+echo "✅ Verified: rag-proxy is running with '$NEW_MODEL'."
 echo ""
 echo "⚠️  ChromaDB is now empty. Next steps:"
 echo ""
@@ -409,4 +431,3 @@ echo "  2. Recalibrate RAG thresholds for the new model:"
 echo "     See docs/3_RAG_performance_analysis.md"
 echo ""
 echo "The old data was backed up. Check data/backups/ for the archive."
-
