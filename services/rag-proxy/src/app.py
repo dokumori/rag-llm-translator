@@ -85,6 +85,72 @@ def get_models_config() -> List[Dict[str, Any]]:
 # Log configuration at startup
 Config.log_config()
 
+_UNCALIBRATED_SENTINEL = 0.4
+if (
+    Config.EMBEDDING_MODEL_NAME != Config.DEFAULT_EMBEDDING_MODEL
+    and Config.TM_THRESHOLD == _UNCALIBRATED_SENTINEL
+    and Config.GLOSSARY_THRESHOLD == _UNCALIBRATED_SENTINEL
+):
+    logger.warning(
+        f"⚠️ Non-default embedding model in use ({Config.EMBEDDING_MODEL_NAME}) "
+        f"but thresholds appear uncalibrated (TM={Config.TM_THRESHOLD}, "
+        f"Glossary={Config.GLOSSARY_THRESHOLD}). "
+        f"Calibrate before using in production — see docs/3_RAG_performance_analysis.md."
+    )
+
+
+def _validate_embedding_model_consistency() -> None:
+    """
+    Fail fast at startup if ChromaDB collections were ingested with a different
+    embedding model than the one currently configured.
+
+    This check runs BEFORE the app starts serving requests and uses SystemExit(1)
+    rather than RuntimeError to guarantee termination even if callers catch broad
+    exceptions (e.g. the try/except in perform_rag_lookup).
+    """
+    try:
+        client = get_chroma_client()
+        for col_name in [Config.GLOSSARY_COLLECTION, Config.TM_COLLECTION]:
+            try:
+                col = client.get_collection(col_name)
+                stored_model = (col.metadata or {}).get("embedding_model")
+                if stored_model and stored_model != Config.EMBEDDING_MODEL_NAME:
+                    logger.critical(
+                        f"\n\n"
+                        f"❌ MODEL MISMATCH detected in collection '{col_name}'.\n"
+                        f"   Ingested with : '{stored_model}'\n"
+                        f"   Current config: '{Config.EMBEDDING_MODEL_NAME}'\n"
+                        f"\n"
+                        f"Vectors from different models are incompatible. "
+                        f"Search results would be meaningless.\n"
+                        f"\n"
+                        f"To switch models safely:\n"
+                        f"  bin/switch-embedding-model.sh {Config.EMBEDDING_MODEL_NAME}\n"
+                        f"\n"
+                        f"Or manually:\n"
+                        f"  1. bin/manage-backup.sh --dump\n"
+                        f"  2. bin/ingest.sh  → choose Reset\n"
+                        f"  3. bin/download-model.sh {Config.EMBEDDING_MODEL_NAME}\n"
+                        f"  4. docker compose up -d --force-recreate rag-proxy\n"
+                        f"  5. bin/ingest.sh  → re-ingest\n"
+                    )
+                    raise SystemExit(1)
+            except SystemExit:
+                raise
+            except Exception as e:
+                # Collection doesn't exist yet — that's fine.
+                # Log other unexpected errors (network, auth, corruption) at WARNING
+                # so they don't disappear silently.
+                if "does not exist" not in str(e).lower() and "notfound" not in type(e).__name__.lower():
+                    logger.warning(f"⚠️ Could not check model metadata in '{col_name}': {e}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.warning(f"⚠️ Could not validate embedding model consistency: {e}")
+
+
+_validate_embedding_model_consistency()
+
 # --- Helper Functions ---
 
 def parse_input_payload(source_text: str) -> List[Dict[str, str]]:
@@ -753,8 +819,14 @@ def ingest_check_ids() -> Union[Response, Tuple[Response, int]]:
             col = client.get_or_create_collection(
                 name=collection_name,
                 embedding_function=get_embedding_function(),
-                metadata={"hnsw:space": "cosine"}
+                metadata={"hnsw:space": "cosine", "embedding_model": Config.EMBEDDING_MODEL_NAME}
             )
+            # get_or_create_collection silently ignores metadata when the collection
+            # already exists.  Force-update the embedding_model field so a collection
+            # that survived a partial switch always reflects the current model.
+            # NOTE: do NOT include hnsw:space here — ChromaDB forbids changing the
+            # distance function after collection creation and will raise a ValueError.
+            col.modify(metadata={"embedding_model": Config.EMBEDDING_MODEL_NAME})
             existing = col.get(ids=ids, include=[])
             return jsonify({"existing_ids": existing["ids"]})
         except Exception as e:
@@ -798,8 +870,12 @@ def ingest_add() -> Union[Response, Tuple[Response, int]]:
         col = client.get_or_create_collection(
             name=collection_name,
             embedding_function=get_embedding_function(),
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine", "embedding_model": Config.EMBEDDING_MODEL_NAME}
         )
+        # Force-update the embedding_model field in case the collection pre-dates
+        # this model switch.  Do NOT include hnsw:space — ChromaDB forbids changing
+        # the distance function after creation and will raise a ValueError.
+        col.modify(metadata={"embedding_model": Config.EMBEDDING_MODEL_NAME})
 
         kwargs = {"ids": ids, "documents": documents}
         if metadatas:

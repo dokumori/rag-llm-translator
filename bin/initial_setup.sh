@@ -37,7 +37,13 @@ RAG_STRICT_DISTANCE_THRESHOLD=0.15
 DETECTED_UID=$(id -u)
 DETECTED_GID=$(id -g)
 
-# 3. Create .env file with final values (No sed required)
+# 2. Read canonical default for the embedding model
+if [ -f "${PROJECT_ROOT}/.env.defaults" ]; then
+    EMBEDDING_MODEL_NAME=$(grep -m1 '^EMBEDDING_MODEL_NAME=' "${PROJECT_ROOT}/.env.defaults" | cut -d= -f2-)
+fi
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}
+
+# 4. Create .env file with final values (No sed required)
 echo "📝 Generating .env file..."
 cat > "${PROJECT_ROOT}/.env" << EOF
 # .env file - Generated on $(date '+%Y-%m-%d %H:%M')
@@ -57,14 +63,18 @@ POST_PROCESSING_ENABLED=false
 GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD}
 TM_THRESHOLD=${TM_THRESHOLD}
 RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
+# NOTE: These thresholds are calibrated for the default embedding model (BAAI/bge-large-en-v1.5).
+# If any threshold is set to 0.4, it has not been calibrated and must be recalibrated before use
+# in production. See docs/3_RAG_performance_analysis.md for instructions.
 CHROMA_PORT=8000
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
 
 # User IDs for Docker Compose
 UID=${DETECTED_UID}
 GID=${DETECTED_GID}
 EOF
 
-# 4. Fix ownership of the data directory (Executed on Host)
+# 5. Fix ownership of the data directory (Executed on Host)
 echo "🔧 Setting folder permissions. You may be asked for the root password."
 # Use numeric GID (${DETECTED_GID}) to avoid "illegal group name" errors
 # entirely on Mac/Linux.
@@ -72,6 +82,15 @@ sudo chown -R ${DETECTED_UID}:${DETECTED_GID} "${PROJECT_ROOT}/data"
 chmod -R 775 "${PROJECT_ROOT}/data"
 
 echo "✅ Setup complete. Project root: ${PROJECT_ROOT}"
+echo ""
+echo "===================================================================="
+echo " 📦 EMBEDDING MODEL"
+echo "===================================================================="
+echo "Downloading the default embedding model (${EMBEDDING_MODEL_NAME})."
+echo "This is a one-time download (~1.3GB)."
+bash "${PROJECT_ROOT}/bin/download-model.sh"
+
+echo ""
 echo "To enable post-processing, run 'bash bin/setup_post_processing.sh'."
 echo "If you want to run a demo, run 'bash bin/demo_prep.sh'."
 echo "Refer to readme.MD for how to run the translation process."

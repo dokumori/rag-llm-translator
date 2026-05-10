@@ -30,6 +30,53 @@ class TestSharedInfrastructure(unittest.TestCase):
     @patch("chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction")
     def test_get_embedding_function(self, mock_ef):
         """Verify embedding function uses config model name."""
-        infrastructure.get_embedding_function()
-        
-        mock_ef.assert_called_with(model_name=Config.EMBEDDING_MODEL_NAME)
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5"):
+            with patch.dict("os.environ", {"HF_HOME": "/fake/cache"}):
+                with patch("os.path.isdir", return_value=True), \
+                     patch("os.listdir", return_value=["models--BAAI--bge-base-en-v1.5"]):
+                    infrastructure.get_embedding_function()
+
+        mock_ef.assert_called_with(model_name="BAAI/bge-base-en-v1.5")
+
+    def test_blocked_model_intfloat_e5_raises(self):
+        """Models in the intfloat/e5-* family must be rejected."""
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "intfloat/e5-large-v2"):
+            with self.assertRaises(ValueError) as ctx:
+                infrastructure.get_embedding_function()
+        self.assertIn("query/passage prefixes", str(ctx.exception))
+
+    def test_blocked_model_multilingual_e5_raises(self):
+        """Models in the intfloat/multilingual-e5-* family must be rejected."""
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-large"):
+            with self.assertRaises(ValueError) as ctx:
+                infrastructure.get_embedding_function()
+        self.assertIn("query/passage prefixes", str(ctx.exception))
+
+    def test_supported_model_bge_is_not_blocked(self):
+        """BAAI/bge-* models must pass the blocklist check."""
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5"):
+            with patch.dict("os.environ", {"HF_HOME": "/fake/cache"}):
+                with patch("os.path.isdir", return_value=True), \
+                     patch("os.listdir", return_value=["models--BAAI--bge-base-en-v1.5"]), \
+                     patch("chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction"):
+                    # Should not raise
+                    infrastructure.get_embedding_function()
+
+    def test_empty_model_cache_raises(self):
+        """Empty HF cache directory (no models-- dirs in hub/) must raise RuntimeError."""
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5"):
+            with patch.dict("os.environ", {"HF_HOME": "/fake/empty/cache"}):
+                with patch("os.path.isdir", return_value=True), \
+                     patch("os.listdir", return_value=["CACHEDIR.TAG", ".locks"]):  # no models--* dirs
+                    with self.assertRaises(RuntimeError) as ctx:
+                        infrastructure.get_embedding_function()
+        self.assertIn("download-model.sh", str(ctx.exception))
+
+    def test_missing_model_cache_dir_raises(self):
+        """Missing hub/ directory must raise RuntimeError."""
+        with patch.object(Config, "EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5"):
+            with patch.dict("os.environ", {"HF_HOME": "/nonexistent/path"}):
+                with patch("os.path.isdir", return_value=False):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        infrastructure.get_embedding_function()
+        self.assertIn("download-model.sh", str(ctx.exception))

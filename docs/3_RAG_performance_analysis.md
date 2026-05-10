@@ -20,7 +20,7 @@ Follow these steps to generate performance reports and apply automated tuning re
 3.  **Reset Threshold**: Relax the `GLOSSARY_THRESHOLD` and `TM_THRESHOLD` to `0.4` in `.env` to ensure the test captures a wide range of potential matches and avoid detection of false negatives.
 4.  **Clear Logs**: Run the following command to ensure you are starting from a clean state:
     ```bash
-    docker compose up -d --force-recreate rag-proxy
+    docker compose up -d --force-recreate rag-proxy toolbox
     ```
 
 ### Running the Analysis
@@ -75,7 +75,7 @@ If you find the system is missing obvious synonyms (e.g., "Add" vs "Create") or 
 4.  **Re-verify**: Recreate the proxy container, run a fresh translation, and re-run `analyse.sh`.
 
 > [!IMPORTANT]
-> **Re-running Analysis**: If you change any threshold in `.env`, you must recreate the proxy container (`docker compose up -d --force-recreate rag-proxy`) and generate fresh logs before re-running the analysis script.
+> **Re-running Analysis**: If you change any threshold in `.env`, you must recreate the proxy and toolbox containers (`docker compose up -d --force-recreate rag-proxy toolbox`) and generate fresh logs before re-running the analysis script.
 >
 > **Model-Specific Calibration**: These thresholds are calibrated to the **`BAAI/bge-large-en-v1.5`** embedding model. If you change models, these absolute distance numbers are no longer valid and must be recalculated.
 

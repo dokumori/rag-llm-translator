@@ -6,6 +6,17 @@ from typing import List, Dict, Any
 logger = logging.getLogger(__name__)
 
 
+def _require_env(var: str) -> str:
+    """Returns the value of a required environment variable, raising EnvironmentError if unset or empty."""
+    value = os.environ.get(var, "")
+    if not value:
+        raise EnvironmentError(
+            f"Required environment variable '{var}' is not set. "
+            f"Ensure .env.defaults is loaded (e.g. via docker-compose env_file)."
+        )
+    return value
+
+
 class Config:
     """Centralized configuration for the application."""
 
@@ -29,11 +40,13 @@ class Config:
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
 
     # --- Embedding ---
-    # WARNING: Changing this after data has been ingested will invalidate all vectors in ChromaDB.
+    # Changing this after data has been ingested will invalidate all vectors in ChromaDB.
     # If you change the model, you must reset and re-ingest all collections.
-    EMBEDDING_MODEL_NAME: str = os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-large-en-v1.5")
+    EMBEDDING_MODEL_NAME: str = os.environ.get("EMBEDDING_MODEL_NAME", "")
+    # The default model name, sourced from .env.defaults. Used to detect non-default model usage.
+    DEFAULT_EMBEDDING_MODEL: str = _require_env("DEFAULT_EMBEDDING_MODEL")
 
-    # --- Localization ---
+    # --- Localisation ---
     # No default — target language must be provided explicitly per-request
     # (via URL path, CLI argument, etc.) to prevent cross-language contamination.
     TARGET_LANG: str = os.environ.get("TARGET_LANG", "")

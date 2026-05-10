@@ -12,6 +12,10 @@ To force-run integration tests locally (containers must be up):
 import os
 import pytest
 
+# Ensure required env vars that have no Python fallback are present for tests.
+# These mirror the values in .env.defaults.
+os.environ.setdefault("DEFAULT_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+
 
 # ---------------------------------------------------------------------------
 # Mark registration — must happen before collection so pytest never warns

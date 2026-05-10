@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/common.sh"
+cd "$PROJECT_ROOT"
+load_env
+
 # Define paths
 LOG_FILE_HOST="data/logs/translation.jsonl"
 LOG_FILE_CONTAINER="/app/data/logs/translation.jsonl"
@@ -75,32 +81,59 @@ if [ -t 0 ]; then
   echo ""
   read -p "Purge logs for a clean next run? This will recreate the rag-proxy container. Any running translation process will be stopped. (y/N) " prompt
   if [[ "$prompt" =~ ^[Yy]$ ]]; then
-    echo "🔄 Recreating rag-proxy container..."
-    if docker compose up -d --force-recreate rag-proxy; then
-      echo -n "⏳ Waiting for rag-proxy to become healthy"
-      
-      # Healthcheck polling loop (up to 90 seconds)
-      timeout=90
-      elapsed=0
-      while [ $elapsed -lt $timeout ]; do
-        STATUS=$(docker inspect --format='{{.State.Health.Status}}' rag-proxy 2>/dev/null || echo "error")
-        if [ "$STATUS" = "healthy" ]; then
-          echo -e "\n✅ rag-proxy is back online and healthy. Logs have been purged."
-          rm -f "$LOG_FILE_HOST"
-          break
-        fi
-        echo -n "."
-        sleep 2
-        elapsed=$((elapsed + 2))
-      done
+    # Pre-flight: verify .env and ChromaDB collections are consistent before
+    # recreating.  A mismatch here means rag-proxy will start and immediately
+    # crash — better to catch it now with a clear message.
+    echo "🔍 Checking model consistency before recreating..."
+    MISMATCH_RESULT=$(docker compose run --no-deps --rm \
+      -e CHROMA_HOST=chroma \
+      -e CHROMA_PORT=8000 \
+      -e TARGET_MODEL="${EMBEDDING_MODEL_NAME:-}" \
+      rag-proxy \
+      python3 /app/check_collection_model.py 2>/dev/null || echo "ERROR")
 
-      if [ "$STATUS" != "healthy" ]; then
-        echo -e "\n⚠️ Warning: rag-proxy did not become healthy within $timeout seconds. Current status: $STATUS"
-        echo "You may need to check container logs or manually recreate it."
-      fi
+    if [[ "$MISMATCH_RESULT" != "OK" && "$MISMATCH_RESULT" != ERROR* ]]; then
+      STALE_INFO=$(echo "$MISMATCH_RESULT" | grep '^MISMATCH:' | head -1 | cut -d: -f3-)
+      echo ""
+      echo "⚠️  Model mismatch detected — skipping recreate to avoid an unhealthy container."
+      echo "   ChromaDB still holds data ingested with an old model: $STALE_INFO"
+      echo "   Current .env model: ${EMBEDDING_MODEL_NAME:-}"
+      echo ""
+      echo "   ⚠️  The analysis above is invalid — it was generated from data"
+      echo "   ingested with a different model than the one currently configured."
+      echo ""
+      echo "   To fix, run the switch command to wipe the stale collections:"
+      echo "     bin/switch-embedding-model.sh ${EMBEDDING_MODEL_NAME:-<model>}"
+      echo ""
+      echo "   See docs/3_RAG_performance_analysis.md for the full workflow."
     else
-      echo "⚠️ Failed to recreate rag-proxy. You can purge manually with:"
-      echo "  docker compose up -d --force-recreate rag-proxy"
+      echo "🔄 Recreating rag-proxy container..."
+      if docker compose up -d --force-recreate rag-proxy toolbox; then
+        echo -n "⏳ Waiting for rag-proxy to become healthy"
+        
+        # Healthcheck polling loop (up to 90 seconds)
+        timeout=90
+        elapsed=0
+        while [ $elapsed -lt $timeout ]; do
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' rag-proxy 2>/dev/null || echo "error")
+          if [ "$STATUS" = "healthy" ]; then
+            echo -e "\n✅ rag-proxy is back online and healthy. Logs have been purged."
+            rm -f "$LOG_FILE_HOST"
+            break
+          fi
+          echo -n "."
+          sleep 2
+          elapsed=$((elapsed + 2))
+        done
+
+        if [ "$STATUS" != "healthy" ]; then
+          echo -e "\n⚠️ Warning: rag-proxy did not become healthy within $timeout seconds. Current status: $STATUS"
+          echo "You may need to check container logs or manually recreate it."
+        fi
+      else
+        echo "⚠️ Failed to recreate containers. You can purge manually with:"
+        echo "  docker compose up -d --force-recreate rag-proxy toolbox"
+      fi
     fi
   else
     echo "ℹ️ Logs kept. Remember to purge them before your next analysis run to avoid mixed data."
@@ -110,5 +143,5 @@ else
   echo ""
   echo "ℹ️ Non-interactive mode detected. Logs were kept."
   echo "Remember to purge them before your next analysis run to avoid mixed data."
-  echo "Manual purge: docker compose up -d --force-recreate rag-proxy"
+  echo "Manual purge: docker compose up -d --force-recreate rag-proxy toolbox"
 fi

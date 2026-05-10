@@ -104,8 +104,13 @@ select_language() {
 }
 
 # --- Environment Loading ---
-# Loads .env file if present, excluding UID/GID to avoid shell conflicts.
+# Loads .env.defaults first (committed defaults), then .env on top so that
+# local overrides always take priority. UID/GID are excluded to avoid shell
+# conflicts with the shell's read-only UID variable.
 load_env() {
+    if [ -f .env.defaults ]; then
+        export $(grep -v '^#' .env.defaults | grep -vE '^(UID|GID)' | xargs)
+    fi
     if [ -f .env ]; then
         export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
     fi

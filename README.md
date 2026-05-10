@@ -15,11 +15,13 @@ We plan to support them in the future, but for now please avoid using them.
 
 ## Overview
 To use the translator, you need to:
-- **Configure and build**: Run the setup script to create the .env file, then build the Docker environment.
-- **Prepare the data**: Place untranslated `.po` files and RAG data (TM and glossary) in the data directory. A demo script is available for quick setup.
-- **Ingest**: Populate the vector database with your RAG data.
+1. **Configure**: Run the setup script to create the `.env` file with your LLM credentials and settings.
+2. **Build**: Build the Docker environment.
+3. **Prepare the data**: Place untranslated `.po` files and RAG data (TM and glossary) in the data directory.
+4. **Ingest**: Populate the vector database with your TM and glossary data.
+5. **Translate**: Run the translation script.
+6. **Tune RAG thresholds**: Calibrate similarity thresholds for your data and embedding model.
 
-Once these steps are completed, the translation script can be run.
 
 Follow the instructions below to set up the environment and run the translation process:
 
@@ -50,6 +52,8 @@ Run:
 docker compose up -d --build
 ```
 
+
+
 ## 3. Place the files
 
 Three files are required to perform the RAG-based translation:
@@ -58,7 +62,7 @@ Three files are required to perform the RAG-based translation:
 - a .po file containing existing translations as translation memory
 - a .csv file containing glossary
 
-If you wish to quickly run a demo, running `bash bin/demo_prep.sh` will download all the necessary files. Then you can proceed to [the next step](README.md#4-ingest-the-translation-memory-and-glossary).
+If you wish to quickly run a demo, running `bash bin/demo_prep.sh` will download all the necessary files. Then you can proceed to [the next step](README.md#5-ingest-the-translation-memory-and-glossary).
 
 If you prefer to place the files manually, follow the steps below:
 
@@ -99,9 +103,9 @@ You can provide project-specific translation instructions by placing a custom sy
 - **Effect**: If present, this markdown file will be used as the base expertise instruction for the LLM when translating into the target language, overriding the default prompts provided with the system.
 
 ## 4. Custom Model Configuration (Optional)
-You override the list of existing LLM models by providing a custom model configuration file.
+You can override the list of existing LLM models by providing a custom model configuration file. (The default models.json file is for amazee.ai, which provides all the listed models and more.)
 
-- **Location**: `config/models/custom/models.json`
+- **Location**: `config/models/custom/`
 - **Setup**: Copy `config/models/custom/models.example.json` to `config/models/custom/models.json` and add your model definitions.
 - **Effect**: If present, the system will load models from this file. The default `dry-run` model is automatically preserved to ensure testing capability.
 
@@ -133,6 +137,11 @@ The dry run option will send no API calls to the LLM, but will still generate th
 
 Once the translation is complete, the .po file with the translated strings will be stored in `data/translations/output`.
 
+> [!NOTE]
+> For the best translation quality, tune the RAG similarity thresholds after your first run. Default thresholds are permissive — calibrating them to your data and embedding model can significantly improve context retrieval. See [docs/3_RAG_performance_analysis.md](docs/3_RAG_performance_analysis.md) for the procedure.
+
+
+
 # Documentation
 
 The following documents provide detailed information about the project's technical implementation, logic, as well as features that help improve the quality of the translations:
@@ -143,3 +152,4 @@ The following documents provide detailed information about the project's technic
 - [**Glossary Extraction & Audit**](docs/4_glossary_extraction.md): Translation consistency can diminish over time. This tool extracts 1–3 word terms from the existing Translation Memory to generate a draft glossary. It identifies the most frequent translations and highlights usage variations, facilitating terminology consistency audits and building a data-driven foundation for a unified user experience.
 - [**Translation Evaluation**](docs/5_translation_evaluation.md): Details on how to evaluate the quality of RAG-based translations by comparing two files (one with RAG context and another without) using an LLM as an independent judge.
 - [**ChromaDB Admin UI**](docs/6_chromadb_admin.md): A lightweight (~30MB) web interface for visually browsing collections, inspecting documents and metadata, filtering by language, and running ad-hoc similarity searches against the vector database.
+- [**Embedding Model Configuration**](docs/7_embedding_model.md): How to download, and switch text embedding models. Includes compatible model list, safety guardrails, and troubleshooting for model mismatch errors.

@@ -9,8 +9,10 @@
 #
 # Usage:
 #   bin/manage-backup.sh --dump              # create a new backup
+#   bin/manage-backup.sh --dump -y           # create a backup (non-interactive)
 #   bin/manage-backup.sh --restore           # interactively restore a backup
 #   bin/manage-backup.sh --restore <file>    # restore a specific archive
+#   bin/manage-backup.sh --restore <file> -y # restore without confirmation prompts
 #   bin/manage-backup.sh --list              # list available backups
 
 set -e
@@ -32,18 +34,23 @@ CONTAINER_NAME="chroma"
 
 BACKUP_DIR="${PROJECT_ROOT}/data/backups"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-BACKUP_FILE="${BACKUP_DIR}/chroma_backup_${TIMESTAMP}.tar.gz"
+# BACKUP_FILE is computed after load_env (see Entrypoint section) so that
+# EMBEDDING_MODEL_NAME from .env is available for the filename.
+
+# Whether to skip interactive confirmation prompts (set by -y flag)
+AUTO_YES=false
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 usage() {
-    echo "Usage: $(basename "$0") --dump | --restore [<file>] | --list"
+    echo "Usage: $(basename "$0") --dump [-y] | --restore [<file>] [-y] | --list"
     echo ""
     echo "  --dump              Pause ChromaDB, snapshot the volume, resume"
     echo "  --restore [<file>]  Restore from a backup archive (interactive if no file given)"
     echo "  --list              List available backups in data/backups/"
+    echo "  -y                  Skip all confirmation prompts (for scripted use)"
     exit 1
 }
 
@@ -137,8 +144,38 @@ cmd_dump() {
     fi
 
     SIZE=$(human_size "$BACKUP_FILE")
+
+    # Write a metadata sidecar file with model name and current thresholds.
+    # This is purely informational — users can reference it when restoring to
+    # check which thresholds were in effect when the backup was made.
+    META_FILE="${BACKUP_FILE%.tar.gz}.meta.txt"
+    cat > "$META_FILE" <<EOF
+# ChromaDB Backup Metadata
+# Created: $(date '+%Y-%m-%d %H:%M:%S')
+#
+# HOW TO USE THIS FILE WHEN RESTORING
+# ------------------------------------
+# EMBEDDING_MODEL_NAME: The embedding model that was active when this backup was
+#   made. After restoring, ensure your .env uses the SAME model before re-ingesting.
+#   Restoring with a different model will produce incorrect search results.
+#   To switch models safely: bin/switch-embedding-model.sh <model>
+#
+# TM_THRESHOLD / GLOSSARY_THRESHOLD / RAG_STRICT_DISTANCE_THRESHOLD:
+#   The RAG threshold values calibrated for this model at the time of backup.
+#   After restoring and re-ingesting, you can copy these values back into .env
+#   to restore previous performance — or run bin/analyse.sh to recalibrate.
+#
+# See docs/7_embedding_model.md for guidance on model switching.
+# See docs/3_RAG_performance_analysis.md for threshold recalibration.
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
+TM_THRESHOLD=${TM_THRESHOLD:-}
+GLOSSARY_THRESHOLD=${GLOSSARY_THRESHOLD:-}
+RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD:-}
+EOF
+
     echo ""
     echo "✅ Backup complete: $(basename "$BACKUP_FILE") (${SIZE})"
+    echo "   Metadata : $(basename "$META_FILE")"
 }
 
 # ---------------------------------------------------------------------------
@@ -181,13 +218,42 @@ cmd_restore() {
         exit 1
     fi
 
+    # --- Model mismatch check ---
+    # Extract the model short name from the filename and compare to current config.
+    # Filenames: chroma_backup_YYYYMMDD_HHMMSS_<model-short>.tar.gz
+    backup_model=$(basename "$target_file" .tar.gz | sed 's/^chroma_backup_[0-9]*_[0-9]*_//')
+    current_model=$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')
+
+    if [ -n "$backup_model" ] && [ "$backup_model" != "$current_model" ]; then
+        echo ""
+        echo "⚠️  EMBEDDING MODEL MISMATCH"
+        echo "   Backup was created with : $backup_model"
+        echo "   Current config uses     : $current_model"
+        echo "   Restoring this backup will produce incorrect search results."
+        echo "   After restore, you must re-ingest all data with the backup's model."
+        echo ""
+        if [ "$AUTO_YES" = true ]; then
+            echo "   (-y flag set — proceeding anyway)"
+        else
+            read -rp "   Type 'yes' to proceed anyway: " mismatch_confirm
+            if [ "$mismatch_confirm" != "yes" ]; then
+                echo "❌ Restore cancelled."
+                exit 1
+            fi
+        fi
+    fi
+
     echo ""
     echo "⚠️  WARNING: This will OVERWRITE all data in volume '$VOLUME_NAME'."
     echo "   Restoring from: $(basename "$target_file")"
-    read -rp "   Type 'yes' to confirm: " confirmation
-    if [ "$confirmation" != "yes" ]; then
-        echo "❌ Restore cancelled."
-        exit 1
+    if [ "$AUTO_YES" = true ]; then
+        echo "   (-y flag set — skipping confirmation)"
+    else
+        read -rp "   Type 'yes' to confirm: " confirmation
+        if [ "$confirmation" != "yes" ]; then
+            echo "❌ Restore cancelled."
+            exit 1
+        fi
     fi
 
     # Stop the chroma container (not just pause) before modifying volume data.
@@ -226,9 +292,22 @@ cmd_restore() {
 cd "$PROJECT_ROOT"
 load_env
 
-case "${1:-}" in
+# Re-derive BACKUP_FILE now that .env is loaded (EMBEDDING_MODEL_NAME may have changed)
+MODEL_SHORT="$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')"
+BACKUP_FILE="${BACKUP_DIR}/chroma_backup_${TIMESTAMP}_${MODEL_SHORT}.tar.gz"
+
+# Parse flags: shift through args to find -y
+REMAINING_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -y) AUTO_YES=true ;;
+        *)  REMAINING_ARGS+=("$arg") ;;
+    esac
+done
+
+case "${REMAINING_ARGS[0]:-}" in
     --dump)    cmd_dump ;;
-    --restore) cmd_restore "${2:-}" ;;
+    --restore) cmd_restore "${REMAINING_ARGS[1]:-}" ;;
     --list)    cmd_list ;;
     *)         usage ;;
 esac

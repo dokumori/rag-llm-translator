@@ -4,8 +4,23 @@
 # The script ingests the glossary and TM files into ChromaDB
 # It automatically discovers and ingests ALL language subdirectories
 # found under data/tm_source/.
+#
+# Usage:
+#   bin/ingest.sh                   # interactive mode
+#   bin/ingest.sh --reset-all       # reset all collections (interactive confirm)
+#   bin/ingest.sh --reset-all -y    # reset all collections (no confirm, for scripts)
 
 set -e
+
+# Parse flags
+RESET_ALL=false
+AUTO_YES=false
+for arg in "$@"; do
+    case "$arg" in
+        --reset-all) RESET_ALL=true ;;
+        -y)          AUTO_YES=true ;;
+    esac
+done
 
 # Calculate project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -17,50 +32,65 @@ source "$SCRIPT_DIR/common.sh"
 echo "🔍 Checking Ingestion Environment..."
 echo "📂 Project Root: $PROJECT_ROOT"
 
-# 1. Discover available languages
-LANGS=()
-while IFS= read -r l; do
-  [ -n "$l" ] && LANGS+=("$l")
-done < <(discover_lang_dirs "$TM_SOURCE_ROOT")
+# 1. Discover available languages (not needed for --reset-all which only touches ChromaDB)
+if [ "$RESET_ALL" = false ]; then
+  LANGS=()
+  while IFS= read -r l; do
+    [ -n "$l" ] && LANGS+=("$l")
+  done < <(discover_lang_dirs "$TM_SOURCE_ROOT")
 
-if [ ${#LANGS[@]} -eq 0 ]; then
-  echo "❌ Error: No language subdirectories found in '$TM_SOURCE_ROOT'."
-  echo "   Expected structure: $TM_SOURCE_ROOT/{langcode}/ (e.g. $TM_SOURCE_ROOT/ja/)"
-  exit 1
-fi
-
-echo "🌐 Found ${#LANGS[@]} language(s): ${LANGS[*]}"
-
-# 2. Verify Data Volumes (per-language checks)
-VALID_LANGS=()
-SKIPPED_LANGS=()
-for LANG_CODE in "${LANGS[@]}"; do
-  LANG_TM_DIR=$(tm_source_dir "$LANG_CODE")
-
-  # Check for multiple CSV files (Single Glossary Rule)
-  csv_count=$(find "$LANG_TM_DIR" -maxdepth 1 -name "*.csv" | wc -l | tr -d ' ')
-  if [ "$csv_count" -gt 1 ]; then
-    echo "❌ Error: Multiple CSV files found in '$LANG_TM_DIR'."
-    echo "   Please ensure only ONE glossary CSV exists per language."
-    find "$LANG_TM_DIR" -maxdepth 1 -name "*.csv"
+  if [ ${#LANGS[@]} -eq 0 ]; then
+    echo "❌ Error: No language subdirectories found in '$TM_SOURCE_ROOT'."
+    echo "   Expected structure: $TM_SOURCE_ROOT/{langcode}/ (e.g. $TM_SOURCE_ROOT/ja/)"
     exit 1
   fi
 
-  po_count=$(find "$LANG_TM_DIR" -maxdepth 1 -name "*.po" -o -name "*.PO" | wc -l | tr -d ' ')
-  if [ "$csv_count" -eq 0 ] && [ "$po_count" -eq 0 ]; then
-    echo "⚠️  Warning: No .po or .csv files found in $LANG_TM_DIR. ($LANG_CODE will be skipped)"
-    SKIPPED_LANGS+=("$LANG_CODE")
-  else
-    VALID_LANGS+=("$LANG_CODE")
-  fi
-done
+  echo "🌐 Found ${#LANGS[@]} language(s): ${LANGS[*]}"
 
-if [ ${#VALID_LANGS[@]} -eq 0 ]; then
-  echo "❌ Error: No valid files (.po or .csv) found in any language directory."
+  # 2. Verify Data Volumes (per-language checks)
+  VALID_LANGS=()
+  SKIPPED_LANGS=()
+  for LANG_CODE in "${LANGS[@]}"; do
+    LANG_TM_DIR=$(tm_source_dir "$LANG_CODE")
+
+    # Check for multiple CSV files (Single Glossary Rule)
+    csv_count=$(find "$LANG_TM_DIR" -maxdepth 1 -name "*.csv" | wc -l | tr -d ' ')
+    if [ "$csv_count" -gt 1 ]; then
+      echo "❌ Error: Multiple CSV files found in '$LANG_TM_DIR'."
+      echo "   Please ensure only ONE glossary CSV exists per language."
+      find "$LANG_TM_DIR" -maxdepth 1 -name "*.csv"
+      exit 1
+    fi
+
+    po_count=$(find "$LANG_TM_DIR" -maxdepth 1 -name "*.po" -o -name "*.PO" | wc -l | tr -d ' ')
+    if [ "$csv_count" -eq 0 ] && [ "$po_count" -eq 0 ]; then
+      echo "⚠️  Warning: No .po or .csv files found in $LANG_TM_DIR. ($LANG_CODE will be skipped)"
+      SKIPPED_LANGS+=("$LANG_CODE")
+    else
+      VALID_LANGS+=("$LANG_CODE")
+    fi
+  done
+
+  if [ ${#VALID_LANGS[@]} -eq 0 ]; then
+    echo "❌ Error: No valid files (.po or .csv) found in any language directory."
+    exit 1
+  fi
+fi
+
+# 3a. Check rag-proxy health (ingest delegates all embedding/storage to it via HTTP)
+echo "🔌 Checking rag-proxy health..."
+PROXY_STATUS=$(docker inspect --format='{{.State.Health.Status}}' rag-proxy 2>/dev/null || echo "not_found")
+if [ "$PROXY_STATUS" != "healthy" ]; then
+  echo ""
+  echo "❌ Error: rag-proxy is not healthy (status: $PROXY_STATUS)."
+  echo "   Ingest delegates embedding and storage to rag-proxy — it must be running and healthy."
+  echo ""
+  echo "   Check logs:  docker compose logs rag-proxy --tail=30"
+  echo "   Common fix:  bin/switch-embedding-model.sh <model>  (if a model mismatch is reported)"
   exit 1
 fi
 
-# 3. Check Connectivity using the Chroma Library
+# 3b. Check ChromaDB connectivity
 echo "🔌 Checking ChromaDB connectivity..."
 
 CHECK_CMD="import chromadb, os; \
@@ -78,26 +108,48 @@ fi
 
 echo "✅ Environment Ready."
 
-# 4. Prompt for Action
-echo "----------------------------------------------------------------"
-echo "Select ingestion mode:"
-echo "1) Full Ingest (Glossary + TM)"
-echo "2) Glossary Only"
-echo "3) TM Only"
-echo "4) Reset (Wipe existing data)"
-echo "----------------------------------------------------------------"
-read -p "Choice [1-4]: " choice
 
-case $choice in
-  1) FLAGS="" ;;
-  2) FLAGS="--glossary-only" ;;
-  3) FLAGS="--tm-only" ;;
-  4) ;; # FLAGS is set below after reset scope is chosen
-  *) echo "Invalid choice"; exit 1 ;;
-esac
+# 4. Determine Action
+echo "----------------------------------------------------------------"
+
+# Non-interactive reset-all mode (used by bin/switch-embedding-model.sh)
+if [ "$RESET_ALL" = true ]; then
+  choice=4
+  FLAGS="--reset-only"
+  SCOPE_KEY="all_langs"
+  if [ "$AUTO_YES" = true ]; then
+    echo "🗑️  Resetting ALL collections (--reset-all -y)..."
+    TARGET_LANGS=("all")
+  else
+    read -rp "Reset ALL ChromaDB collections? [y/N]: " confirm_reset
+    if [[ ! "$confirm_reset" =~ ^[Yy]$ ]]; then
+      echo "❌ Reset cancelled."
+      exit 1
+    fi
+    TARGET_LANGS=("all")
+  fi
+else
+  # Interactive mode
+  echo "Select ingestion mode:"
+  echo "1) Full Ingest (Glossary + TM)"
+  echo "2) Glossary Only"
+  echo "3) TM Only"
+  echo "4) Reset (Wipe existing data)"
+  echo "----------------------------------------------------------------"
+  read -p "Choice [1-4]: " choice
+
+  case $choice in
+    1) FLAGS="" ;;
+    2) FLAGS="--glossary-only" ;;
+    3) FLAGS="--tm-only" ;;
+    4) ;; # FLAGS is set below after reset scope is chosen
+    *) echo "Invalid choice"; exit 1 ;;
+  esac
+fi
 
 # 5. For reset, ask what to delete and query languages from the vector DB
-if [ "$choice" -eq 4 ]; then
+# Skip this entire block if --reset-all was used (TARGET_LANGS already set above)
+if [ "$RESET_ALL" = false ] && [ "$choice" -eq 4 ]; then
   echo "----------------------------------------------------------------"
   echo "What do you want to reset?"
   echo "1) TM only"
@@ -165,7 +217,7 @@ print('\\n'.join(result.get(scope, [])))"
   else
     TARGET_LANGS=("$SELECTED_LANG")
   fi
-else
+elif [ "$RESET_ALL" = false ]; then
   # Non-reset flow: pick language from filesystem-based list
   echo "----------------------------------------------------------------"
   echo "Select target language for ingestion:"
@@ -186,6 +238,7 @@ else
     TARGET_LANGS=("$SELECTED_LANG")
   fi
 fi
+# If RESET_ALL=true, TARGET_LANGS is already set — nothing more to do here
 
 echo "🚀 Launching operation for ${#TARGET_LANGS[@]} language(s)..."
 cd "$PROJECT_ROOT"

@@ -2,6 +2,10 @@ services:
   chroma:
     container_name: chroma
     image: chromadb/chroma:1.5.8
+    # Load defaults first, then let .env override.
+    env_file:
+      - .env.defaults
+      - .env
     environment:
       - CHROMA_PATH=/data
       - ANONYMIZED_TELEMETRY=FALSE
@@ -24,6 +28,10 @@ services:
       context: .
       dockerfile: ./services/rag-proxy/Dockerfile
     container_name: rag-proxy
+    # Load defaults first, then let .env override.
+    env_file:
+      - .env.defaults
+      - .env
     environment:
       - PYTHONPATH=/app/src:/app/shared
       - PYTHONUNBUFFERED=1
@@ -33,9 +41,10 @@ services:
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - HF_HOME=/app/data/cache/huggingface
-      - TORCHINDUCTOR_CACHE_DIR=/app/data/cache/torchinductor
+      - TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor
       - TORCH_COMPILE_DISABLE=1
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
       - PROMPTS_DIR=/app/config/prompts
       - MODELS_CONFIG_PATH=/app/config/models/models.json
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
@@ -52,6 +61,7 @@ services:
       - ./services/rag-proxy/src:/app/src
       - ./services/shared/src:/app/shared:ro
       - ./tests:/app/tests:ro
+      - ./data/cache/huggingface:/app/data/cache/huggingface
     depends_on:
       chroma:
         # Ensures rag-proxy only starts after ChromaDB is ready to accept connections
@@ -73,7 +83,9 @@ services:
       dockerfile: ./services/toolbox/Dockerfile
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
     command: tail -f /dev/null
+    # Load defaults first, then let .env override.
     env_file:
+      - .env.defaults
       - .env
     environment:
       - LLM_API_TOKEN=${LLM_API_TOKEN}
@@ -81,6 +93,7 @@ services:
       - BULK_SIZE=${BULK_SIZE}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
       - TM_SOURCE_DIR=/app/tm_source
       - RAG_ANALYSIS_DIR=/app/data/rag-analysis
       - OPENAI_BASE_URL=http://rag-proxy:5000/v1
