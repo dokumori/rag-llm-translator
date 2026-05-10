@@ -37,7 +37,13 @@ RAG_STRICT_DISTANCE_THRESHOLD=0.15
 DETECTED_UID=$(id -u)
 DETECTED_GID=$(id -g)
 
-# 3. Create .env file with final values (No sed required)
+# 2. Read canonical default for the embedding model
+if [ -f "${PROJECT_ROOT}/.env.defaults" ]; then
+    EMBEDDING_MODEL_NAME=$(grep -m1 '^EMBEDDING_MODEL_NAME=' "${PROJECT_ROOT}/.env.defaults" | cut -d= -f2-)
+fi
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}
+
+# 4. Create .env file with final values (No sed required)
 echo "📝 Generating .env file..."
 cat > "${PROJECT_ROOT}/.env" << EOF
 # .env file - Generated on $(date '+%Y-%m-%d %H:%M')
@@ -61,14 +67,14 @@ RAG_STRICT_DISTANCE_THRESHOLD=${RAG_STRICT_DISTANCE_THRESHOLD}
 # If any threshold is set to 0.4, it has not been calibrated and must be recalibrated before use
 # in production. See docs/3_RAG_performance_analysis.md for instructions.
 CHROMA_PORT=8000
-EMBEDDING_MODEL_NAME=BAAI/bge-large-en-v1.5
+EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
 
 # User IDs for Docker Compose
 UID=${DETECTED_UID}
 GID=${DETECTED_GID}
 EOF
 
-# 4. Fix ownership of the data directory (Executed on Host)
+# 5. Fix ownership of the data directory (Executed on Host)
 echo "🔧 Setting folder permissions. You may be asked for the root password."
 # Use numeric GID (${DETECTED_GID}) to avoid "illegal group name" errors
 # entirely on Mac/Linux.
@@ -80,7 +86,7 @@ echo ""
 echo "===================================================================="
 echo " 📦 EMBEDDING MODEL"
 echo "===================================================================="
-echo "Downloading the default embedding model (BAAI/bge-large-en-v1.5)."
+echo "Downloading the default embedding model (${EMBEDDING_MODEL_NAME})."
 echo "This is a one-time download (~1.3GB). Run 'docker compose build' first."
 echo "To use a different model, see docs/7_embedding_model.md."
 read -p "Download model now? [Y/n]: " download_now
