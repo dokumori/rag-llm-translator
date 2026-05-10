@@ -87,15 +87,8 @@ echo "===================================================================="
 echo " 📦 EMBEDDING MODEL"
 echo "===================================================================="
 echo "Downloading the default embedding model (${EMBEDDING_MODEL_NAME})."
-echo "This is a one-time download (~1.3GB). Run 'docker compose build' first."
-echo "To use a different model, see docs/7_embedding_model.md."
-read -p "Download model now? [Y/n]: " download_now
-download_now=${download_now:-Y}
-if [[ "$download_now" =~ ^[Yy]$ ]]; then
-    bash "${PROJECT_ROOT}/bin/download-model.sh"
-else
-    echo "⚠️  Skipped. Run 'bash bin/download-model.sh' before starting the stack."
-fi
+echo "This is a one-time download (~1.3GB)."
+bash "${PROJECT_ROOT}/bin/download-model.sh"
 
 echo ""
 echo "To enable post-processing, run 'bash bin/setup_post_processing.sh'."

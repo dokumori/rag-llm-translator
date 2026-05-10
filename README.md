@@ -17,11 +17,10 @@ We plan to support them in the future, but for now please avoid using them.
 To use the translator, you need to:
 1. **Configure**: Run the setup script to create the `.env` file with your LLM credentials and settings.
 2. **Build**: Build the Docker environment.
-3. **Download the embedding model**: Download the text embedding model used by the RAG pipeline.
-4. **Prepare the data**: Place untranslated `.po` files and RAG data (TM and glossary) in the data directory.
-5. **Ingest**: Populate the vector database with your TM and glossary data.
-6. **Translate**: Run the translation script.
-7. **Tune RAG thresholds**: Calibrate similarity thresholds for your data and embedding model.
+3. **Prepare the data**: Place untranslated `.po` files and RAG data (TM and glossary) in the data directory.
+4. **Ingest**: Populate the vector database with your TM and glossary data.
+5. **Translate**: Run the translation script.
+6. **Tune RAG thresholds**: Calibrate similarity thresholds for your data and embedding model.
 
 
 Follow the instructions below to set up the environment and run the translation process:
@@ -53,19 +52,9 @@ Run:
 docker compose up -d --build
 ```
 
-## 3. Download the embedding model
 
-The RAG pipeline requires a text embedding model to convert strings into vectors. Run:
 
-```bash
-bin/download-model.sh
-```
-
-This downloads the default model (`BAAI/bge-large-en-v1.5`) into `data/cache/huggingface/` on your host.
-
-> See [docs/7_embedding_model.md](docs/7_embedding_model.md) for instructions on switching models.
-
-## 4. Place the files
+## 3. Place the files
 
 Three files are required to perform the RAG-based translation:
 
@@ -73,7 +62,7 @@ Three files are required to perform the RAG-based translation:
 - a .po file containing existing translations as translation memory
 - a .csv file containing glossary
 
-If you wish to quickly run a demo, running `bash bin/demo_prep.sh` will download all the necessary files. Then you can proceed to [the next step](README.md#4-ingest-the-translation-memory-and-glossary).
+If you wish to quickly run a demo, running `bash bin/demo_prep.sh` will download all the necessary files. Then you can proceed to [the next step](README.md#5-ingest-the-translation-memory-and-glossary).
 
 If you prefer to place the files manually, follow the steps below:
 
@@ -113,7 +102,7 @@ You can provide project-specific translation instructions by placing a custom sy
 - **Naming Convention**: `{langcode}.md` (for example, `nl.md`, `es.md` etc).
 - **Effect**: If present, this markdown file will be used as the base expertise instruction for the LLM when translating into the target language, overriding the default prompts provided with the system.
 
-## 5. Custom Model Configuration (Optional)
+## 4. Custom Model Configuration (Optional)
 You can override the list of existing LLM models by providing a custom model configuration file. (The default models.json file is for amazee.ai, which provides all the listed models and more.)
 
 - **Location**: `config/models/custom/`
@@ -121,7 +110,7 @@ You can override the list of existing LLM models by providing a custom model con
 - **Effect**: If present, the system will load models from this file. The default `dry-run` model is automatically preserved to ensure testing capability.
 
 
-## 6. Ingest the translation memory and glossary
+## 5. Ingest the translation memory and glossary
 
 In the terminal, run the ingestion command:
 
@@ -136,7 +125,7 @@ The presence of collections and items in the database can be verified by executi
 docker compose exec toolbox python3 /app/src/check_db.py
 ```
 
-## 7. Translate!
+## 6. Translate!
 
 Finally, run the following command to start the translation process:
 
