@@ -1,13 +1,11 @@
-# Load defaults first, then let .env override. This means .env.defaults is the
-# single source of truth for values like EMBEDDING_MODEL_NAME.
-env_file:
-  - .env.defaults
-  - .env
-
 services:
   chroma:
     container_name: chroma
     image: chromadb/chroma:1.5.8
+    # Load defaults first, then let .env override.
+    env_file:
+      - .env.defaults
+      - .env
     environment:
       - CHROMA_PATH=/data
       - ANONYMIZED_TELEMETRY=FALSE
@@ -30,6 +28,10 @@ services:
       context: .
       dockerfile: ./services/rag-proxy/Dockerfile
     container_name: rag-proxy
+    # Load defaults first, then let .env override.
+    env_file:
+      - .env.defaults
+      - .env
     environment:
       - PYTHONPATH=/app/src:/app/shared
       - PYTHONUNBUFFERED=1
@@ -81,7 +83,9 @@ services:
       dockerfile: ./services/toolbox/Dockerfile
     # Keep it running so we can 'docker exec' into it, or use 'profiles' to run on demand
     command: tail -f /dev/null
+    # Load defaults first, then let .env override.
     env_file:
+      - .env.defaults
       - .env
     environment:
       - LLM_API_TOKEN=${LLM_API_TOKEN}
