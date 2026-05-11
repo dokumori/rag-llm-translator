@@ -174,3 +174,21 @@ docker compose up -d --force-recreate rag-proxy toolbox
 # 3. Re-ingest
 bin/ingest.sh
 ```
+### TM/Glossary are rejected in translation
+
+Models calculate distance differently, meaning thresholds must be recalibrated when switching models. For the same search, different models will return significantly different distance scores:
+
+**Example Comparison:**
+- **Source string:** `"This is a string containing the word 'user' with context"`
+- **Glossary Match:** `"user"`
+
+| Model | Distance | Status (with 0.4 threshold) |
+| :--- | :--- | :--- |
+| `BAAI/bge-large-en-v1.5` | **0.30** | ✅ Accepted |
+| `sentence-transformers/all-distilroberta-v1` | **0.59** | ❌ Rejected |
+
+With default thresholds set to `0.4`, only the first model would produce a result.
+
+More importantly, in cosine distance, **the distance of 0.59 is considered far apart**. This may suggest that the model itself may not be suitable for the purpose of TM and Glossary matching for this project, rather than the threshold being too strict.
+
+See [docs/3_RAG_performance_analysis.md](3_RAG_performance_analysis.md) for the recalibration procedure.
