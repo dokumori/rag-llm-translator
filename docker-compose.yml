@@ -1,7 +1,7 @@
 services:
   chroma:
     container_name: chroma
-    image: chromadb/chroma:1.5.8
+    image: chromadb/chroma:1.5.9
     # Load defaults first, then let .env override.
     env_file:
       - .env.defaults
