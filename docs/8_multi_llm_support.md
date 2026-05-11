@@ -108,6 +108,9 @@ docker compose --profile gateway up -d
 
 This starts the `litellm` container on port `4000`. If `config.yaml` is missing, the container will print an error with the exact copy command and exit cleanly.
 
+> [!TIP]
+> **Make it permanent:** If you want the gateway to always start with `docker compose up` without needing the `--profile` flag, add `COMPOSE_PROFILES=gateway` to your `.env` file.
+
 ### Step 5: Point `rag-proxy` at the gateway
 
 Update these values in your `.env`:
