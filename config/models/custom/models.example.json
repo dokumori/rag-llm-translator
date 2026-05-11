@@ -1,15 +1,102 @@
 {
   "_comment": "Copy this file to config/models/custom/models.json to override the default models.",
-  "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended. **Please note that this translator is not yet compatible with OpenAI's o1 / o3 / GPT-5 models.**",
+  "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended.",
   "_pricing_note": "Add a 'pricing' object to enable token cost estimation. Rates are in USD per 1,000 tokens. Omit 'pricing' entirely if the cost is unknown or not applicable.",
+  "_flags_note": "omit_temperature: true — model rejects the temperature parameter (e.g. OpenAI o-series, GPT-5). use_max_completion_tokens: true — model requires max_completion_tokens instead of max_tokens.",
   "models": [
     {
-      "id": "gpt-4.1-2025-04-14",
-      "name": "GPT 4.1",
+      "id": "claude-haiku-4-5",
+      "name": "Claude Haiku 4.5",
       "is_dry_run": false,
       "pricing": {
-        "prompt_per_1k_tokens": 0.002,
-        "completion_per_1k_tokens": 0.008
+        "prompt_per_1k_tokens": 0.0008,
+        "completion_per_1k_tokens": 0.004
+      }
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.003,
+        "completion_per_1k_tokens": 0.015
+      }
+    },
+    {
+      "id": "claude-opus-4-7",
+      "name": "Claude Opus 4.7",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.015,
+        "completion_per_1k_tokens": 0.075
+      }
+    },
+    {
+      "id": "mistral-large-3",
+      "name": "Mistral Large 3",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.004,
+        "completion_per_1k_tokens": 0.012
+      }
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0025,
+        "completion_per_1k_tokens": 0.01
+      }
+    },
+    {
+      "id": "o4-mini",
+      "name": "OpenAI o4-mini",
+      "is_dry_run": false,
+      "omit_temperature": true,
+      "use_max_completion_tokens": true,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0011,
+        "completion_per_1k_tokens": 0.0044
+      }
+    },
+    {
+      "id": "o3-mini",
+      "name": "OpenAI o3-mini",
+      "is_dry_run": false,
+      "omit_temperature": true,
+      "use_max_completion_tokens": true,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0011,
+        "completion_per_1k_tokens": 0.0044
+      }
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "is_dry_run": false,
+      "pricing": {
+        "_note": "Rates for prompts ≤200k tokens. Prompts >200k cost $0.0025/$0.015 per 1k tokens.",
+        "prompt_per_1k_tokens": 0.00125,
+        "completion_per_1k_tokens": 0.01
+      }
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0003,
+        "completion_per_1k_tokens": 0.0025
+      }
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash-Lite",
+      "is_dry_run": false,
+      "pricing": {
+        "prompt_per_1k_tokens": 0.0001,
+        "completion_per_1k_tokens": 0.0004
       }
     }
   ]

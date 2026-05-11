@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Multi-LLM provider support**: the system now supports Anthropic (Claude), Google (Gemini), and OpenAI reasoning models (o-series, GPT-5) in addition to existing OpenAI-compatible providers.
+  - **`docker-compose.yml`**: optional `litellm` service added under the `gateway` Docker Compose profile (`docker compose --profile gateway up -d`). LiteLLM translates Anthropic and Gemini native APIs to the OpenAI format transparently, requiring zero code changes to `rag-proxy` or toolbox.
+  - **`config/litellm/config.sample.yaml`**: sample configuration file for the LiteLLM gateway; pre-populated with commented-out model entries for all providers. Copy this file to `config/litellm/config.yaml`, then uncomment to activate individual models. 
+  - **`config/models/models.example.json`**: added `gpt-4o`, `o4-mini`, and `o3-mini` model entries. Added `omit_temperature` and `use_max_completion_tokens` flags to support OpenAI reasoning models (o-series, GPT-5) that reject the `temperature` parameter and require `max_completion_tokens` instead of `max_tokens`.
+  - **`docs/8_multi_llm_support.md`**: new documentation page covering direct mode (OpenAI-compatible endpoints), gateway mode (LiteLLM), per-provider setup, model flags, and troubleshooting.
+
+### Changed
+- **`rag-proxy` / `app.py`**: upstream API call now builds parameters dynamically from model-level flags rather than hardcoding `temperature=0` and `max_tokens`. This enables support for OpenAI o-series and GPT-5 models in direct-connection mode without requiring the LiteLLM gateway.
+- **`README.md`**: replaced the "Known issues" section (o-series / GPT-5 broken) with a description of the two provider connection modes (direct and gateway). Added link to `docs/8_multi_llm_support.md`.
+
 ## [4.0.0] - 2026-05-10
 
 ### Added

@@ -139,6 +139,50 @@ services:
       chroma:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # LiteLLM Gateway (optional — start with: docker compose --profile gateway up -d)
+  # ---------------------------------------------------------------------------
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.83.14-stable
+    container_name: litellm
+    profiles:
+      - gateway
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config/litellm:/app/config:ro
+    environment:
+      - LITELLM_CONFIG=/app/config/config.yaml
+      # Provider API keys — set whichever you use in .env
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ ! -f /app/config/config.yaml ]; then
+          echo ""
+          echo "❌  LiteLLM gateway config not found: config/litellm/config.yaml"
+          echo ""
+          echo "    To set it up, copy the example file and edit it:"
+          echo "      cp config/litellm/config.example.yaml config/litellm/config.yaml"
+          echo ""
+          echo "    Then restart the gateway:"
+          echo "      docker compose --profile gateway up -d"
+          echo ""
+          exit 1
+        fi
+        exec litellm --config /app/config/config.yaml --port 4000
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q '00000000:0FA0 00000000:0000 0A' /proc/net/tcp || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 networks:
   app_network:
     driver: bridge

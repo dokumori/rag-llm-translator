@@ -73,11 +73,15 @@ def get_system_prompt_from_md(target_lang: str = DEFAULT_LANG) -> str:
     logger.warning("⚠️ No system prompt found! Using hardcoded fallback.")
     return "Ensure the translation sounds natural and professional in the target language. Adhere to Microsoft Localization Style Guide."
 
-@functools.lru_cache(maxsize=1)
 def get_models_config() -> List[Dict[str, Any]]:
     """
     Retrieves model configurations from the shared JSON file, with custom override support.
     Uses load_models_config() to merge config/models/models.json with config/models/custom/models.json.
+
+    Not cached — the file is re-read on each call so that edits to
+    config/models/custom/models.json are picked up without restarting
+    the container.  At ~3 KB the I/O cost is negligible compared to
+    the LLM API call that follows.
     """
     return load_models_config()
 
@@ -633,12 +637,23 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         # --- 6. REAL API CALL ---
 
         try:
-            response = get_upstream_client().chat.completions.create(
-                model=requested_model,
-                messages=new_messages,
-                temperature=0,
-                max_tokens=data.get('max_tokens', 1000)
-            )
+            # Build call kwargs based on model-level flags so that models which
+            # reject certain parameters (e.g. OpenAI o-series / GPT-5 reject
+            # `temperature` and require `max_completion_tokens` instead of
+            # `max_tokens`) work correctly in direct-connection mode as well as
+            # behind the LiteLLM gateway.
+            call_kwargs: Dict[str, Any] = {
+                "model": requested_model,
+                "messages": new_messages,
+            }
+            if not (model_meta or {}).get("omit_temperature"):
+                call_kwargs["temperature"] = 0
+            if (model_meta or {}).get("use_max_completion_tokens"):
+                call_kwargs["max_completion_tokens"] = data.get("max_tokens", 1000)
+            else:
+                call_kwargs["max_tokens"] = data.get("max_tokens", 1000)
+
+            response = get_upstream_client().chat.completions.create(**call_kwargs)
             
             # --- API ERROR CHECKS ---
             for choice in response.choices:

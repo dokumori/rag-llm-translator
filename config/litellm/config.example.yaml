@@ -1,0 +1,102 @@
+# LiteLLM Gateway Configuration — Example File
+# ================================================
+# Copy this file to config/litellm/config.yaml and edit it:
+#
+#   cp config/litellm/config.example.yaml config/litellm/config.yaml
+#
+# Then start the gateway with:
+#
+#   docker compose --profile gateway up -d
+#
+# The 'model_name' field must match the 'id' in config/models/models.json.
+# Set the corresponding API key environment variable in your .env file.
+#
+# Supported providers: https://docs.litellm.ai/docs/providers
+
+model_list:
+
+  # ---------------------------------------------------------------------------
+  # Anthropic — Claude models
+  # Set ANTHROPIC_API_KEY in .env, then uncomment the models you need.
+  # ---------------------------------------------------------------------------
+  # - model_name: claude-haiku-4-5
+  #   litellm_params:
+  #     model: anthropic/claude-haiku-4-5-20251001
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # - model_name: claude-sonnet-4-6
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-6
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # - model_name: claude-opus-4-7
+  #   litellm_params:
+  #     model: anthropic/claude-opus-4-7
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Older Claude 4 dated snapshots — still supported but check Anthropic's
+  # deprecation schedule at https://docs.anthropic.com/en/docs/about-claude/models
+  # - model_name: claude-sonnet-4-20250514-v1
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-20250514
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # - model_name: claude-opus-4-20250514-v1
+  #   litellm_params:
+  #     model: anthropic/claude-opus-4-20250514
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Google — Gemini models
+  # Set GEMINI_API_KEY in .env, then uncomment the models you need.
+  # ---------------------------------------------------------------------------
+  # - model_name: gemini-2.5-pro
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-pro
+  #     api_key: os.environ/GEMINI_API_KEY
+
+  # - model_name: gemini-2.5-flash
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-flash
+  #     api_key: os.environ/GEMINI_API_KEY
+
+  # - model_name: gemini-2.5-flash-lite
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-flash-lite
+  #     api_key: os.environ/GEMINI_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # OpenAI — including o-series / reasoning models
+  # Set OPENAI_API_KEY in .env, then uncomment the models you need.
+  # Note: LiteLLM automatically handles the temperature / max_completion_tokens
+  # parameter differences for o-series models.
+  # ---------------------------------------------------------------------------
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: os.environ/OPENAI_API_KEY
+
+  # - model_name: o4-mini
+  #   litellm_params:
+  #     model: openai/o4-mini
+  #     api_key: os.environ/OPENAI_API_KEY
+
+  # - model_name: o3-mini
+  #   litellm_params:
+  #     model: openai/o3-mini
+  #     api_key: os.environ/OPENAI_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Mistral — already OpenAI-compatible, gateway only needed if you prefer
+  # centralised key management or want built-in retry/fallback logic.
+  # Set MISTRAL_API_KEY in .env, then uncomment.
+  # ---------------------------------------------------------------------------
+  # - model_name: mistral-large-3
+  #   litellm_params:
+  #     model: mistral/mistral-large-3
+  #     api_key: os.environ/MISTRAL_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Add other providers as needed — full list at:
+  # https://docs.litellm.ai/docs/providers
+  # ---------------------------------------------------------------------------
