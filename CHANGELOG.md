@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-05-11
+
 ### Added
 - **Multi-LLM provider support**: the system now supports Anthropic (Claude), Google (Gemini), and OpenAI reasoning models (o-series, GPT-5) in addition to existing OpenAI-compatible providers.
   - **`docker-compose.yml`**: optional `litellm` service added under the `gateway` Docker Compose profile (`docker compose --profile gateway up -d`). LiteLLM translates Anthropic and Gemini native APIs to the OpenAI format transparently, requiring zero code changes to `rag-proxy` or toolbox.
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`rag-proxy` / `app.py`**: upstream API call now builds parameters dynamically from model-level flags rather than hardcoding `temperature=0` and `max_tokens`. This enables support for OpenAI o-series and GPT-5 models in direct-connection mode without requiring the LiteLLM gateway.
 - **`README.md`**: replaced the "Known issues" section (o-series / GPT-5 broken) with a description of the two provider connection modes (direct and gateway). Added link to `docs/8_multi_llm_support.md`.
+- **`docs/7_embedding_model.md`**: Added a note about how models calculate distances differently, the importance of calibration, and that some models may not be suitable for the purpose of this project.
 
 ## [4.0.0] - 2026-05-10
 
