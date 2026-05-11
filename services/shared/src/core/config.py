@@ -57,6 +57,7 @@ class Config:
         logger.info(f"🔧 Config: CHROMA_HOST={cls.CHROMA_HOST}:{cls.CHROMA_PORT}")
         logger.info(f"🔧 Config: TM_THRESHOLD={cls.TM_THRESHOLD}, GLOSSARY_THRESHOLD={cls.GLOSSARY_THRESHOLD}")
         logger.info(f"🔧 Config: TARGET_LANG={cls.TARGET_LANG}")
+        logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(direct — no gateway)'}")
 
 
 def load_models_config(models_path: str = None, custom_path: str = None) -> List[Dict[str, Any]]:
@@ -107,9 +108,26 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
                 final_models.append(dry_run)
 
             logger.info(f"📋 Loaded {len(custom_models)} custom models and {'one' if dry_run else 'zero'} default dry-run model")
+            _validate_model_flags(final_models)
             return final_models
 
         except Exception as e:
             logger.error(f"❌ Failed to load custom models config from {custom_path}: {e}")
 
+    _validate_model_flags(base_models)
     return base_models
+
+
+_BOOLEAN_FLAGS = ("is_dry_run", "omit_temperature", "use_max_completion_tokens")
+
+
+def _validate_model_flags(models: List[Dict[str, Any]]) -> None:
+    """Warns when model flag fields contain non-boolean values (e.g. the string "false")."""
+    for model in models:
+        for flag in _BOOLEAN_FLAGS:
+            value = model.get(flag)
+            if value is not None and not isinstance(value, bool):
+                logger.warning(
+                    f"⚠️ Model '{model.get('id', '?')}': flag '{flag}' should be "
+                    f"a boolean (true/false), got {type(value).__name__}: {value!r}"
+                )
