@@ -282,10 +282,13 @@ def _process_batch(
         (False, [])               after all retries are exhausted.
     """
     payload = [{"text": t, "context": ctx} for t in texts]
+    n = len(texts)
     prompt = (
-        "Translate the following list of texts. "
-        "Provide only the translations in a JSON array of strings, "
-        "maintaining the original order.\n\n"
+        f"Translate the following {n} texts. "
+        "Return ONLY a JSON array of strings with EXACTLY "
+        f"{n} elements — one translation per input, in the same order. "
+        "Do NOT split a single input into multiple elements, even if it contains newlines. "
+        "Do NOT add any text outside the JSON array.\n\n"
         f"Texts to translate:\n{json.dumps(payload, ensure_ascii=False)}"
     )
     messages = [{"role": "user", "content": prompt}]
@@ -313,16 +316,25 @@ def _process_batch(
                 time.sleep(wait)
             continue
 
-        # --- Parsing (non-retriable: retrying the same prompt yields the same output) ---
+        # --- Parsing (retriable: count mismatches are stochastic — a retry may succeed) ---
         try:
             translations = _parse_translations(content, expected_count=len(texts))
             return True, translations
         except ValueError as exc:
-            logger.error(
-                "   ❌ Parse failure (non-retriable): %s | Raw response: %.300s",
-                exc, content,
+            logger.warning(
+                "   ⚠️  Parse failure (attempt %d/%d): %s | Raw response: %.300s",
+                attempt + 1, max_retries + 1, exc, content,
             )
-            return False, []
+            if attempt < max_retries:
+                wait = 2 ** (attempt + 1)  # 2s, 4s
+                logger.debug("   ⏳ Retrying in %ds...", wait)
+                time.sleep(wait)
+            else:
+                logger.error(
+                    "   ❌ Parse failure (all retries exhausted): %s | Raw response: %.300s",
+                    exc, content,
+                )
+                return False, []
 
     return False, []
 
@@ -360,9 +372,21 @@ def _parse_translations(content: str, expected_count: int) -> List[str]:
         if not isinstance(value, list):
             continue  # found JSON but it's not an array — keep scanning
 
-        if len(value) != expected_count:
+        got = len(value)
+        if got > expected_count:
+            # Lenient: model returned extra items (common with Haiku 3.5).
+            # Trim the tail — the leading N items are the actual translations.
+            extra = value[expected_count:]
+            logger.warning(
+                "   ⚠️  Model returned %d items for %d expected — trimming %d extra: %s",
+                got, expected_count, got - expected_count,
+                [repr(e)[:80] for e in extra],
+            )
+            value = value[:expected_count]
+        elif got < expected_count:
+            # Cannot fabricate missing translations — hard failure.
             raise ValueError(
-                f"Expected {expected_count} translations, got {len(value)}"
+                f"Expected {expected_count} translations, got {got} (too few to recover)"
             )
 
         return [str(t) for t in value]

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 (none)
 
+## [4.2.2] - 2026-05-13
+
+### Fixed
+- **`po_translator`** — hardened to handle Haiku 3.5's tendency to return extra array items:
+  - **Hardened LLM prompt**: user message now states the exact required count and instructs the model not to split a single input into multiple elements.
+  - **Count-mismatch errors are now retriable**: wrong-count parse failures were previously non-retriable; they now retry within the existing `max_retries` loop with exponential back-off.
+  - **Lenient trim for over-count responses**: surplus tail items are trimmed and logged as a warning rather than failing the batch. Responses with fewer items than expected still fail hard.
+- **`rag-proxy` — dynamic output format instruction**: `FORMAT_INSTRUCTION` replaced with `_format_instruction(item_count)` so the system prompt includes the exact expected element count per request.
+
 ## [4.2.1] - 2026-05-13
 
 ### Fixed
