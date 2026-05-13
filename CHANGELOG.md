@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 (none)
 
+## [4.2.1] - 2026-05-13
+
+### Fixed
+- **`tests/unit/test_rag_proxy.py`**: fixed `test_models_config_caching` which was broken by a stale assertion. The `@functools.lru_cache` decorator was intentionally removed from `get_models_config` in a previous release (to allow hot-reloading of `custom/models.json` without restarting the container), but the corresponding test was not updated at the time. Replaced with `test_models_config_returns_model_list`, which patches `load_models_config` directly and verifies the correct list is returned.
+
 ## [4.2.0]
 ### Added
 - **`bin/initial_setup.sh`** — fully rewritten as an interactive setup wizard:

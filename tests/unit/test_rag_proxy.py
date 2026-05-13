@@ -352,31 +352,22 @@ def test_prompt_caching():
         res3 = app.get_system_prompt_from_md("de")
         assert mock_file.call_count == 2
 
-def test_models_config_caching():
+def test_models_config_returns_model_list():
     """
-    Verify that get_models_config caches disk reads to prevent parsing the 
-    models.json file on every single translation request.
+    Verify that get_models_config delegates to load_models_config and returns
+    the expected list of model dicts.
+
+    Note: get_models_config is intentionally NOT cached so that edits to
+    config/models/custom/models.json are picked up without restarting the
+    container.  The test therefore does not assert on caching behaviour.
     """
-    # 1. Clear cache to isolate the test
-    app.get_models_config.cache_clear()
-    
-    mock_json = '{"models": [{"id": "test-model"}]}'
-    # Only return True for the base models path; return False for the custom
-    # override path so that load_models_config opens the file exactly once.
-    def _exists_side_effect(path):
-        return not path.endswith("custom/models.json")
-    with patch("os.path.exists", side_effect=_exists_side_effect), \
-         patch("builtins.open", mock_open(read_data=mock_json)) as mock_file:
-         
-        # 2. Call the function twice sequentially.
-        res1 = app.get_models_config()
-        res2 = app.get_models_config()
-        
-        assert len(res1) == 1
-        assert res1[0]["id"] == "test-model"
-        
-        # 3. Assert that the underlying JSON file was only opened and read ONCE.
-        assert mock_file.call_count == 1
+    mock_models = [{"id": "test-model"}]
+
+    with patch("app.load_models_config", return_value=mock_models):
+        result = app.get_models_config()
+
+    assert result == mock_models
+    assert result[0]["id"] == "test-model"
 
 
 # --- Part 3: handle_translation Tests ---
