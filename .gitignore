@@ -56,6 +56,8 @@ venv.bak/
 *.env*
 # .env.defaults contains only non-secret defaults and IS committed to the repo.
 !.env.defaults
+# .env-backups/ stores timestamped copies created by initial_setup.sh — never commit these.
+.env-backups/
 
 # --- Docker ---
 docker-compose.override.yml

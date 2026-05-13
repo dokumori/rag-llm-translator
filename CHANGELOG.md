@@ -6,8 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+(none)
+
+## [4.2.0]
+### Added
+- **`bin/initial_setup.sh`** — fully rewritten as an interactive setup wizard:
+  - **Mode selection**: choose between three LLM connection modes:
+    - *Direct* — enter a custom OpenAI-compatible base URL and API token (e.g. amazee.ai, vLLM, Mistral La Plateforme).
+    - *Gateway* — use the built-in LiteLLM proxy for Anthropic, Google (Gemini), OpenAI, or Mistral. Prompts for each provider's API key (hidden input) and auto-generates `config/litellm/config.yaml` and `config/models/custom/models.json` containing only the selected providers' models.
+    - *Local (Ollama)* — auto-configures `LLM_BASE_URL=http://host.docker.internal:11434/v1` with no API token required.
+  - **Gateway auto-start**: in Gateway mode, optionally writes `COMPOSE_PROFILES=gateway` to `.env` so the LiteLLM container starts with every `docker compose up`.
+  - **`.env` backup**: prompts to back up any existing `.env` to `.env-backups/.env-YYYYMMDD-HHMMSS` before overwriting, making the script safe to re-run without losing credentials.
+  - **Confirmation summary**: displays all chosen settings before writing any files, with an abort option.
+- **CHANGELOG.md descriptions**: Added 'Upgrade' for versions that require rebuild and other operations for the changes to take effect.
+
+
 
 ## [4.1.0] - 2026-05-11
+
+> **Upgrade:** `docker compose build rag-proxy && docker compose up -d`
 
 ### Added
 - **Multi-LLM provider support**: the system now supports Anthropic (Claude), Google (Gemini), and OpenAI reasoning models (o-series, GPT-5) in addition to existing OpenAI-compatible providers.
@@ -22,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/7_embedding_model.md`**: Added a note about how models calculate distances differently, the importance of calibration, and that some models may not be suitable for the purpose of this project.
 
 ## [4.0.0] - 2026-05-10
+
+> **Upgrade:** `docker compose build && docker compose up -d`
 
 ### Added
 - **`bin/manage-backup.sh`**: new script to create and restore timestamped `.tar.gz` snapshots of the ChromaDB Docker volume (`chroma_data`). Supports `--dump`, `--restore [<file>]`, and `--list` subcommands; the `chroma` container is paused during dump for a consistent snapshot.
@@ -46,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.3.0] - 2026-05-08
 (In the previous release, these changes were mistakenly left under 'unreleased')
 
+> **Upgrade:** `docker compose build rag-proxy && docker compose up -d`
+> The new `chromadb-ui` service starts automatically on port `3001`.
+
 ### Added
 - **`chromadb-ui`**: lightweight web-based admin interface added as a Docker Compose service on port `3001` for visual browsing and querying of ChromaDB collections.
 - **`docs`**: documentation for the ChromaDB Admin UI.
@@ -62,12 +84,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.2.1] - 2026-05-02
 
+> **Upgrade:** `docker compose pull chroma && docker compose build toolbox && docker compose up -d`
+
 ### Changed
 - **`docker-compose`**: bumped `chromadb/chroma` Docker image from `1.4.1` to `1.5.8` (Renovate).
 - **`toolbox`**: updated `chromadb` Python package to `1.5.8` (Renovate).
 - **`toolbox`**: updated `pytest` from `~8.3` to `~9.0` (Renovate).
 
 ## [3.2.0] - 2026-05-01
+
+> **Upgrade:** `docker compose build && docker compose up -d`
+> The toolbox image is significantly smaller in this release (~3 GB reduction); a full rebuild is required.
 
 ### Added
 - **`rag-proxy`**: new `/api/ingest/*` endpoints (`reset`, `check-ids`, `add`) for remote ingestion.
@@ -104,6 +131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.0] - 2026-05-01
 
+> **Upgrade:** `docker compose build && docker compose up -d`
+
 ### Added
 - **Token usage tracking**: prompt, completion, and total token counts are now accumulated across each translation and evaluation run, with a summary printed to the log and saved as a JSON file in the output directory.
 - Pricing information (approximate for some) added to `models.json` for all supported models.
@@ -114,6 +143,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token tracking is integrated into both the translation pipeline and the LLM-as-a-Judge evaluation workflow.
 
 ## [3.0.0] - 2026-04-30
+
+> **Upgrade:** `docker compose build toolbox && docker compose up -d`
+> ⚠️ Breaking change: the external `gpt-po-translator` dependency has been replaced. Remove it from any scripts that called it directly.
 
 ### Added
 - Support for plurals in `.po` files.
