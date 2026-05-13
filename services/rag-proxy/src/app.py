@@ -490,16 +490,21 @@ def perform_rag_lookup(query_payload: List[Dict[str, str]], target_lang: str = "
 # This is appended to *every* system prompt so the LLM always returns the
 # JSON array that po_translator._parse_translations() expects, regardless
 # of which language-specific .md file is loaded.
-FORMAT_INSTRUCTION = (
-    "\n\n## Output Format (MANDATORY)\n"
-    "Return ONLY a JSON array of translated strings in the same order as the "
-    "input, e.g. [\"translation1\", \"translation2\"].\n"
-    "Do NOT wrap the array in markdown code fences.\n"
-    "Do NOT add explanations, notes, or alternatives outside the array."
-)
+# item_count is threaded in at request time so the model is told the exact
+# number of elements expected — preventing Haiku-class models from splitting
+# a single long entry into two array items.
+def _format_instruction(item_count: int) -> str:
+    return (
+        "\n\n## Output Format (MANDATORY)\n"
+        f"Return ONLY a JSON array of translated strings with EXACTLY {item_count} element(s) "
+        "— one translation per input, in the same order.\n"
+        "Do NOT split a single input into multiple elements, even if it contains newlines.\n"
+        "Do NOT wrap the array in markdown code fences.\n"
+        "Do NOT add explanations, notes, or alternatives outside the array."
+    )
 
 
-def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str, target_lang: str) -> str:
+def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]]], rag_content: str, target_lang: str, item_count: int = 0) -> str:
     """Combines instructions, RAG context, and original system message."""
     expert_instructions = get_system_prompt_from_md(target_lang)
 
@@ -511,7 +516,7 @@ def construct_system_prompt(original_system_data: Union[str, List[Dict[str, str]
     return (
         f"{expert_instructions}\n\n{rag_content}\n\n"
         f"## Additional Instructions:\n{original_system}"
-        f"{FORMAT_INSTRUCTION}"
+        f"{_format_instruction(item_count)}"
     )
 
 # --- Helper: Extract Language from Path ---
@@ -595,7 +600,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
 
         # --- 3. CONSTRUCT PROMPT ---
         final_system_content = construct_system_prompt(
-            data.get('system', ""), rag_content, target_lang)
+            data.get('system', ""), rag_content, target_lang, item_count=len(query_payload))
 
         # --- 4. STRUCTURED LOGGING ---
         log_entry["system_prompt_length"] = len(final_system_content)
