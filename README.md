@@ -11,6 +11,16 @@ See [docs/8_multi_llm_support.md](docs/8_multi_llm_support.md) for setup instruc
 
 # How to use rag-llm-translator
 
+## System Menu (Recommended)
+
+The easiest way to get started is the interactive system menu, which groups all commands by workflow and guides you through each step:
+
+```bash
+bash bin/system_menu.sh
+```
+
+The menu detects the current state of your environment (missing `.env`, Docker not running, empty ChromaDB) and shows contextual hints. It also displays preparation instructions before running commands that require files to be in place.
+
 ## Overview
 To use the translator, you need to:
 1. **Configure**: Run the setup script to create the `.env` file with your LLM credentials and settings.
@@ -20,8 +30,7 @@ To use the translator, you need to:
 5. **Translate**: Run the translation script.
 6. **Tune RAG thresholds**: Calibrate similarity thresholds for your data and embedding model.
 
-
-Follow the instructions below to set up the environment and run the translation process:
+If you prefer to run commands individually, follow the steps below:
 
 ## 1. Create the .env file
 
