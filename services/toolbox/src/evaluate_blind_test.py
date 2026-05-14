@@ -135,7 +135,7 @@ def format_file_info(file_paths: List[str]) -> str:
         info.append(f"{fname} (in {dname}/)")
     return ", ".join(info)
 
-def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False, tracker: TokenTracker = None) -> Dict[str, Any]:
+def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False, tracker: TokenTracker = None, target_lang: str = "") -> Dict[str, Any]:
     """Calls the Judge LLM to evaluate the pair, or returns mock data on dry run."""
     source_text = sample["source"]
     source_context = sample.get("context", "")
@@ -143,7 +143,10 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
     # 1. Re-Retrieve Context from ChromaDB
     try:
         # Use new context-aware dictionary payload format
-        rag_context, _ = perform_rag_lookup_via_proxy([{"text": source_text, "context": source_context}])
+        rag_context, _ = perform_rag_lookup_via_proxy(
+            [{"text": source_text, "context": source_context}],
+            target_lang=target_lang,
+        )
         if not rag_context.strip():
             logger.info(f"⏭️ Skipping '{source_text[:30]}...' (No RAG context or Guardrail rejected)")
             return None
@@ -275,7 +278,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         logger.error(f"Evaluation failed for string: {source_text[:50]}... Error: {e}")
         return None
 
-def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool, tracker: TokenTracker = None) -> List[Dict[str, Any]]:
+def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool, tracker: TokenTracker = None, target_lang: str = "") -> List[Dict[str, Any]]:
     """Runs the primary evaluation loop, calling the judge LLM for each sample."""
     target_evals = min(limit, len(paired_data)) if limit > 0 else len(paired_data)
     target_str = str(target_evals) if limit > 0 else "ALL"
@@ -288,7 +291,7 @@ def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, 
             break
             
         logger.info(f"⏳ Evaluating [{successful_evals + 1}/{target_str}] (Attempt {idx}/{len(paired_data)})...")
-        eval_result = evaluate_translation(client, model, sample, prompt_template, dry_run=is_dry_run, tracker=tracker)
+        eval_result = evaluate_translation(client, model, sample, prompt_template, dry_run=is_dry_run, tracker=tracker, target_lang=target_lang)
         if eval_result:
             results.append(eval_result)
             successful_evals += 1
@@ -428,6 +431,7 @@ def main():
     parser.add_argument("--with-rag-dir", required=True, help="Directory containing with-RAG translations")
     parser.add_argument("--without-rag-dir", required=True, help="Directory containing without-RAG translations")
     parser.add_argument("--limit", type=int, default=0, help="Number of strings to evaluate (0 for all)")
+    parser.add_argument("--lang", default="", help="Target language code for RAG filtering (e.g. 'it', 'ja'). Without this, glossary/TM lookups will not be language-filtered.")
     args = parser.parse_args()
 
     # Reset Base URL to hit provider directly if using standard OpenAI instead of local proxy
@@ -490,7 +494,9 @@ def main():
         )
     except Exception:
         pass  # tracker already set above with no pricing
-    results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run, tracker=tracker)
+    if not args.lang:
+        logger.warning("⚠️ No --lang argument provided. RAG lookups will not be language-filtered and may return results from any language in the database.")
+    results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run, tracker=tracker, target_lang=args.lang)
     metrics = calculate_metrics(results)
     
     with_rag_info = format_file_info(with_rag_files)
