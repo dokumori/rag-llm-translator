@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 (none)
 
+## [4.3.0] - 2026-05-14
+
+### Added
+- **`bin/system_menu.sh`** — new interactive CLI system menu that serves as the primary entry point for the project:
+  - Detects environment state on each render (missing `.env`, Docker not running, empty ChromaDB collections, missing source data) and displays contextual warning/info hints.
+  - Shows preparation instructions before running commands that require files to be in place (e.g. ingest, translate, evaluate).
+
 ## [4.2.2] - 2026-05-13
 
 ### Fixed
