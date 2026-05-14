@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 (none)
 
+## [4.4.0] - 2026-05-14
+
+### Added
+- **Custom OpenAI-compatible endpoints via Gateway:** Enhancing the usability of the LLM connection added in 4.2.0.
+Users can now route amazee.ai, vLLM, and any OpenAI API-compatible endpoint through the built-in LiteLLM gateway. This enables switching freely between a custom endpoint and Anthropic/Google/OpenAI/Mistral models without changing `.env` or restarting services.
+- **Ollama via Gateway:** Ollama (local models on the host machine) can now be routed through
+  the LiteLLM gateway alongside cloud providers, using `ollama/<model>` as the provider prefix.
+- **`bin/initial_setup.sh`** — two new provider options in Gateway mode:
+  - `5) Custom` — prompts for model name, remote model ID, base URL, and API key; generates
+    the `openai_like/` block in `config/litellm/config.yaml` and the model entry in `models.json`.
+  - `6) Ollama` — prompts for model name(s); auto-sets `OLLAMA_BASE_URL` in `.env`; warns
+    Linux users about the `OLLAMA_HOST=0.0.0.0` and `extra_hosts` requirements.
+
+
 ## [4.3.0] - 2026-05-14
 
 ### Added

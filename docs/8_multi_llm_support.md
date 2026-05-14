@@ -132,7 +132,7 @@ docker compose up -d --force-recreate rag-proxy
 
 | Provider | Direct mode | Gateway mode | Notes |
 |---|---|---|---|
-| amazee.ai | ✅ | — | Multi-model gateway already included |
+| amazee.ai | ✅ | ✅ | Direct: single-endpoint; Gateway: alongside other providers |
 | OpenAI GPT-4o | ✅ | ✅ | Direct works; gateway adds retry/fallback |
 | OpenAI o-series / GPT-5 | ✅ | ✅ | Direct works via model flags; gateway auto-handles |
 | **Anthropic Claude** | ❌ | ✅ | Non-OpenAI API — gateway required |
@@ -140,7 +140,8 @@ docker compose up -d --force-recreate rag-proxy
 | Mistral | ✅ | ✅ | Already OpenAI-compatible |
 | Meta Llama (via hosts) | ✅ | ✅ | Together AI, Groq, Fireworks are all compatible |
 | Kimi K2.5 | ✅ | ✅ | OpenRouter or Moonshot AI direct |
-| Ollama (self-hosted) | ✅ | — | Use `host.docker.internal` as hostname |
+| Ollama (self-hosted) | ✅ | ✅ | Direct: `host.docker.internal`; Gateway: `ollama/<model>` |
+| Any OpenAI-compatible URL | ✅ | ✅ | Direct: single endpoint; Gateway: alongside all other providers |
 
 ---
 
@@ -171,3 +172,107 @@ When a custom `models.json` is present it replaces the base model list entirely 
 
 **Gateway container not starting**
 - Ensure `config/litellm/config.yaml` has at least one uncommented model entry — LiteLLM requires at least one configured model to start
+
+---
+
+## Using Custom OpenAI-Compatible Endpoints via Gateway
+
+If you have an OpenAI-compatible endpoint (e.g. amazee.ai, vLLM, a corporate API gateway),
+you can route it through the LiteLLM gateway. This lets you use it **alongside** Claude,
+Gemini, and other providers without switching `.env` configuration.
+
+### Setup via Wizard (recommended)
+
+Run `bash bin/initial_setup.sh`, choose **Gateway** mode, and select **5) Custom**.
+The wizard will ask for:
+
+- **Model name** — the name shown in translation/evaluation menus (e.g. `amazee-llama3`)
+- **Remote model ID** — the identifier your endpoint expects (e.g. `llama-3.1-70b-instruct`)
+- **Base URL** — your endpoint's URL (e.g. `https://llm.us104.amazee.ai/v1`)
+- **API Key** — your endpoint's authentication token
+
+The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
+`config/models/custom/models.json`.
+
+### Manual Setup
+
+1. Add to `.env`:
+   ```bash
+   CUSTOM_LLM_BASE_URL=https://llm.us104.amazee.ai/v1
+   CUSTOM_LLM_API_KEY=sk-your-key
+   ```
+
+2. Add to `config/litellm/config.yaml`:
+   ```yaml
+   - model_name: amazee-llama3
+     litellm_params:
+       model: openai/llama-3.1-70b-instruct
+       api_base: os.environ/CUSTOM_LLM_BASE_URL
+       api_key: os.environ/CUSTOM_LLM_API_KEY
+   ```
+   The `model` value after `openai/` must be the model identifier your remote server expects.
+
+3. Add to `config/models/custom/models.json`:
+   ```json
+   { "id": "amazee-llama3", "name": "Amazee Llama 3", "is_dry_run": false }
+   ```
+
+4. Restart the gateway:
+   ```bash
+   docker compose up -d
+   ```
+
+> [!NOTE]
+> The `openai/` prefix with a custom `api_base` tells LiteLLM to use an OpenAI-compatible
+> client pointed at your endpoint instead of the official OpenAI API.
+
+---
+
+## Using Ollama via Gateway
+
+Routing Ollama through the gateway lets you use local models **alongside** cloud providers
+in the same session without changing any config.
+
+### Prerequisites
+
+1. **Ollama must be running** on the host machine.
+2. **Ollama must accept external connections** — set `OLLAMA_HOST=0.0.0.0` before starting
+   Ollama (otherwise it only listens on `127.0.0.1` and Docker containers cannot reach it).
+3. **Linux only:** The shipped `docker-compose.yml` already includes
+   `extra_hosts: ["host.docker.internal:host-gateway"]` on the `litellm` service, which is
+   required for `host.docker.internal` to resolve on Linux. On macOS/Windows this is a no-op.
+
+### Setup via Wizard (recommended)
+
+Run `bash bin/initial_setup.sh`, choose **Gateway** mode, and select **6) Ollama**.
+Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and
+generates the config and models entries automatically.
+
+### Manual Setup
+
+1. Add to `.env`:
+   ```bash
+   OLLAMA_BASE_URL=http://host.docker.internal:11434
+   ```
+
+2. Add to `config/litellm/config.yaml` (one entry per model):
+   ```yaml
+   - model_name: llama3.1
+     litellm_params:
+       model: ollama/llama3.1
+       api_base: os.environ/OLLAMA_BASE_URL
+   ```
+
+3. Add to `config/models/custom/models.json`:
+   ```json
+   { "id": "llama3.1", "name": "Ollama — llama3.1", "is_dry_run": false }
+   ```
+
+4. Restart the gateway:
+   ```bash
+   docker compose up -d
+   ```
+
+> [!TIP]
+> You can mix Ollama models with cloud providers in the same `config.yaml`. After setup,
+> simply select your Ollama model name in the translation or evaluation menus.

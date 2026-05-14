@@ -151,6 +151,10 @@ services:
       - "4000:4000"
     volumes:
       - ./config/litellm:/app/config:ro
+    extra_hosts:
+      # Allows the gateway to reach Ollama running on the host machine.
+      # Needed on Linux; harmless no-op on macOS/Windows.
+      - "host.docker.internal:host-gateway"
     environment:
       - LITELLM_CONFIG=/app/config/config.yaml
       # Provider API keys — set whichever you use in .env
@@ -158,6 +162,11 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      # Custom OpenAI-compatible endpoint (amazee.ai, vLLM, etc.)
+      - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
+      - CUSTOM_LLM_BASE_URL=${CUSTOM_LLM_BASE_URL:-}
+      # Ollama (local models on host)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

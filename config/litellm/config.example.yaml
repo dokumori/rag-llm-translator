@@ -97,6 +97,29 @@ model_list:
   #     api_key: os.environ/MISTRAL_API_KEY
 
   # ---------------------------------------------------------------------------
+  # Custom OpenAI-compatible endpoint (amazee.ai, vLLM, corporate gateway, etc.)
+  # Set CUSTOM_LLM_BASE_URL and CUSTOM_LLM_API_KEY in .env, then uncomment.
+  # The model value after 'openai/' must match what the remote server expects.
+  # Run the setup wizard (bin/initial_setup.sh) to configure this automatically.
+  # ---------------------------------------------------------------------------
+  # - model_name: my-custom-model
+  #   litellm_params:
+  #     model: openai/<remote-model-id>
+  #     api_base: os.environ/CUSTOM_LLM_BASE_URL
+  #     api_key: os.environ/CUSTOM_LLM_API_KEY
+
+  # ---------------------------------------------------------------------------
+  # Ollama (local models running on the host machine)
+  # Set OLLAMA_BASE_URL in .env (default: http://host.docker.internal:11434).
+  # On Linux, docker-compose.yml must include extra_hosts — already configured.
+  # Ollama must be running and listening on all interfaces (OLLAMA_HOST=0.0.0.0).
+  # ---------------------------------------------------------------------------
+  # - model_name: llama3.1
+  #   litellm_params:
+  #     model: ollama/llama3.1
+  #     api_base: os.environ/OLLAMA_BASE_URL
+
+  # ---------------------------------------------------------------------------
   # Add other providers as needed — full list at:
   # https://docs.litellm.ai/docs/providers
   # ---------------------------------------------------------------------------
