@@ -118,8 +118,11 @@ class TestEvaluateBlindTest(unittest.TestCase):
         # Assertions
         mock_choice.assert_called_once_with([True, False])
         self.assertIsNotNone(result)
-        # Verify the RAG lookup was called with the new dictionary format
-        mock_rag_lookup.assert_called_once_with([{"text": "Hello World", "context": ""}])
+        # Verify the RAG lookup was called with the correct payload AND target_lang.
+        mock_rag_lookup.assert_called_once_with(
+            [{"text": "Hello World", "context": ""}],
+            target_lang="",
+        )
         
         self.assertEqual(result["winner"], "with_rag")
         self.assertEqual(result["with_rag_context"], 5)
@@ -265,6 +268,67 @@ class TestEvaluateBlindTest(unittest.TestCase):
         # Loop should run for all 2 items, but only 1 result is captured
         self.assertEqual(len(results), 1)
         self.assertEqual(mock_evaluate.call_count, 2)
+
+    # -----------------------------------------------------------------------
+    # Regression tests: target_lang must be forwarded to the RAG proxy
+    # -----------------------------------------------------------------------
+
+    @patch("evaluate_blind_test.perform_rag_lookup_via_proxy")
+    @patch("evaluate_blind_test.random.choice")
+    def test_target_lang_forwarded_to_rag_proxy(self, mock_choice, mock_rag_lookup):
+        """
+        Regression: evaluate_translation must pass target_lang to
+        perform_rag_lookup_via_proxy so ChromaDB filters by language.
+        Without this, the proxy call uses target_lang="" (the default),
+        which bypasses all language filtering and can return glossary/TM
+        entries for the wrong language (e.g. Dutch instead of Italian).
+        """
+        mock_rag_lookup.return_value = ("<glossary_matches>\n- 'user' -> 'utente'\n</glossary_matches>", [])
+        mock_choice.return_value = True
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=
+                '{"Better_Translation": "A", "Score_A": {"Context_Adherence": 5, "Accuracy_Fluency": 5, "Reason": "ok"}, "Score_B": {"Context_Adherence": 3, "Accuracy_Fluency": 3, "Reason": "ok"}}'
+            ))],
+            usage=MagicMock(),
+        )
+
+        sample = {"source": "user", "context": "", "with_rag": "utente", "without_rag": "Utente"}
+        prompt_template = "Source: {source_text}\n{source_context}RAG: {rag_context}\nA: {translation_a}\nB: {translation_b}"
+
+        evaluate_translation(
+            mock_client, "fake-model", sample, prompt_template, target_lang="it"
+        )
+
+        # The proxy must be called with target_lang="it", not the empty-string default.
+        mock_rag_lookup.assert_called_once_with(
+            [{"text": "user", "context": ""}],
+            target_lang="it",
+        )
+
+    @patch("evaluate_blind_test.evaluate_translation")
+    def test_run_evaluation_loop_forwards_target_lang(self, mock_evaluate):
+        """
+        Regression: run_evaluation_loop must pass target_lang down into every
+        evaluate_translation call. If it is omitted, the default "" propagates
+        to the RAG proxy and language filtering is silently disabled.
+        """
+        mock_evaluate.return_value = {"winner": "with_rag"}
+        paired_data = [{"source": "user", "context": "", "with_rag": "utente", "without_rag": "Utente"}]
+        client = MagicMock()
+
+        run_evaluation_loop(
+            client, "fake-model", paired_data, 0, "PROMPT", False, target_lang="it"
+        )
+
+        # evaluate_translation must have received target_lang="it"
+        _, kwargs = mock_evaluate.call_args
+        self.assertEqual(
+            kwargs.get("target_lang"),
+            "it",
+            "run_evaluation_loop must forward target_lang to evaluate_translation",
+        )
 
 if __name__ == "__main__":
     unittest.main()
