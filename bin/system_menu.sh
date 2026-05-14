@@ -81,7 +81,7 @@ _collect_status_messages() {
     STATUS_MESSAGES=()
 
     if ! _has_env; then
-        STATUS_MESSAGES+=("⚠️  No .env file found. Run option 1 to get started.")
+        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [0] to get started.")
         return  # skip all further checks — nothing will work without .env
     fi
 
@@ -96,11 +96,11 @@ _collect_status_messages() {
     fi
 
     if ! _chroma_has_collections; then
-        STATUS_MESSAGES+=("⚠️  ChromaDB has no collections. Run option 3 to ingest your TM/glossary.")
+        STATUS_MESSAGES+=("⚠️  ChromaDB has no collections. Run [I] to ingest your TM/glossary.")
     fi
 
     if ! _has_tm_data; then
-        STATUS_MESSAGES+=("ℹ️  No TM/glossary source data found in data/tm_source/. Run option 2 for demo data.")
+        STATUS_MESSAGES+=("ℹ️  No TM/glossary source data found in data/tm_source/. Run [D] for demo data.")
     fi
 
     if ! _has_input_po; then
@@ -126,26 +126,26 @@ _render_menu() {
 
     echo ""
     echo -e "  ${BOLD}Getting Started${RESET}"
-    echo -e "    ${CYAN}1)${RESET} Initial setup                  — Configure LLM, API keys, and .env"
-    echo -e "    ${CYAN}2)${RESET} Download demo data             — Fetch sample data for Japanese"
+    echo -e "    ${CYAN}0)${RESET} Initial setup                  — Configure LLM, API keys, and .env"
+    echo -e "    ${CYAN}D)${RESET} Download demo data             — Fetch sample data for Japanese"
     echo ""
     echo -e "  ${BOLD}Context (RAG)${RESET}"
-    echo -e "    ${CYAN}3)${RESET} Ingest TM / Glossary           — Load translation memory into ChromaDB"
-    echo -e "    ${CYAN}4)${RESET} Backup or restore context data — Manage ChromaDB snapshots"
+    echo -e "    ${CYAN}I)${RESET} Ingest TM / Glossary           — Load translation memory into ChromaDB"
+    echo -e "    ${CYAN}B)${RESET} Backup or restore context data — Manage ChromaDB snapshots"
     echo ""
     echo -e "  ${BOLD}Translate${RESET}"
-    echo -e "    ${CYAN}5)${RESET} Translate                      — Run the translation pipeline"
+    echo -e "    ${CYAN}T)${RESET} Translate                      — Run the translation pipeline"
     echo ""
     echo -e "  ${BOLD}Evaluate & Tune${RESET}"
-    echo -e "    ${CYAN}6)${RESET} Evaluate translation quality   — LLM-as-a-Judge blind test"
-    echo -e "    ${CYAN}7)${RESET} Analyse RAG matching           — Generate RAG performance report"
+    echo -e "    ${CYAN}E)${RESET} Evaluate translation quality   — LLM-as-a-Judge blind test"
+    echo -e "    ${CYAN}A)${RESET} Analyse RAG matching           — Generate RAG performance report"
     echo ""
     echo -e "  ${BOLD}Configuration${RESET}"
-    echo -e "    ${CYAN}8)${RESET} Configure post-processing      — Enable/disable per-language plugins"
-    echo -e "    ${CYAN}9)${RESET} Switch embedding model         — Change the sentence-transformer model"
+    echo -e "    ${CYAN}P)${RESET} Post-processing config         — Enable/disable per-language plugins"
+    echo -e "    ${CYAN}M)${RESET} Model switch                   — Change the sentence-transformer model"
     echo ""
     echo -e "  ${BOLD}Development${RESET}"
-    echo -e "   ${CYAN}10)${RESET} Run tests                      — Execute the test suite"
+    echo -e "    ${CYAN}X)${RESET} eXecute tests                  — Run the test suite"
     echo ""
     echo -e "    ${DIM}q) Quit${RESET}"
     echo ""
@@ -184,7 +184,7 @@ _post_run_pause() {
     read -rp "  Press Enter to return to menu..." _ignored
 }
 
-# ── Option 9: Model Switch helper ─────────────────────────────────────────────
+# ── Option M: Model Switch helper ─────────────────────────────────────────────
 _prompt_model_name() {
     echo ""
     local current_model="${EMBEDDING_MODEL_NAME:-}"
@@ -208,7 +208,7 @@ while true; do
     case "$choice" in
 
         # ── Getting Started ────────────────────────────────────────────────
-        1)
+        0)
             bash "$SCRIPT_DIR/initial_setup.sh"
             # Reload env so subsequent status checks reflect new .env
             if [ -f .env ]; then load_env; fi
@@ -217,7 +217,7 @@ while true; do
             echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
             ;;
 
-        2)
+        d|D)
             bash "$SCRIPT_DIR/demo_prep.sh"
             _post_run_pause
             echo ""
@@ -225,7 +225,7 @@ while true; do
             ;;
 
         # ── Context (RAG) ──────────────────────────────────────────────────
-        3)
+        i|I)
             if _preflight \
 "Place your translation memory (.po) and glossary (.csv) files under:
   data/tm_source/<langcode>/   (e.g. data/tm_source/ja/)
@@ -241,7 +241,7 @@ The Docker stack must be running (docker compose up -d).
             fi
             ;;
 
-        4)
+        b|B)
             bash "$SCRIPT_DIR/manage-backup.sh"
             _post_run_pause
             echo ""
@@ -249,12 +249,12 @@ The Docker stack must be running (docker compose up -d).
             ;;
 
         # ── Translate ──────────────────────────────────────────────────────
-        5)
+        t|T)
             if _preflight \
 "Place untranslated .po files under:
   data/translations/input/<langcode>/   (e.g. data/translations/input/ja/)
 
-Ensure you have already ingested TM/glossary data (option 3).
+Ensure you have already ingested TM/glossary data ([I] Ingest).
 📖 See: README.md §6 \"Translate!\""; then
                 bash "$SCRIPT_DIR/translate.sh"
                 _post_run_pause
@@ -266,7 +266,7 @@ Ensure you have already ingested TM/glossary data (option 3).
             ;;
 
         # ── Evaluate & Tune ────────────────────────────────────────────────
-        6)
+        e|E)
             if _preflight \
 "Place translated .po files for comparison under:
   data/translations/eval/<langcode>/with_rag/
@@ -283,9 +283,9 @@ Each directory must contain exactly one .po file.
             fi
             ;;
 
-        7)
+        a|A)
             if _preflight \
-"You must have run at least one translation (option 5) so that
+"You must have run at least one translation ([T] Translate) so that
 rag-proxy has produced traffic logs to analyse.
 📖 See: docs/3_RAG_performance_analysis.md"; then
                 bash "$SCRIPT_DIR/analyse.sh"
@@ -298,14 +298,14 @@ rag-proxy has produced traffic logs to analyse.
             ;;
 
         # ── Configuration ──────────────────────────────────────────────────
-        8)
+        p|P)
             bash "$SCRIPT_DIR/setup_post_processing.sh"
             _post_run_pause
             echo ""
             echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
             ;;
 
-        9)
+        m|M)
             if _preflight \
 "Switching models will wipe all ChromaDB collections.
 You will need to re-ingest all data afterwards.
@@ -325,7 +325,7 @@ You will need to re-ingest all data afterwards.
             ;;
 
         # ── Development ────────────────────────────────────────────────────
-        10)
+        x|X)
             echo ""
             read -rp "  Include integration tests? (requires Docker stack) [y/N]: " run_integ
             run_integ="${run_integ:-N}"
@@ -350,7 +350,7 @@ You will need to re-ingest all data afterwards.
         # ── Invalid ────────────────────────────────────────────────────────
         *)
             echo ""
-            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter 1–10 or q.${RESET}"
+            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter 0, D, I, B, T, E, A, P, M, X, or q.${RESET}"
             sleep 1
             ;;
     esac
