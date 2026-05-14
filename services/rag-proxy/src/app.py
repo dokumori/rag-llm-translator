@@ -555,7 +555,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
     try:
         data = request.json
         messages = data.get('messages', [])
-        requested_model = (data.get('model') or "claude-opus-4-5-20251101").strip()
+        requested_model = (data.get('model') or "dry-run-dummy").strip()
 
         log_entry: Dict[str, Any] = {
             "timestamp": datetime.datetime.utcnow().isoformat(),

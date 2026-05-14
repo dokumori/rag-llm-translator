@@ -48,7 +48,7 @@ def client(mocker):
     mock_config = mocker.patch('app.get_models_config')
     mock_config.return_value = [
         {"id": "deepseek-r1-v1", "is_dry_run": True},
-        {"id": "claude-opus-4-5-20251101", "is_dry_run": True} 
+        {"id": "dry-run-dummy", "is_dry_run": True} 
     ]
 
     with app.test_client() as client:
@@ -137,7 +137,7 @@ def test_dry_run_safety(client, mocker):
     print("🧪 TEST: Dry Run Safety")
 
     payload = {
-        "model": "claude-opus-4-5-20251101",
+        "model": "dry-run-dummy",
         "messages": [{"role": "user", "content": "Secret dry run request"}]
     }
 

@@ -474,7 +474,7 @@ def main():
     # Create a single shared OpenAI client for all evaluations
     client = OpenAI(
         # Pass 'dummy' to prevent it from crashing if the token is missing
-        api_key=os.environ.get("LLM_API_TOKEN", "dummy"),
+        api_key=os.environ.get("LLM_API_TOKEN") or "dummy",
         base_url=os.environ.get("LLM_BASE_URL")
     )
 

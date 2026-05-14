@@ -51,7 +51,7 @@ def app_client(mocker):
     mock_config = mocker.patch('app.get_models_config')
     mock_config.return_value = [
         {"id": "deepseek-r1-v1", "is_dry_run": True},
-        {"id": "claude-opus-4-5-20251101", "is_dry_run": True}
+        {"id": "dry-run-dummy", "is_dry_run": True}
     ]
 
     with app.test_client() as client:
@@ -161,7 +161,7 @@ def test_proxy_to_db_communication(app_client):
     logger.info(
         "🧪 Testing Proxy -> Real DB connection via /v1/chat/completions...")
     payload = {
-        "model": "claude-opus-4-5-20251101",
+        "model": "dry-run-dummy",
         "messages": [{"role": "user", "content": "Hello World"}],
     }
     response = app_client.post('/v1/chat/completions', json=payload)
