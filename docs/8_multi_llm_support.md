@@ -122,28 +122,36 @@ When a custom `models.json` is present it replaces the base model list entirely 
 
 ## Using Custom OpenAI-Compatible Endpoints via Gateway
 
-If you have an OpenAI-compatible endpoint (e.g. amazee.ai, vLLM, a corporate API gateway),
-you can route it through the LiteLLM gateway alongside Claude, Gemini, and other providers.
+If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a corporate API gateway),
+you can route them through the LiteLLM gateway alongside Claude, Gemini, and other providers.
 
 ### Setup via Wizard (recommended)
 
 Run `bash bin/setup.sh`, choose **Gateway** mode, and select **5) Custom**.
-The wizard will ask for:
+The wizard will ask for each endpoint:
 
-- **Model name** — the name shown in translation/evaluation menus (e.g. `amazee-llama3`)
+- **Local ID** — the name used internally to route requests (e.g. `amazee-llama3`)
+- **Menu label** — the name shown in translation/evaluation menus
 - **Remote model ID** — the identifier your endpoint expects (e.g. `llama-3.1-70b-instruct`)
 - **Base URL** — your endpoint's URL (e.g. `https://llm.us104.amazee.ai/v1`)
 - **API Key** — your endpoint's authentication token
 
+After each endpoint, you'll be asked **"Add another custom endpoint?"** — answer `y` to add more.
+
 The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
-`config/models/custom/models.json`.
+`config/models/custom/models.json` for all configured endpoints.
 
 ### Manual Setup
 
+The `litellm` container loads `.env` directly, so any variable name you define there is
+automatically available. You can add as many endpoints as you like.
+
 1. Add to `.env`:
    ```bash
-   CUSTOM_LLM_BASE_URL=https://llm.us104.amazee.ai/v1
-   CUSTOM_LLM_API_KEY=sk-your-key
+   CUSTOM_LLM_BASE_URL_1=https://llm.us104.amazee.ai/v1
+   CUSTOM_LLM_API_KEY_1=sk-your-key
+   CUSTOM_LLM_BASE_URL_2=https://api.example.com/v1
+   CUSTOM_LLM_API_KEY_2=sk-another-key
    ```
 
 2. Add to `config/litellm/config.yaml`:
@@ -151,14 +159,21 @@ The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
    - model_name: amazee-llama3
      litellm_params:
        model: openai/llama-3.1-70b-instruct
-       api_base: os.environ/CUSTOM_LLM_BASE_URL
-       api_key: os.environ/CUSTOM_LLM_API_KEY
+       api_base: os.environ/CUSTOM_LLM_BASE_URL_1
+       api_key: os.environ/CUSTOM_LLM_API_KEY_1
+
+   - model_name: example-gpt
+     litellm_params:
+       model: openai/gpt-4o
+       api_base: os.environ/CUSTOM_LLM_BASE_URL_2
+       api_key: os.environ/CUSTOM_LLM_API_KEY_2
    ```
    The `model` value after `openai/` must be the model identifier your remote server expects.
 
 3. Add to `config/models/custom/models.json`:
    ```json
-   { "id": "amazee-llama3", "name": "Amazee Llama 3", "is_dry_run": false }
+   { "id": "amazee-llama3", "name": "Amazee Llama 3", "is_dry_run": false },
+   { "id": "example-gpt", "name": "Example GPT", "is_dry_run": false }
    ```
 
 4. Restart:
@@ -169,6 +184,11 @@ The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
 > [!NOTE]
 > The `openai/` prefix with a custom `api_base` tells LiteLLM to use an OpenAI-compatible
 > client pointed at your endpoint instead of the official OpenAI API.
+>
+> Variable names in `.env` are completely free-form — use any convention you like. The wizard
+> uses `CUSTOM_LLM_BASE_URL_N` / `CUSTOM_LLM_API_KEY_N` for the entries it generates, but
+> manual additions can use any name and will work without touching `docker-compose.yml`.
+
 
 ---
 

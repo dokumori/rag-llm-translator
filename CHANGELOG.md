@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-(none)
+
+### Changed
+- **`bin/setup.sh`** — the custom endpoint wizard now supports **multiple endpoints** in a single run. After configuring each endpoint, users are asked "Add another?". Environment variables use indexed names (`CUSTOM_LLM_BASE_URL_1`, `CUSTOM_LLM_API_KEY_1`, etc.).
+- **`bin/setup.sh`** — endpoints that share the same base URL and API key (e.g. two models on the same host) are deduplicated: `config.yaml` entries point to a shared env var pair instead of generating redundant variables in `.env`.
+- **`bin/setup.sh`** — after completing custom endpoint setup, a note is displayed pointing users to the config files and `docs/8_multi_llm_support.md` for manual editing.
+- **`bin/setup.sh`** — fixed empty-array expansion under bash 3.2 (`set -u`) when no custom endpoints are configured.
+- **`docker-compose.yml`** — replaced the single `CUSTOM_LLM_BASE_URL`/`CUSTOM_LLM_API_KEY` env vars with indexed pairs `_1`–`_5`, matching the new setup wizard output.
+- **`docs/8_multi_llm_support.md`** — updated to document multi-endpoint support and indexed env vars.
+- **`config/litellm/config.example.yaml`** — updated custom endpoint example to use indexed env var naming.
 
 ## [5.0.0] - 2026-05-15
 
