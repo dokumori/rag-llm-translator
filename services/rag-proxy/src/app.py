@@ -289,12 +289,12 @@ def _query_with_context_fallback(
             ctx_res = collection.query(**ctx_kwargs)
             has_any = any(doc_list for doc_list in ctx_res.get("documents", []))
             if has_any:
-                logger.info(f"   🎯 Context-filtered query succeeded (context_key='{context_meta_key}', context='{batch_context}')")
+                logger.info(f"   🎯 [{collection.name}] Context-filtered query succeeded (context='{batch_context}')")
                 return ctx_res, True
             else:
-                logger.info(f"   ⚠️ Context-filtered query returned no results; falling back (context='{batch_context}')")
+                logger.info(f"   ⚠️ [{collection.name}] Context-filtered query returned no results; falling back (context='{batch_context}')")
         except Exception as ctx_err:
-            logger.warning(f"   ⚠️ Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
 
         # Fallback: context-free entries only (safe to apply regardless of caller's context)
         ctx_free_kwargs = {**base_kwargs, "where": {"$and": [{"langcode": target_lang}, {context_meta_key: ""}]}}
@@ -302,12 +302,12 @@ def _query_with_context_fallback(
             ctx_free_res = collection.query(**ctx_free_kwargs)
             has_any = any(doc_list for doc_list in ctx_free_res.get("documents", []))
             if has_any:
-                logger.info(f"   ↩️  Context-free fallback succeeded (no '{batch_context}' entries found).")
+                logger.info(f"   ↩️  [{collection.name}] Context-free fallback succeeded (no '{batch_context}' entries found).")
                 return ctx_free_res, False
             else:
-                logger.info(f"   ⚠️ Context-free fallback returned no results; using lang-only filter.")
+                logger.info(f"   ⚠️ [{collection.name}] Context-free fallback returned no results; using lang-only filter.")
         except Exception as fb_err:
-            logger.warning(f"   ⚠️ Context-free fallback failed ({fb_err}); using lang-only filter.")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-free fallback failed ({fb_err}); using lang-only filter.")
 
         # Last resort: full lang-only filter (catches pre-isolation ingested entries)
         return collection.query(**{**base_kwargs, "where": lang_filter}), False
@@ -321,9 +321,9 @@ def _query_with_context_fallback(
             if has_any:
                 return no_ctx_res, False
             else:
-                logger.info(f"   ⚠️ No context-free entries found; falling back to lang-only filter")
+                logger.info(f"   ⚠️ [{collection.name}] No context-free entries found; falling back to lang-only filter")
         except Exception as no_ctx_err:
-            logger.warning(f"   ⚠️ Context-free query failed ({no_ctx_err}); falling back to lang-only filter")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-free query failed ({no_ctx_err}); falling back to lang-only filter")
 
         # Fallback: lang-only (catches entries ingested before context isolation was enforced)
         return collection.query(**{**base_kwargs, "where": lang_filter}), False
