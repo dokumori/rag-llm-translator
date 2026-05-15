@@ -97,12 +97,6 @@ class TestEvaluateBlindTest(unittest.TestCase):
         )
         mock_client_instance.chat.completions.create.return_value = mock_response
         
-        sample = {
-            "source": "Hello World",
-            "with_rag": "Bonjour le monde",
-            "without_rag": "Salut monde"
-        }
-        
         # Execute
         sample = {
             "source": "Hello World",
@@ -329,6 +323,7 @@ class TestEvaluateBlindTest(unittest.TestCase):
             "it",
             "run_evaluation_loop must forward target_lang to evaluate_translation",
         )
+
 
 if __name__ == "__main__":
     unittest.main()

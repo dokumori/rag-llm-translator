@@ -57,7 +57,7 @@ class Config:
         logger.info(f"🔧 Config: CHROMA_HOST={cls.CHROMA_HOST}:{cls.CHROMA_PORT}")
         logger.info(f"🔧 Config: TM_THRESHOLD={cls.TM_THRESHOLD}, GLOSSARY_THRESHOLD={cls.GLOSSARY_THRESHOLD}")
         logger.info(f"🔧 Config: TARGET_LANG={cls.TARGET_LANG}")
-        logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(direct — no gateway)'}")
+        logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(not set — check .env)'}")
 
 
 def load_models_config(models_path: str = None, custom_path: str = None) -> List[Dict[str, Any]]:
@@ -118,7 +118,11 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
     return base_models
 
 
-_BOOLEAN_FLAGS = ("is_dry_run", "omit_temperature", "use_max_completion_tokens")
+# Note: omit_temperature and use_max_completion_tokens were removed in v5.0.0.
+# LiteLLM normalises provider-specific parameter differences (temperature,
+# max_tokens vs max_completion_tokens) transparently, so these flags are no
+# longer needed in direct app code.
+_BOOLEAN_FLAGS = ("is_dry_run",)
 
 
 def _validate_model_flags(models: List[Dict[str, Any]]) -> None:

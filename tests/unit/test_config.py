@@ -192,3 +192,54 @@ class TestLoadModelsConfigCustomOverride:
         # Only the auto-appended dry-run model
         assert len(result) == 1
         assert result[0]["id"] == "dry-run-model"
+
+
+# ---------------------------------------------------------------------------
+# Tests for _validate_model_flags (phase-0 gap coverage)
+# ---------------------------------------------------------------------------
+
+class TestValidateModelFlags:
+    """Unit tests for the private _validate_model_flags validator."""
+
+    def test_warns_when_flag_is_string_instead_of_bool(self, tmp_path, caplog):
+        """
+        _validate_model_flags must emit a warning when a boolean flag field
+        contains a string value (e.g. "false") instead of an actual bool.
+        This is a common copy-paste mistake in JSON config files.
+        """
+        import logging
+        base_file = tmp_path / "models.json"
+        base_file.write_text(_models_json([
+            {"id": "bad-model", "name": "Bad", "is_dry_run": "false"},
+        ]))
+
+        with caplog.at_level(logging.WARNING):
+            load_models_config(
+                models_path=str(base_file),
+                custom_path=str(tmp_path / "nonexistent.json"),
+            )
+
+        assert any("bad-model" in r.message and "is_dry_run" in r.message for r in caplog.records), (
+            "Expected a warning about the string 'false' value on 'is_dry_run'"
+        )
+
+    def test_no_warning_when_flags_are_correct_booleans(self, tmp_path, caplog):
+        """
+        _validate_model_flags must be silent when all boolean flags have
+        proper bool values — no spurious warnings should be emitted.
+        """
+        import logging
+        base_file = tmp_path / "models.json"
+        base_file.write_text(_models_json([
+            {"id": "good-model", "name": "Good", "is_dry_run": False},
+        ]))
+
+        with caplog.at_level(logging.WARNING):
+            load_models_config(
+                models_path=str(base_file),
+                custom_path=str(tmp_path / "nonexistent.json"),
+            )
+
+        flag_warnings = [r for r in caplog.records if "good-model" in r.message]
+        assert not flag_warnings, "No warnings expected for correctly typed boolean flags"
+

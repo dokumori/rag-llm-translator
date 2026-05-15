@@ -81,7 +81,7 @@ _collect_status_messages() {
     STATUS_MESSAGES=()
 
     if ! _has_env; then
-        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [0] to get started.")
+        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [S] to get started.")
         return  # skip all further checks — nothing will work without .env
     fi
 
@@ -126,7 +126,7 @@ _render_menu() {
 
     echo ""
     echo -e "  ${BOLD}Getting Started${RESET}"
-    echo -e "    ${CYAN}0)${RESET} Initial setup                  — Configure LLM, API keys, and .env"
+    echo -e "    ${CYAN}S)${RESET} Setup                          — Configure LLM, API keys, and .env"
     echo -e "    ${CYAN}D)${RESET} Download demo data             — Fetch sample data for Japanese"
     echo ""
     echo -e "  ${BOLD}Context (RAG)${RESET}"
@@ -208,8 +208,8 @@ while true; do
     case "$choice" in
 
         # ── Getting Started ────────────────────────────────────────────────
-        0)
-            bash "$SCRIPT_DIR/initial_setup.sh"
+        s|S)
+            bash "$SCRIPT_DIR/setup.sh"
             # Reload env so subsequent status checks reflect new .env
             if [ -f .env ]; then load_env; fi
             _post_run_pause
@@ -350,7 +350,7 @@ You will need to re-ingest all data afterwards.
         # ── Invalid ────────────────────────────────────────────────────────
         *)
             echo ""
-            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter 0, D, I, B, T, E, A, P, M, X, or q.${RESET}"
+            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter S, D, I, B, T, E, A, P, M, X, or q.${RESET}"
             sleep 1
             ;;
     esac

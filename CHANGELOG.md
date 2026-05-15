@@ -8,18 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 (none)
 
-## [4.4.0] - 2026-05-14
+## [5.0.0] - 2026-05-15
+
+> **Upgrade:** Re-run `bash bin/setup.sh` to regenerate your `.env` and `config/litellm/config.yaml`, then `docker compose up -d --build`.
+
+> **Migration for existing users:** Remove `COMPOSE_PROFILES=gateway` and `LLM_API_TOKEN` from your `.env` file — the gateway is now always required and per-model API keys are read from `config/litellm/config.yaml`. If your `LLM_BASE_URL` pointed directly at a provider (e.g. `https://api.openai.com/v1`), change it to `http://litellm:4000/v1` and add the corresponding entry to `config/litellm/config.yaml`.
 
 ### Added
-- **Custom OpenAI-compatible endpoints via Gateway:** Enhancing the usability of the LLM connection added in 4.2.0.
-Users can now route amazee.ai, vLLM, and any OpenAI API-compatible endpoint through the built-in LiteLLM gateway. This enables switching freely between a custom endpoint and Anthropic/Google/OpenAI/Mistral models without changing `.env` or restarting services.
+- **Custom OpenAI-compatible endpoints via Gateway:** Users can now route amazee.ai, vLLM, and any OpenAI API-compatible endpoint through the built-in LiteLLM gateway. This enables switching freely between a custom endpoint and Anthropic/Google/OpenAI/Mistral models without changing `.env` or restarting services.
 - **Ollama via Gateway:** Ollama (local models on the host machine) can now be routed through
   the LiteLLM gateway alongside cloud providers, using `ollama/<model>` as the provider prefix.
-- **`bin/initial_setup.sh`** — two new provider options in Gateway mode:
-  - `5) Custom` — prompts for model name, remote model ID, base URL, and API key; generates
+- **`bin/setup.sh`** — two new provider options in Gateway mode:
+  - `Custom` — prompts for model name, remote model ID, base URL, and API key; generates
     the `openai_like/` block in `config/litellm/config.yaml` and the model entry in `models.json`.
-  - `6) Ollama` — prompts for model name(s); auto-sets `OLLAMA_BASE_URL` in `.env`; warns
+  - `Ollama` — prompts for model name(s); auto-sets `OLLAMA_BASE_URL` in `.env`; warns
     Linux users about the `OLLAMA_HOST=0.0.0.0` and `extra_hosts` requirements.
+
+### Removed
+- **Direct mode** — connecting `rag-proxy` directly to a remote LLM provider is no longer supported. All LLM traffic now routes through the **LiteLLM gateway**, which is a required service.
+  - Removed the "Direct" option from `bin/setup.sh`.
+  - Removed `COMPOSE_PROFILES` from the generated `.env` — the gateway starts automatically with `docker compose up -d`.
+  - Removed `LLM_API_TOKEN` from the generated `.env` — API keys are managed per-model in `config/litellm/config.yaml`.
+  - Removed `omit_temperature` and `use_max_completion_tokens` model flags — LiteLLM normalises provider-specific parameter differences (temperature, `max_tokens` vs `max_completion_tokens`) transparently, so these workarounds are no longer needed in `app.py`.
+  - Removed the `_flags_note` comment from `config/models/models.json` and `config/models/custom/models.example.json`.
+
+### Changed
+- **`docker-compose.yml`**: `litellm` service is no longer optional (no more `profiles: [gateway]`). It now starts with every `docker compose up -d`. `rag-proxy` and `toolbox` services declare `depends_on: litellm` with health checks.
+- **`.env.defaults`**: `LLM_BASE_URL=http://litellm:4000/v1` is now the canonical default.
+- **`docs/8_multi_llm_support.md`**: rewritten to describe the gateway-only architecture. "Direct Mode" section removed.
+- **`README.md`**: updated to reflect gateway-only architecture.
+- **`bin/initial_setup.sh`**: renamed to **`bin/setup.sh`** — the old name implied a one-time action, but the script is designed to be re-run whenever configuration changes.
 
 
 ## [4.3.0] - 2026-05-14

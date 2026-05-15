@@ -66,6 +66,8 @@ services:
       chroma:
         # Ensures rag-proxy only starts after ChromaDB is ready to accept connections
         condition: service_healthy
+      litellm:
+        condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "grep -q '00000000:1388 00000000:0000 0A' /proc/net/tcp || exit 1" ]
       interval: 30s
@@ -125,6 +127,8 @@ services:
         condition: service_healthy
       rag-proxy:
         condition: service_healthy
+      litellm:
+        condition: service_healthy
 
   chromadb-ui:
     build:
@@ -140,13 +144,11 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # LiteLLM Gateway (optional — start with: docker compose --profile gateway up -d)
+  # LiteLLM Gateway — required service; all LLM traffic routes through it.
   # ---------------------------------------------------------------------------
   litellm:
     image: ghcr.io/berriai/litellm:v1.83.14-stable
     container_name: litellm
-    profiles:
-      - gateway
     ports:
       - "4000:4000"
     volumes:
@@ -178,7 +180,7 @@ services:
           echo "      cp config/litellm/config.example.yaml config/litellm/config.yaml"
           echo ""
           echo "    Then restart the gateway:"
-          echo "      docker compose --profile gateway up -d"
+          echo "      docker compose up -d"
           echo ""
           exit 1
         fi

@@ -6,7 +6,7 @@
 #
 # Then start the gateway with:
 #
-#   docker compose --profile gateway up -d
+#   docker compose up -d
 #
 # The 'model_name' field must match the 'id' in config/models/models.json.
 # Set the corresponding API key environment variable in your .env file.
@@ -100,7 +100,7 @@ model_list:
   # Custom OpenAI-compatible endpoint (amazee.ai, vLLM, corporate gateway, etc.)
   # Set CUSTOM_LLM_BASE_URL and CUSTOM_LLM_API_KEY in .env, then uncomment.
   # The model value after 'openai/' must match what the remote server expects.
-  # Run the setup wizard (bin/initial_setup.sh) to configure this automatically.
+  # Run the setup wizard (bin/setup.sh) to configure this automatically.
   # ---------------------------------------------------------------------------
   # - model_name: my-custom-model
   #   litellm_params:

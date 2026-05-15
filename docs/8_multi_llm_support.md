@@ -1,66 +1,32 @@
 # Multi-LLM Provider Support
 
-The RAG-LLM Translator supports connecting to any LLM provider via two modes. You do not need to change any source code to switch providers.
+The RAG-LLM Translator connects to LLM providers via the built-in **LiteLLM gateway** container. You do not need to change any source code to switch providers.
+
+All LLM traffic routes through the gateway (`http://litellm:4000/v1`), which translates each provider's native API into the OpenAI format transparently.
 
 ---
 
-## Direct Mode (Default)
+## Gateway Mode
 
-In direct mode, `rag-proxy` talks to an upstream LLM endpoint that is already OpenAI-compatible. This is the default configuration and requires no additional containers.
-
-**Providers that work out of the box in direct mode:**
-
-| Provider | Example `LLM_BASE_URL` |
-|---|---|
-| amazee.ai | `https://llm.us104.amazee.ai/v1` |
-| OpenRouter | `https://openrouter.ai/api/v1` |
-| Ollama (self-hosted) | `http://host.docker.internal:11434/v1` |
-| Mistral AI | `https://api.mistral.ai/v1` |
-| OpenAI | `https://api.openai.com/v1` |
-| Together AI / Groq / Fireworks | Provider-specific URL |
-
-Set these in your `.env` file:
+The LiteLLM gateway is a required service — it starts automatically with `docker compose up -d`. Configure which providers to use by running the setup wizard:
 
 ```bash
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_TOKEN=sk-...
+bash bin/setup.sh
 ```
 
-### OpenAI o-series and GPT-5 (direct mode)
+The wizard lets you choose one or more providers, collects API keys (hidden input), and auto-generates `config/litellm/config.yaml` and `config/models/custom/models.json`.
 
-OpenAI's newer reasoning models (`o3-mini`, `o4-mini`, and GPT-5 series) have different API requirements — they reject `temperature` and require `max_completion_tokens` instead of `max_tokens`. The system handles this automatically using per-model flags in `config/models/models.json`.
+### Manual Setup
 
-To use these models directly (without the gateway), ensure the model is listed in `models.json` (or `config/models/custom/models.json`) with the appropriate flags:
+If you prefer to configure manually:
 
-```json
-{
-  "id": "o4-mini",
-  "name": "OpenAI o4-mini",
-  "is_dry_run": false,
-  "omit_temperature": true,
-  "use_max_completion_tokens": true
-}
-```
-
-Example entries for `gpt-4o`, `o3-mini`, and `o4-mini` are included in `config/models/custom/models.example.json`. Copy that file to `config/models/custom/models.json` and edit as needed.
-
----
-
-## Gateway Mode (Optional — LiteLLM)
-
-For providers whose APIs are **not** OpenAI-compatible (Anthropic, Google Gemini), or when you want centralised API key management and retry logic, you can run the optional **LiteLLM** gateway container.
-
-LiteLLM translates all provider APIs into the OpenAI format transparently. Your `rag-proxy` always speaks OpenAI — LiteLLM handles the rest.
-
-### Step 1: Create your config file
-
-`config/litellm/config.yaml` is git-ignored and must be created from the example before starting the gateway:
+#### Step 1: Create your config file
 
 ```bash
 cp config/litellm/config.example.yaml config/litellm/config.yaml
 ```
 
-### Step 2: Enable the models you need
+#### Step 2: Enable the models you need
 
 Edit `config/litellm/config.yaml` and uncomment entries for the providers you want to use:
 
@@ -82,7 +48,7 @@ The `model_name` must match the `id` of an entry in your `models.json`. In `conf
 }
 ```
 
-### Step 3: Set provider API keys in `.env`
+#### Step 3: Set provider API keys in `.env`
 
 Add the relevant API keys for the providers you want to use:
 
@@ -93,55 +59,38 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Google Gemini
 GEMINI_API_KEY=AI...
 
-# OpenAI (if routing through LiteLLM)
+# OpenAI
 OPENAI_API_KEY=sk-...
 
-# Mistral (if routing through LiteLLM)
+# Mistral
 MISTRAL_API_KEY=...
 ```
 
-### Step 4: Start the gateway
+#### Step 4: Start (or restart)
 
 ```bash
-docker compose --profile gateway up -d
+docker compose up -d
 ```
-
-This starts the `litellm` container on port `4000`. If `config.yaml` is missing, the container will print an error with the exact copy command and exit cleanly.
 
 > [!TIP]
-> **Make it permanent:** If you want the gateway to always start with `docker compose up` without needing the `--profile` flag, add `COMPOSE_PROFILES=gateway` to your `.env` file.
-
-### Step 5: Point `rag-proxy` at the gateway
-
-Update these values in your `.env`:
-
-```bash
-LLM_BASE_URL=http://litellm:4000/v1
-LLM_API_TOKEN=sk-anything   # LiteLLM uses per-model keys from config.yaml; this value is ignored
-```
-
-### Step 6: Restart `rag-proxy`
-
-```bash
-docker compose up -d --force-recreate rag-proxy
-```
+> The gateway starts automatically — no `--profile` flag is needed.
 
 ---
 
 ## Supported Providers
 
-| Provider | Direct mode | Gateway mode | Notes |
-|---|---|---|---|
-| amazee.ai | ✅ | ✅ | Direct: single-endpoint; Gateway: alongside other providers |
-| OpenAI GPT-4o | ✅ | ✅ | Direct works; gateway adds retry/fallback |
-| OpenAI o-series / GPT-5 | ✅ | ✅ | Direct works via model flags; gateway auto-handles |
-| **Anthropic Claude** | ❌ | ✅ | Non-OpenAI API — gateway required |
-| **Google Gemini** | ❌ | ✅ | Non-OpenAI API — gateway required |
-| Mistral | ✅ | ✅ | Already OpenAI-compatible |
-| Meta Llama (via hosts) | ✅ | ✅ | Together AI, Groq, Fireworks are all compatible |
-| Kimi K2.5 | ✅ | ✅ | OpenRouter or Moonshot AI direct |
-| Ollama (self-hosted) | ✅ | ✅ | Direct: `host.docker.internal`; Gateway: `ollama/<model>` |
-| Any OpenAI-compatible URL | ✅ | ✅ | Direct: single endpoint; Gateway: alongside all other providers |
+| Provider | Gateway mode | Notes |
+|---|---|---|
+| amazee.ai | ✅ | Use the `Custom` option in the setup wizard |
+| OpenAI GPT-4o | ✅ | — |
+| OpenAI o-series / GPT-5 | ✅ | LiteLLM auto-handles temperature / max_completion_tokens |
+| **Anthropic Claude** | ✅ | Non-OpenAI API — handled by LiteLLM |
+| **Google Gemini** | ✅ | Non-OpenAI API — handled by LiteLLM |
+| Mistral | ✅ | — |
+| Meta Llama (via hosts) | ✅ | Together AI, Groq, Fireworks — use the `Custom` option |
+| Kimi K2.5 | ✅ | OpenRouter or Moonshot AI — use the `Custom` option |
+| Ollama (self-hosted) | ✅ | Use the `Local` mode in the setup wizard |
+| Any OpenAI-compatible URL | ✅ | Use the `Custom` option in the setup wizard |
 
 ---
 
@@ -161,29 +110,24 @@ When a custom `models.json` is present it replaces the base model list entirely 
 
 **`Translation provider unavailable` (502)**
 - Check `docker compose logs rag-proxy` for the upstream error
-- Verify `LLM_BASE_URL` and `LLM_API_TOKEN` in `.env`
-- If using gateway mode, check `docker compose logs litellm`
-
-**Model returns an error about `temperature`**
-- Add `"omit_temperature": true` to the model entry in `models.json`
-
-**Model returns an error about `max_tokens`**
-- Add `"use_max_completion_tokens": true` to the model entry in `models.json`
+- Verify `config/litellm/config.yaml` has an entry for the model you selected
+- Check `docker compose logs litellm` for provider-side errors
+- Ensure the relevant API key is set in `.env`
 
 **Gateway container not starting**
 - Ensure `config/litellm/config.yaml` has at least one uncommented model entry — LiteLLM requires at least one configured model to start
+- Run `docker compose logs litellm` to see the startup error
 
 ---
 
 ## Using Custom OpenAI-Compatible Endpoints via Gateway
 
 If you have an OpenAI-compatible endpoint (e.g. amazee.ai, vLLM, a corporate API gateway),
-you can route it through the LiteLLM gateway. This lets you use it **alongside** Claude,
-Gemini, and other providers without switching `.env` configuration.
+you can route it through the LiteLLM gateway alongside Claude, Gemini, and other providers.
 
 ### Setup via Wizard (recommended)
 
-Run `bash bin/initial_setup.sh`, choose **Gateway** mode, and select **5) Custom**.
+Run `bash bin/setup.sh`, choose **Gateway** mode, and select **5) Custom**.
 The wizard will ask for:
 
 - **Model name** — the name shown in translation/evaluation menus (e.g. `amazee-llama3`)
@@ -217,7 +161,7 @@ The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
    { "id": "amazee-llama3", "name": "Amazee Llama 3", "is_dry_run": false }
    ```
 
-4. Restart the gateway:
+4. Restart:
    ```bash
    docker compose up -d
    ```
@@ -244,7 +188,7 @@ in the same session without changing any config.
 
 ### Setup via Wizard (recommended)
 
-Run `bash bin/initial_setup.sh`, choose **Gateway** mode, and select **6) Ollama**.
+Run `bash bin/setup.sh`, choose **Local** mode.
 Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and
 generates the config and models entries automatically.
 
@@ -268,7 +212,7 @@ generates the config and models entries automatically.
    { "id": "llama3.1", "name": "Ollama — llama3.1", "is_dry_run": false }
    ```
 
-4. Restart the gateway:
+4. Start:
    ```bash
    docker compose up -d
    ```

@@ -1,6 +1,5 @@
 {
   "_pricing_note": "Rates in USD per 1,000 tokens as of 2026-05-01. Claude/Gemini/Mistral: official list prices. Llama 4 Maverick & Kimi K2.5: averaged across 3 provider samples (Together AI, Groq/Fireworks, OpenRouter / Moonshot AI) — actual costs may differ.",
-  "_flags_note": "omit_temperature: true — model rejects the temperature parameter (e.g. OpenAI o-series, GPT-5). use_max_completion_tokens: true — model requires max_completion_tokens instead of max_tokens.",
   "models": [
     {
       "id": "claude-3-5-haiku",

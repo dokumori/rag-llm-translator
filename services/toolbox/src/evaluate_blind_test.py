@@ -434,11 +434,6 @@ def main():
     parser.add_argument("--lang", default="", help="Target language code for RAG filtering (e.g. 'it', 'ja'). Without this, glossary/TM lookups will not be language-filtered.")
     args = parser.parse_args()
 
-    # Reset Base URL to hit provider directly if using standard OpenAI instead of local proxy
-    if "OPENAI_BASE_URL" in os.environ:
-        if "rag-proxy" in os.environ["OPENAI_BASE_URL"]:
-            del os.environ["OPENAI_BASE_URL"]
-
     logger.info("🔍 Loading translation pairs...")
     paired_data, with_rag_files, without_rag_files = pair_translations(args.with_rag_dir, args.without_rag_dir)
     

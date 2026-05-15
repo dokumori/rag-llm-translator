@@ -642,21 +642,15 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         # --- 6. REAL API CALL ---
 
         try:
-            # Build call kwargs based on model-level flags so that models which
-            # reject certain parameters (e.g. OpenAI o-series / GPT-5 reject
-            # `temperature` and require `max_completion_tokens` instead of
-            # `max_tokens`) work correctly in direct-connection mode as well as
-            # behind the LiteLLM gateway.
+            # LiteLLM normalises all provider-specific parameter differences
+            # (temperature, max_tokens vs max_completion_tokens) transparently,
+            # so the proxy can always use the standard OpenAI call shape.
             call_kwargs: Dict[str, Any] = {
                 "model": requested_model,
                 "messages": new_messages,
+                "temperature": 0,
+                "max_tokens": data.get("max_tokens", 1000),
             }
-            if not (model_meta or {}).get("omit_temperature"):
-                call_kwargs["temperature"] = 0
-            if (model_meta or {}).get("use_max_completion_tokens"):
-                call_kwargs["max_completion_tokens"] = data.get("max_tokens", 1000)
-            else:
-                call_kwargs["max_tokens"] = data.get("max_tokens", 1000)
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)
             
@@ -664,6 +658,14 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
             for choice in response.choices:
                 if choice.finish_reason in ["safety", "content_filter"]:
                     logger.warning(f"🚨 GUARDRAIL BLOCKED TRANSLATION! Finish Reason: {choice.finish_reason}")
+                elif choice.finish_reason == "length":
+                    limit = call_kwargs.get("max_tokens", "unknown")
+                    logger.warning(
+                        f"⚠️ RESPONSE TRUNCATED: the LLM stopped after generating {limit} output tokens "
+                        "(this limit applies to the generated text, not the input). "
+                        "The JSON response is likely cut off and parsing will fail. "
+                        "To fix: lower BULK_SIZE in your .env to send fewer strings per request."
+                    )
                 elif not choice.message.content:
                     logger.warning(f"🚨 LLM RETURNED EMPTY STRING! Finish Reason: {choice.finish_reason}")
             
