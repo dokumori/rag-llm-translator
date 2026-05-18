@@ -428,11 +428,14 @@ def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_ge
 
 
 # --- Part 3b: call_kwargs Construction Tests ---
-# These tests pin the upstream API call parameters (temperature, max_tokens) to
-# guard against regressions. Since v5.0.0, LiteLLM normalises all provider-
-# specific differences transparently — temperature=0 and max_tokens are always
-# forwarded as-is. The omit_temperature / use_max_completion_tokens flags were
-# removed from app.py and config.py; tests for those dead code paths are gone.
+# These tests pin the exact upstream API call parameters (temperature,
+# max_tokens / max_completion_tokens) for both standard and OpenAI reasoning
+# models to guard against regressions.
+#
+# OpenAI reasoning models (o1, o3, o4, gpt-5) have two constraints:
+#   1. They reject temperature values other than 1 with a 400 error.
+#   2. They require max_completion_tokens instead of max_tokens.
+# We handle both explicitly — we do NOT rely on LiteLLM to translate them.
 
 
 @patch('app.get_upstream_client')
@@ -483,6 +486,157 @@ def test_real_call_uses_max_tokens_by_default(mock_config, mock_rag, mock_get_cl
     assert "max_tokens" in call_kwargs, "max_tokens must be present for standard models"
     assert call_kwargs["max_tokens"] == 500
     assert "max_completion_tokens" not in call_kwargs, "max_completion_tokens must be absent"
+
+
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_o_series_model_omits_temperature(mock_config, mock_rag, mock_get_client, client):
+    """
+    O-series reasoning models (o1, o3, o4) and GPT-5 family models only
+    support temperature=1 and reject temperature=0 with a 400 error.  The
+    proxy must omit temperature entirely for those models.
+
+    Regression test for: o3-mini 400 UnsupportedParamsError bug.
+    """
+    mock_config.return_value = [{"id": "o3-mini", "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": "o3-mini",
+        "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "temperature" not in call_kwargs, (
+        "temperature must NOT be sent to O-series models — they only accept temperature=1 "
+        "and will reject any other value with a 400 error"
+    )
+
+
+@pytest.mark.parametrize("model_id", [
+    "o1",
+    "o1-mini",
+    "o1-preview",
+    "o3-mini",
+    "o3",
+    "o4-mini",
+    "gpt-5",
+    "gpt-5.5",
+])
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_all_o_series_prefixes_omit_temperature(mock_config, mock_rag, mock_get_client, model_id, client):
+    """
+    Parametrized check: every known O-series model ID must have temperature
+    omitted from the upstream API call.
+    """
+    mock_config.return_value = [{"id": model_id, "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": model_id,
+        "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "temperature" not in call_kwargs, (
+        f"temperature must NOT be sent to O-series model '{model_id}'"
+    )
+
+
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_o_series_model_uses_max_completion_tokens(mock_config, mock_rag, mock_get_client, client):
+    """
+    O-series reasoning models must receive max_completion_tokens (not max_tokens)
+    in the upstream API call.  OpenAI will reject max_tokens with a 400 error
+    for these models.  We do not rely on LiteLLM to translate this.
+
+    Regression test for: o-series / GPT-5 max_tokens 400 error.
+    """
+    mock_config.return_value = [{"id": "o3-mini", "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": "o3-mini",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 1234,
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "max_completion_tokens" in call_kwargs, (
+        "O-series models must receive max_completion_tokens, not max_tokens"
+    )
+    assert call_kwargs["max_completion_tokens"] == 1234
+    assert "max_tokens" not in call_kwargs, (
+        "max_tokens must NOT be sent to O-series models — OpenAI will reject it with a 400 error"
+    )
+
+
+@pytest.mark.parametrize("model_id", [
+    "o1",
+    "o1-mini",
+    "o1-preview",
+    "o3-mini",
+    "o3",
+    "o4-mini",
+    "gpt-5",
+    "gpt-5.5",
+])
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_all_o_series_prefixes_use_max_completion_tokens(
+    mock_config, mock_rag, mock_get_client, model_id, client
+):
+    """
+    Parametrized check: every known O-series / GPT-5 model ID must use
+    max_completion_tokens (not max_tokens) in the upstream API call.
+    """
+    mock_config.return_value = [{"id": model_id, "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": model_id,
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 999,
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "max_completion_tokens" in call_kwargs, (
+        f"max_completion_tokens must be present for O-series model '{model_id}'"
+    )
+    assert call_kwargs["max_completion_tokens"] == 999
+    assert "max_tokens" not in call_kwargs, (
+        f"max_tokens must NOT be sent to O-series model '{model_id}'"
+    )
 
 
 @patch('app.get_chroma_client')

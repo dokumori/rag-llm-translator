@@ -642,15 +642,27 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         # --- 6. REAL API CALL ---
 
         try:
-            # LiteLLM normalises all provider-specific parameter differences
-            # (temperature, max_tokens vs max_completion_tokens) transparently,
-            # so the proxy can always use the standard OpenAI call shape.
+            # O-series reasoning models (o1, o3, o4) and GPT-5 family models
+            # have two constraints that differ from standard models:
+            #   1. They reject temperature values other than 1 with a 400 error.
+            #   2. They use max_completion_tokens instead of max_tokens.
+            # We do NOT rely on LiteLLM to translate these automatically — the
+            # temperature assumption burned us before, so we handle both explicitly.
+            _openai_reasoning_model_prefixes = ("o1", "o1-", "o3", "o3-", "o4", "o4-", "gpt-5")
+            _is_openai_reasoning_model = any(requested_model.lower().startswith(p) for p in _openai_reasoning_model_prefixes)
+
+            output_token_limit = data.get("max_tokens", Config.LLM_MAX_TOKENS)
             call_kwargs: Dict[str, Any] = {
                 "model": requested_model,
                 "messages": new_messages,
-                "temperature": 0,
-                "max_tokens": data.get("max_tokens", Config.LLM_MAX_TOKENS),
             }
+            if _is_openai_reasoning_model:
+                call_kwargs["max_completion_tokens"] = output_token_limit
+            else:
+                call_kwargs["max_tokens"] = output_token_limit
+
+            if not _is_openai_reasoning_model:
+                call_kwargs["temperature"] = 0
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)
             
@@ -659,7 +671,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
                 if choice.finish_reason in ["safety", "content_filter"]:
                     logger.warning(f"🚨 GUARDRAIL BLOCKED TRANSLATION! Finish Reason: {choice.finish_reason}")
                 elif choice.finish_reason == "length":
-                    limit = call_kwargs.get("max_tokens", "unknown")
+                    limit = output_token_limit
                     logger.warning(
                         f"⚠️ RESPONSE TRUNCATED: the LLM stopped after generating {limit} output tokens "
                         "(this limit applies to the generated text, not the input). "

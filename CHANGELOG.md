@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.3] - 2026-05-18
+
+### Fixed
+- **`rag-proxy` / `app.py`**: o-series (o1, o3, o4) and GPT-5 family models reject `temperature≠1` with a hard 400 error. While LiteLLM's `drop_params` setting is intended to handle this automatically, it is unreliable for these models in practice (documented community reports of it failing to drop `temperature` even when set). Added an explicit fallback in `app.py` that omits `temperature` from the upstream call whenever the requested model ID starts with an o-series or `gpt-5` prefix, providing a version-independent safety net regardless of LiteLLM behaviour.
+- **`rag-proxy` / `app.py`**: o-series and GPT-5 family models also require `max_completion_tokens` instead of `max_tokens` — OpenAI rejects `max_tokens` for these models with a 400 error. Following the same lesson as the `temperature` fix, LiteLLM is **not** relied upon to translate this automatically. The proxy now explicitly sends `max_completion_tokens` for reasoning models and `max_tokens` for all others.
+- **`config/litellm/config.yaml`** and **`config.example.yaml`**: added `litellm_settings: drop_params: true` as a secondary guard.
+- **`bin/setup.sh`**: auto-generated `config.yaml` now includes `drop_params: true` from the start.
+- **`tests/unit/test_rag_proxy.py`**: added regression tests pinning the temperature-omission and `max_completion_tokens` behaviour for all known o-series and GPT-5 model ID prefixes.
+
+## [5.0.2] - 2026-05-18
+
+> **Upgrade:** `docker compose pull chroma && docker compose build rag-proxy toolbox && docker compose up -d`
+
+### Changed
+- **ChromaDB 1.5.8 → 1.5.9**: bumped the `chromadb/chroma` Docker image and the `chromadb` pip dependency (pinned in `rag-proxy` and `toolbox`) to v1.5.9. This is a patch release — no API changes, no data migration required.
+
 ## [5.0.1] - 2026-05-18
 ### Changed
 - **README.md** Re-organised and rewrote the content based on the recent changes to the setup and execution process following the introduction of the system menu.

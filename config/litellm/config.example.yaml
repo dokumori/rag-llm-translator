@@ -13,6 +13,12 @@
 #
 # Supported providers: https://docs.litellm.ai/docs/providers
 
+
+litellm_settings:
+  # Silently drop provider-unsupported params (e.g. temperature for o-series models)
+  # instead of propagating a 400 error to the caller.
+  drop_params: true
+
 model_list:
 
   # ---------------------------------------------------------------------------
@@ -66,10 +72,10 @@ model_list:
   #     api_key: os.environ/GEMINI_API_KEY
 
   # ---------------------------------------------------------------------------
-  # OpenAI — including o-series / reasoning models
+  # OpenAI — including o-series / reasoning models and GPT-5
   # Set OPENAI_API_KEY in .env, then uncomment the models you need.
-  # Note: LiteLLM automatically handles the temperature / max_completion_tokens
-  # parameter differences for o-series models.
+  # Note: o-series (o1, o3, o4) and GPT-5 family models do NOT support
+  # temperature≠1 — the rag-proxy and LiteLLM's drop_params handle this.
   # ---------------------------------------------------------------------------
   # - model_name: gpt-4o
   #   litellm_params:
