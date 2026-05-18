@@ -69,7 +69,7 @@ SELECTED_PROVIDERS=()
 section "⚙️  LLM CONNECTION MODE"
     echo "   How will you connect to your LLM?"
     echo ""
-    echo "   1) Gateway — [Recommended] All providers in one place via the built-in LiteLLM proxy"
+    echo "   1) Gateway — Connect to cloud providers or local models via the built-in proxy"
     echo "                (Anthropic, Google, OpenAI, Mistral, amazee.ai, Ollama, vLLM, and more)"
     echo "                (mix providers freely — switch models without changing config)"
     echo ""
