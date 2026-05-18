@@ -226,6 +226,18 @@ while true; do
 
         # ── Context (RAG) ──────────────────────────────────────────────────
         i|I)
+            echo ""
+            echo "  ────────────────────────────────────────────────────"
+            echo -e "  ${BOLD}📦 ChromaDB Overview (current state)${RESET}"
+            echo "  ────────────────────────────────────────────────────"
+            db_overview=
+            if db_overview=$(docker compose exec -T toolbox python3 /app/src/check_db.py 2>/dev/null); then
+                echo "$db_overview" | sed 's/^/     /'
+            else
+                echo -e "  ${YELLOW}⚠️  Could not retrieve DB overview (is the stack running?).${RESET}"
+            fi
+            echo "  ────────────────────────────────────────────────────"
+            echo ""
             if _preflight \
 "Place your translation memory (.po) and glossary (.csv) files under:
   data/tm_source/<langcode>/   (e.g. data/tm_source/ja/)
@@ -233,6 +245,16 @@ while true; do
 The Docker stack must be running (docker compose up -d).
 📖 See: README.md §3 \"Place the files\" and docs/1_architecture.md"; then
                 bash "$SCRIPT_DIR/ingest.sh"
+                echo ""
+                echo "  ────────────────────────────────────────────────────"
+                echo -e "  ${BOLD}📦 ChromaDB Overview (post-ingest)${RESET}"
+                echo "  ────────────────────────────────────────────────────"
+                if db_overview=$(docker compose exec -T toolbox python3 /app/src/check_db.py 2>/dev/null); then
+                    echo "$db_overview" | sed 's/^/     /'
+                else
+                    echo -e "  ${YELLOW}⚠️  Could not retrieve DB overview (is the stack running?).${RESET}"
+                fi
+                echo "  ────────────────────────────────────────────────────"
                 _post_run_pause
                 echo ""
                 echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
