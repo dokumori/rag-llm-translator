@@ -87,6 +87,18 @@
       "description": "Docker Compose service image updates",
       "matchManagers": ["docker-compose"],
       "groupName": "docker compose images"
+    },
+
+    //
+    // 5. Keep chromadb pip package and Docker image in sync — one PR for both.
+    //    The pip package (chromadb) and the service image (chromadb/chroma) must
+    //    always match versions, so they are tested and merged atomically.
+    //    This rule overrides rules 1 and 4 above for these two packages.
+    //
+    {
+      "description": "Group chromadb pip package and Docker image into one PR",
+      "matchDepPatterns": ["^chromadb"],
+      "groupName": "chromadb"
     }
   ]
 }
