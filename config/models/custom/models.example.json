@@ -2,7 +2,6 @@
   "_comment": "Copy this file to config/models/custom/models.json to override the default models.",
   "_usage": "Entries with an 'id' matching models.json will override that entry. New 'id' values are appended.",
   "_pricing_note": "Add a 'pricing' object to enable token cost estimation. Rates are in USD per 1,000 tokens. Omit 'pricing' entirely if the cost is unknown or not applicable.",
-  "_flags_note": "omit_temperature: true — model rejects the temperature parameter (e.g. OpenAI o-series, GPT-5). use_max_completion_tokens: true — model requires max_completion_tokens instead of max_tokens.",
   "models": [
     {
       "id": "claude-haiku-4-5",
@@ -53,8 +52,6 @@
       "id": "o4-mini",
       "name": "OpenAI o4-mini",
       "is_dry_run": false,
-      "omit_temperature": true,
-      "use_max_completion_tokens": true,
       "pricing": {
         "prompt_per_1k_tokens": 0.0011,
         "completion_per_1k_tokens": 0.0044
@@ -64,8 +61,6 @@
       "id": "o3-mini",
       "name": "OpenAI o3-mini",
       "is_dry_run": false,
-      "omit_temperature": true,
-      "use_max_completion_tokens": true,
       "pricing": {
         "prompt_per_1k_tokens": 0.0011,
         "completion_per_1k_tokens": 0.0044

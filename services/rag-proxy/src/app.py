@@ -289,12 +289,12 @@ def _query_with_context_fallback(
             ctx_res = collection.query(**ctx_kwargs)
             has_any = any(doc_list for doc_list in ctx_res.get("documents", []))
             if has_any:
-                logger.info(f"   🎯 Context-filtered query succeeded (context_key='{context_meta_key}', context='{batch_context}')")
+                logger.info(f"   🎯 [{collection.name}] Context-filtered query succeeded (context='{batch_context}')")
                 return ctx_res, True
             else:
-                logger.info(f"   ⚠️ Context-filtered query returned no results; falling back (context='{batch_context}')")
+                logger.info(f"   ⚠️ [{collection.name}] Context-filtered query returned no results; falling back (context='{batch_context}')")
         except Exception as ctx_err:
-            logger.warning(f"   ⚠️ Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-filtered query failed ({ctx_err}); falling back to lang-only filter")
 
         # Fallback: context-free entries only (safe to apply regardless of caller's context)
         ctx_free_kwargs = {**base_kwargs, "where": {"$and": [{"langcode": target_lang}, {context_meta_key: ""}]}}
@@ -302,12 +302,12 @@ def _query_with_context_fallback(
             ctx_free_res = collection.query(**ctx_free_kwargs)
             has_any = any(doc_list for doc_list in ctx_free_res.get("documents", []))
             if has_any:
-                logger.info(f"   ↩️  Context-free fallback succeeded (no '{batch_context}' entries found).")
+                logger.info(f"   ↩️  [{collection.name}] Context-free fallback succeeded (no '{batch_context}' entries found).")
                 return ctx_free_res, False
             else:
-                logger.info(f"   ⚠️ Context-free fallback returned no results; using lang-only filter.")
+                logger.info(f"   ⚠️ [{collection.name}] Context-free fallback returned no results; using lang-only filter.")
         except Exception as fb_err:
-            logger.warning(f"   ⚠️ Context-free fallback failed ({fb_err}); using lang-only filter.")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-free fallback failed ({fb_err}); using lang-only filter.")
 
         # Last resort: full lang-only filter (catches pre-isolation ingested entries)
         return collection.query(**{**base_kwargs, "where": lang_filter}), False
@@ -321,9 +321,9 @@ def _query_with_context_fallback(
             if has_any:
                 return no_ctx_res, False
             else:
-                logger.info(f"   ⚠️ No context-free entries found; falling back to lang-only filter")
+                logger.info(f"   ⚠️ [{collection.name}] No context-free entries found; falling back to lang-only filter")
         except Exception as no_ctx_err:
-            logger.warning(f"   ⚠️ Context-free query failed ({no_ctx_err}); falling back to lang-only filter")
+            logger.warning(f"   ⚠️ [{collection.name}] Context-free query failed ({no_ctx_err}); falling back to lang-only filter")
 
         # Fallback: lang-only (catches entries ingested before context isolation was enforced)
         return collection.query(**{**base_kwargs, "where": lang_filter}), False
@@ -555,7 +555,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
     try:
         data = request.json
         messages = data.get('messages', [])
-        requested_model = (data.get('model') or "claude-opus-4-5-20251101").strip()
+        requested_model = (data.get('model') or "dry-run-dummy").strip()
 
         log_entry: Dict[str, Any] = {
             "timestamp": datetime.datetime.utcnow().isoformat(),
@@ -642,21 +642,15 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
         # --- 6. REAL API CALL ---
 
         try:
-            # Build call kwargs based on model-level flags so that models which
-            # reject certain parameters (e.g. OpenAI o-series / GPT-5 reject
-            # `temperature` and require `max_completion_tokens` instead of
-            # `max_tokens`) work correctly in direct-connection mode as well as
-            # behind the LiteLLM gateway.
+            # LiteLLM normalises all provider-specific parameter differences
+            # (temperature, max_tokens vs max_completion_tokens) transparently,
+            # so the proxy can always use the standard OpenAI call shape.
             call_kwargs: Dict[str, Any] = {
                 "model": requested_model,
                 "messages": new_messages,
+                "temperature": 0,
+                "max_tokens": data.get("max_tokens", Config.LLM_MAX_TOKENS),
             }
-            if not (model_meta or {}).get("omit_temperature"):
-                call_kwargs["temperature"] = 0
-            if (model_meta or {}).get("use_max_completion_tokens"):
-                call_kwargs["max_completion_tokens"] = data.get("max_tokens", 1000)
-            else:
-                call_kwargs["max_tokens"] = data.get("max_tokens", 1000)
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)
             
@@ -664,6 +658,14 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
             for choice in response.choices:
                 if choice.finish_reason in ["safety", "content_filter"]:
                     logger.warning(f"🚨 GUARDRAIL BLOCKED TRANSLATION! Finish Reason: {choice.finish_reason}")
+                elif choice.finish_reason == "length":
+                    limit = call_kwargs.get("max_tokens", "unknown")
+                    logger.warning(
+                        f"⚠️ RESPONSE TRUNCATED: the LLM stopped after generating {limit} output tokens "
+                        "(this limit applies to the generated text, not the input). "
+                        "The JSON response is likely cut off and parsing will fail. "
+                        "To fix: lower BULK_SIZE in your .env to send fewer strings per request."
+                    )
                 elif not choice.message.content:
                     logger.warning(f"🚨 LLM RETURNED EMPTY STRING! Finish Reason: {choice.finish_reason}")
             

@@ -2,12 +2,10 @@
 
 The RAG-LLM Translator leverages Large Language Models and a Retrieval-Augmented Generation (RAG) architecture to automate PO file translation while ensuring high accuracy and terminology consistency. It has been generalised to support most PO translation projects, expanding on its initial role as a translation aid for the Drupal community (https://www.drupal.org/project/translation_llm).
 
-The system supports any LLM provider out of the box, via two complementary modes:
-
-- **Direct mode** (default): Connect directly to any OpenAI-compatible endpoint by setting `LLM_BASE_URL` in your `.env` file. Works with amazee.ai, OpenRouter, Ollama, Mistral, and others.
-- **Gateway mode** (optional): Run the bundled [LiteLLM](https://github.com/BerriAI/litellm) container to access providers with non-OpenAI APIs — including **Anthropic Claude** and **Google Gemini** — without any code changes. Also handles OpenAI's newer reasoning models (o-series, GPT-5) which require different call parameters.
+The system connects to any LLM provider via the built-in **LiteLLM gateway** container. Supported providers include Anthropic Claude, Google Gemini, OpenAI (including o-series reasoning models), Mistral, amazee.ai, Ollama, and any OpenAI-compatible endpoint. Configure providers by running `bash bin/setup.sh`.
 
 See [docs/8_multi_llm_support.md](docs/8_multi_llm_support.md) for setup instructions.
+
 
 # How to use rag-llm-translator
 
@@ -36,7 +34,7 @@ If you prefer to run commands individually, follow the steps below:
 
 Run:
 ```bash
-bash bin/initial_setup.sh
+bash bin/setup.sh
 ```
 
 ...and supply the required information as prompted. The script handles configuration of the following settings. When setting it up for the first time, choose the default value for settings marked with '*':
@@ -154,4 +152,4 @@ The following documents provide detailed information about the project's technic
 - [**Translation Evaluation**](docs/5_translation_evaluation.md): Details on how to evaluate the quality of RAG-based translations by comparing two files (one with RAG context and another without) using an LLM as an independent judge.
 - [**ChromaDB Admin UI**](docs/6_chromadb_admin.md): A lightweight (~30MB) web interface for visually browsing collections, inspecting documents and metadata, filtering by language, and running ad-hoc similarity searches against the vector database.
 - [**Embedding Model Configuration**](docs/7_embedding_model.md): How to download, and switch text embedding models. Includes compatible model list, safety guardrails, and troubleshooting for model mismatch errors.
-- [**Multi-LLM Provider Support**](docs/8_multi_llm_support.md): How to connect to different LLM providers, including Anthropic Claude, Google Gemini, OpenAI o-series, and any OpenAI-compatible endpoint. Covers both direct mode and the optional LiteLLM gateway.
+- [**Multi-LLM Provider Support**](docs/8_multi_llm_support.md): How to connect to different LLM providers, including, but not limited to, Anthropic Claude, Google Gemini, Mistral, OpenAI o-series, Ollama, and any OpenAI-compatible endpoint via the built-in LiteLLM gateway.

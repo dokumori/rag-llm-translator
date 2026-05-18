@@ -214,7 +214,8 @@ docker compose exec \
   --model "$SELECTED_MODEL" \
   --with-rag-dir "/app/po/eval/$TARGET_LANG/with_rag" \
   --without-rag-dir "/app/po/eval/$TARGET_LANG/without_rag" \
-  --limit "$FINAL_LIMIT"
+  --limit "$FINAL_LIMIT" \
+  --lang "$TARGET_LANG"
 
 echo "----------------------------------------------------------------"
 echo "✅ Evaluation Workflow Complete!"

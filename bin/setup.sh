@@ -1,14 +1,13 @@
 #!/bin/bash
-# bin/initial_setup.sh
+# bin/setup.sh
 #
 # Interactive setup wizard for the RAG LLM Translation project.
 # Guides the user through:
-#   1. LLM connection mode  (Direct | Gateway | Local/Ollama)
+#   1. LLM connection mode  (Gateway | Local/Ollama)
 #   2. API key collection   (per-provider, masked input)
 #   3. LiteLLM config       (auto-generated for Gateway mode)
-#   4. Gateway auto-start   (COMPOSE_PROFILES=gateway)
-#   5. Bulk size & permissions (unchanged from previous version)
-#   6. Embedding model download
+#   4. Bulk size & permissions
+#   5. Embedding model download
 
 set -euo pipefail
 
@@ -29,7 +28,6 @@ DIM="\033[2m"
 section() { echo ""; echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"; echo -e "${BOLD} $1${RESET}"; echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"; }
 info()    { echo "   $1"; }
 
-# ── .env Backup ───────────────────────────────────────────────────────────────
 # ── .env Backup ───────────────────────────────────────────────────────────────
 # Always back up an existing .env before overwriting it.
 if [ -f "$ENV_FILE" ]; then
@@ -55,30 +53,33 @@ ANTHROPIC_API_KEY=""
 OPENAI_API_KEY=""
 GEMINI_API_KEY=""
 MISTRAL_API_KEY=""
-COMPOSE_PROFILES=""
+CUSTOM_LLM_BASE_URLS=()
+CUSTOM_LLM_API_KEYS=()
+CUSTOM_MODEL_NAMES=()
+CUSTOM_REMOTE_MODEL_IDS=()
+CUSTOM_MODEL_DISPLAYS=()
+DEDUP_URLS=()
+DEDUP_KEYS=()
+ENDPOINT_ENV_IDX=()
+OLLAMA_BASE_URL=""
+OLLAMA_MODELS=""
+
 SELECTED_PROVIDERS=()
 
 section "⚙️  LLM CONNECTION MODE"
     echo "   How will you connect to your LLM?"
     echo ""
-    echo "   1) Direct  — I have an OpenAI-compatible endpoint"
-    echo "                (amazee.ai, vLLM, Mistral La Plateforme, etc.)"
-    echo "   2) Gateway — Use the built-in LiteLLM proxy"
-    echo "                (Anthropic, Google, OpenAI, Mistral, …)"
-    echo "   3) Local   — I'm running Ollama on this machine"
-    echo "                (URL is auto-configured)"
+    echo "   1) Gateway — Connect to cloud providers or local models via the built-in proxy"
+    echo "                (Anthropic, Google, OpenAI, Mistral, amazee.ai, Ollama, vLLM, and more)"
+    echo "                (mix providers freely — switch models without changing config)"
     echo ""
-    read -p "   Your choice [1/2/3]: " MODE_CHOICE
+    echo "   2) Local   — Ollama only, no cloud providers"
+    echo "                (URL is auto-configured; choose Gateway to mix Ollama with cloud)"
+    echo ""
+    read -p "   Your choice [1/2]: " MODE_CHOICE
 
     case "$MODE_CHOICE" in
-        1)
-            SETUP_MODE="direct"
-            echo ""
-            read -p "   Enter LLM base URL: " LLM_BASE_URL
-            read -p "   Enter LLM API Token: " LLM_API_TOKEN
-            ;;
-
-        3)
+        2)
             SETUP_MODE="local"
             LLM_BASE_URL="http://host.docker.internal:11434/v1"
             LLM_API_TOKEN=""
@@ -87,18 +88,20 @@ section "⚙️  LLM CONNECTION MODE"
             echo "   ℹ️  Make sure Ollama is running on your host before starting Docker Compose."
             ;;
 
-        2)
+        1)
             SETUP_MODE="gateway"
 
             # ── Provider selection ─────────────────────────────────────────
             section "⚙️  PROVIDER SELECTION"
             echo "   Which providers do you want to enable?"
-            echo "   Enter the numbers separated by spaces (e.g. 1 2):"
+            echo "   Enter the numbers separated by spaces (e.g. 1 2 5):"
             echo ""
             echo "   1) Anthropic (Claude)"
             echo "   2) Google    (Gemini)"
             echo "   3) OpenAI    (GPT-4o, o-series)"
             echo "   4) Mistral"
+            echo "   5) Custom    (amazee.ai, vLLM, or any OpenAI-compatible endpoint)"
+            echo "   6) Ollama    (local models running on this machine)"
             echo ""
             read -p "   Your choices: " PROVIDER_CHOICES
 
@@ -108,6 +111,8 @@ section "⚙️  LLM CONNECTION MODE"
                     2) SELECTED_PROVIDERS+=("google")    ;;
                     3) SELECTED_PROVIDERS+=("openai")    ;;
                     4) SELECTED_PROVIDERS+=("mistral")   ;;
+                    5) SELECTED_PROVIDERS+=("custom")    ;;
+                    6) SELECTED_PROVIDERS+=("ollama")    ;;
                     *) echo "   ⚠️  Ignoring unknown provider choice: $c" ;;
                 esac
             done
@@ -157,6 +162,96 @@ section "⚙️  LLM CONNECTION MODE"
                             echo "   ⚠️  Key cannot be empty. Please try again."
                         done
                         ;;
+                    custom)
+                        echo ""
+                        echo "   ℹ️  Custom endpoint setup"
+                        echo "   ⚠️  Adding custom models will completely overwrite config/litellm/config.yaml"
+                        echo "      and config/models/custom/models.json when the setup completes."
+                        echo ""
+                        echo "   Three identifiers are required for each endpoint:"
+                        echo "   • Local ID    — a short identifier used inside this project to route requests (no spaces)"
+                        echo "   • Menu label  — the name shown in translation/evaluation menus (name as you like)"
+                        echo "   • Remote ID   — the model name sent to YOUR endpoint (check provider docs)"
+
+                        CUSTOM_IDX=0
+                        while true; do
+                            CUSTOM_IDX=$((CUSTOM_IDX + 1))
+                            echo ""
+                            echo "   ── Custom endpoint #${CUSTOM_IDX} ──"
+                            local_id=""
+                            while true; do
+                                read -p "   Local ID (e.g. amazee-claude-haiku, no spaces): " local_id
+                                if [ -z "$local_id" ]; then
+                                    echo "   ⚠️  Local ID cannot be empty. Please try again."
+                                elif [[ "$local_id" =~ [[:space:]] ]]; then
+                                    echo "   ⚠️  Local ID must not contain spaces. Use hyphens instead (e.g. amazee-claude-haiku)."
+                                else
+                                    break
+                                fi
+                            done
+                            read -p "   Menu label (e.g. amazee.ai - Claude 3.5 Haiku) [${local_id}]: " display_name
+                            display_name="${display_name:-$local_id}"
+                            remote_id=""
+                            while true; do
+                                read -p "   Remote model ID sent to endpoint (e.g. claude-3-5-haiku): " remote_id
+                                [ -n "$remote_id" ] && break
+                                echo "   ⚠️  Remote model ID cannot be empty. Please try again."
+                            done
+                            base_url=""
+                            while true; do
+                                read -p "   Base URL (e.g. https://llm.us104.amazee.ai/v1): " base_url
+                                [ -n "$base_url" ] && break
+                                echo "   ⚠️  Base URL cannot be empty. Please try again."
+                            done
+                            api_key=""
+                            while true; do
+                                read -s -p "   API Key: " api_key
+                                echo ""
+                                [ -n "$api_key" ] && break
+                                echo "   ⚠️  API Key cannot be empty. Please try again."
+                            done
+
+                            CUSTOM_MODEL_NAMES+=("$local_id")
+                            CUSTOM_MODEL_DISPLAYS+=("$display_name")
+                            CUSTOM_REMOTE_MODEL_IDS+=("$remote_id")
+                            CUSTOM_LLM_BASE_URLS+=("$base_url")
+                            CUSTOM_LLM_API_KEYS+=("$api_key")
+
+                            echo "   ✅ Configured: ${display_name} (${local_id}) → ${base_url}"
+                            echo ""
+                            read -p "   Add another custom endpoint? [y/N]: " ADD_MORE
+                            [[ "$ADD_MORE" =~ ^[Yy]$ ]] || break
+                        done
+
+                        echo ""
+                        echo "   ℹ️  To add more custom endpoints later, edit the config files directly:"
+                        echo "      • config/litellm/config.yaml   (LLM routing)"
+                        echo "      • config/models/custom/models.json   (menu entries)"
+                        echo "      • .env   (credentials)"
+                        echo "      See: docs/8_multi_llm_support.md for details."
+                        ;;
+
+
+
+                    ollama)
+                        echo ""
+                        echo "   ℹ️  Ollama (local models) setup"
+                        echo "   ⚠️  Adding Ollama models will completely overwrite config/litellm/config.yaml"
+                        echo "      and config/models/custom/models.json when the setup completes."
+                        echo ""
+                        OLLAMA_BASE_URL="http://host.docker.internal:11434"
+                        echo "   ✅ OLLAMA_BASE_URL set to: ${OLLAMA_BASE_URL}"
+                        while true; do
+                            read -p "   Model name(s), comma-separated (e.g. llama3.1,mistral): " OLLAMA_MODELS
+                            [ -n "$OLLAMA_MODELS" ] && break
+                            echo "   ⚠️  At least one model name is required. Please try again."
+                        done
+                        echo "   ℹ️  Ollama must be running on your host with OLLAMA_HOST=0.0.0.0"
+                        if [[ "$(uname)" == "Linux" ]]; then
+                            echo "   ⚠️  Linux detected: docker-compose.yml already includes extra_hosts for"
+                            echo "       host.docker.internal — no manual change needed."
+                        fi
+                        ;;
                 esac
             done
 
@@ -164,17 +259,27 @@ section "⚙️  LLM CONNECTION MODE"
             LLM_BASE_URL="http://litellm:4000/v1"
             LLM_API_TOKEN=""
 
-            # ── Auto-start prompt ──────────────────────────────────────────
-            section "⚙️  GATEWAY AUTO-START"
-            echo "   Should the LiteLLM gateway start automatically with 'docker compose up'?"
-            echo ""
-            echo "   1) Yes — always start the gateway  (COMPOSE_PROFILES=gateway)"
-            echo "   2) No  — start it manually when needed"
-            echo ""
-            read -p "   Your choice [1/2]: " AUTOSTART_CHOICE
-            if [ "${AUTOSTART_CHOICE:-1}" = "1" ]; then
-                COMPOSE_PROFILES="gateway"
-            fi
+            # ── Deduplicate custom endpoint credentials ────────────────────
+            # Multiple endpoints may share the same base URL + API key (e.g.
+            # two models on the same amazee.ai instance). Build a deduplicated
+            # list so .env does not contain redundant entries.
+            for i in "${!CUSTOM_LLM_BASE_URLS[@]}"; do
+                _url="${CUSTOM_LLM_BASE_URLS[$i]}"
+                _key="${CUSTOM_LLM_API_KEYS[$i]}"
+                _found=""
+                for j in "${!DEDUP_URLS[@]}"; do
+                    if [ "${DEDUP_URLS[$j]}" = "$_url" ] && [ "${DEDUP_KEYS[$j]}" = "$_key" ]; then
+                        _found=$((j + 1))
+                        break
+                    fi
+                done
+                if [ -z "$_found" ]; then
+                    DEDUP_URLS+=("$_url")
+                    DEDUP_KEYS+=("$_key")
+                    _found=${#DEDUP_URLS[@]}
+                fi
+                ENDPOINT_ENV_IDX+=("$_found")
+            done
 
             # ── Generate LiteLLM config.yaml ───────────────────────────────
             section "📝 GENERATING LITELLM CONFIG"
@@ -187,8 +292,20 @@ section "⚙️  LLM CONNECTION MODE"
 
             # Overwrite prompt if config.yaml already exists
             if [ -f "$LITELLM_CONFIG" ]; then
-                read -p "   config/litellm/config.yaml already exists. Overwrite? [y/N]: " OW
-                OW="${OW:-N}"
+                # If the user entered custom/ollama data, warn them it will be lost if they skip
+                HAS_CUSTOM_DATA=false
+                for p in "${SELECTED_PROVIDERS[@]}"; do
+                    [[ "$p" == "custom" || "$p" == "ollama" ]] && HAS_CUSTOM_DATA=true && break
+                done
+                if [ "$HAS_CUSTOM_DATA" = true ]; then
+                    echo "   ⚠️  config/litellm/config.yaml already exists."
+                    echo "      If you do not overwrite, the custom model information you just entered will be discarded."
+                    read -p "   Overwrite with your new settings? [Y/n]: " OW
+                    OW="${OW:-Y}"
+                else
+                    read -p "   config/litellm/config.yaml already exists. Overwrite? [y/N]: " OW
+                    OW="${OW:-N}"
+                fi
                 if [[ ! "$OW" =~ ^[Yy]$ ]]; then
                     echo "   ⏭️  Keeping existing config.yaml."
                     LITELLM_CONFIG=""   # signal: skip generation
@@ -198,8 +315,8 @@ section "⚙️  LLM CONNECTION MODE"
             if [ -n "$LITELLM_CONFIG" ]; then
                 {
                     echo "# LiteLLM Gateway Configuration"
-                    echo "# Auto-generated by initial_setup.sh on $(date '+%Y-%m-%d %H:%M')"
-                    echo "# To add more models, edit this file or re-run bin/initial_setup.sh."
+                    echo "# Auto-generated by setup.sh on $(date '+%Y-%m-%d %H:%M')"
+                    echo "# To add more models, edit this file or re-run bin/setup.sh."
                     echo ""
                     echo "model_list:"
                 } > "$LITELLM_CONFIG"
@@ -286,10 +403,49 @@ OPENAI_BLOCK
       api_key: os.environ/MISTRAL_API_KEY
 MISTRAL_BLOCK
                             ;;
+                        custom)
+                            # Generate one entry per custom endpoint
+                            {
+                                echo ""
+                                echo "  # ---------------------------------------------------------------------------"
+                                echo "  # Custom OpenAI-compatible endpoints"
+                                echo "  # ---------------------------------------------------------------------------"
+                                for i in "${!CUSTOM_MODEL_NAMES[@]}"; do
+                                    local_idx=${ENDPOINT_ENV_IDX[$i]}
+                                    cat << CUSTOM_ENTRY
+  - model_name: ${CUSTOM_MODEL_NAMES[$i]}
+    litellm_params:
+      model: openai/${CUSTOM_REMOTE_MODEL_IDS[$i]}
+      api_base: os.environ/CUSTOM_LLM_BASE_URL_${local_idx}
+      api_key: os.environ/CUSTOM_LLM_API_KEY_${local_idx}
+CUSTOM_ENTRY
+                                done
+                            } >> "$LITELLM_CONFIG"
+                            ;;
+                        ollama)
+                            # Generate one entry per model name
+                            IFS=',' read -ra OLLAMA_MODEL_LIST <<< "$OLLAMA_MODELS"
+                            {
+                                echo ""
+                                echo "  # ---------------------------------------------------------------------------"
+                                echo "  # Ollama (local models on the host machine)"
+                                echo "  # ---------------------------------------------------------------------------"
+                                for ollama_model in "${OLLAMA_MODEL_LIST[@]}"; do
+                                    ollama_model="$(echo "$ollama_model" | xargs)"  # trim whitespace
+                                    cat << OLLAMA_ENTRY
+  - model_name: ${ollama_model}
+    litellm_params:
+      model: ollama/${ollama_model}
+      api_base: os.environ/OLLAMA_BASE_URL
+OLLAMA_ENTRY
+                                done
+                            } >> "$LITELLM_CONFIG"
+                            ;;
                     esac
                 done
 
                 echo "   ✅ Written: config/litellm/config.yaml"
+                echo ""
             fi
 
             # ── Generate custom models.json ────────────────────────────────
@@ -298,8 +454,19 @@ MISTRAL_BLOCK
                 echo "   ⚠️  models.example.json not found — skipping custom models.json generation."
                 GENERATE_CUSTOM_MODELS=false
             elif [ -f "$CUSTOM_MODELS" ]; then
-                read -p "   config/models/custom/models.json already exists. Overwrite? [y/N]: " OW_MODELS
-                OW_MODELS="${OW_MODELS:-N}"
+                HAS_CUSTOM_DATA=false
+                for p in "${SELECTED_PROVIDERS[@]}"; do
+                    [[ "$p" == "custom" || "$p" == "ollama" ]] && HAS_CUSTOM_DATA=true && break
+                done
+                if [ "$HAS_CUSTOM_DATA" = true ]; then
+                    echo "   ⚠️  config/models/custom/models.json already exists."
+                    echo "      If you do not overwrite, the custom model information you just entered will be discarded."
+                    read -p "   Overwrite with your new settings? [Y/n]: " OW_MODELS
+                    OW_MODELS="${OW_MODELS:-Y}"
+                else
+                    read -p "   config/models/custom/models.json already exists. Overwrite? [y/N]: " OW_MODELS
+                    OW_MODELS="${OW_MODELS:-N}"
+                fi
                 if [[ ! "$OW_MODELS" =~ ^[Yy]$ ]]; then
                     echo "   ⏭️  Keeping existing models.json."
                     GENERATE_CUSTOM_MODELS=false
@@ -307,10 +474,18 @@ MISTRAL_BLOCK
             fi
             if [ "$GENERATE_CUSTOM_MODELS" = true ]; then
                 PROVIDERS_ARG="${SELECTED_PROVIDERS[*]}"
-                python3 - "$PROVIDERS_ARG" "$MODELS_EXAMPLE" "$CUSTOM_MODELS" << 'PYEOF'
+                # Build pipe-separated strings for multiple custom endpoints
+                # Use ${arr[@]+"${arr[@]}"} to safely handle empty arrays under set -u (bash 3.2)
+                CUSTOM_NAMES_STR="$(IFS='|'; echo "${CUSTOM_MODEL_NAMES[@]+${CUSTOM_MODEL_NAMES[*]}}")"
+                CUSTOM_DISPLAYS_STR="$(IFS='|'; echo "${CUSTOM_MODEL_DISPLAYS[@]+${CUSTOM_MODEL_DISPLAYS[*]}}")"
+                python3 - "$PROVIDERS_ARG" "$MODELS_EXAMPLE" "$CUSTOM_MODELS" \
+                    "$CUSTOM_NAMES_STR" "$OLLAMA_MODELS" "$CUSTOM_DISPLAYS_STR" << 'PYEOF'
 import json, sys
 
 providers_str, example_path, output_path = sys.argv[1], sys.argv[2], sys.argv[3]
+custom_names_str = sys.argv[4] if len(sys.argv) > 4 else ""
+ollama_models_str = sys.argv[5] if len(sys.argv) > 5 else ""
+custom_displays_str = sys.argv[6] if len(sys.argv) > 6 else ""
 providers = providers_str.split()
 
 prefixes = {
@@ -330,6 +505,30 @@ for m in example.get("models", []):
         if any(mid.startswith(pfx) for pfx in prefixes.get(p, [])):
             selected.append(m)
             break
+
+# Custom OpenAI-compatible endpoint model entries
+if "custom" in providers and custom_names_str:
+    names = custom_names_str.split("|")
+    displays = custom_displays_str.split("|") if custom_displays_str else names
+    for i, name in enumerate(names):
+        if name:
+            display = displays[i] if i < len(displays) else name
+            selected.append({
+                "id": name,
+                "name": display or name,
+                "is_dry_run": False,
+            })
+
+# Ollama model entries (one per model name)
+if "ollama" in providers and ollama_models_str:
+    for raw in ollama_models_str.split(","):
+        model = raw.strip()
+        if model:
+            selected.append({
+                "id": model,
+                "name": f"Ollama \u2014 {model}",
+                "is_dry_run": False,
+            })
 
 # Always include the dry-run entry from the example if present
 dry_run = next((m for m in example.get("models", []) if m.get("is_dry_run")), None)
@@ -383,11 +582,6 @@ EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-large-en-v1.5}
 section "📋 SETUP SUMMARY"
 
     case "$SETUP_MODE" in
-        direct)
-            info "Mode:         Direct (OpenAI-compatible endpoint)"
-            info "LLM URL:      ${LLM_BASE_URL}"
-            info "API Token:    (set)"
-            ;;
         local)
             info "Mode:         Local (Ollama)"
             info "LLM URL:      ${LLM_BASE_URL}"
@@ -401,10 +595,11 @@ section "📋 SETUP SUMMARY"
             [ -n "$GEMINI_API_KEY"    ] && info "              GEMINI_API_KEY     ✅ set"
             [ -n "$OPENAI_API_KEY"    ] && info "              OPENAI_API_KEY     ✅ set"
             [ -n "$MISTRAL_API_KEY"   ] && info "              MISTRAL_API_KEY    ✅ set"
-            if [ -n "$COMPOSE_PROFILES" ]; then
-                info "Auto-start:   Yes (COMPOSE_PROFILES=gateway)"
-            else
-                info "Auto-start:   No (start manually with --profile gateway)"
+            if [ ${#CUSTOM_MODEL_NAMES[@]} -gt 0 ]; then
+                info "Custom:       ${#CUSTOM_MODEL_NAMES[@]} endpoint(s)"
+                for i in "${!CUSTOM_MODEL_NAMES[@]}"; do
+                    info "              • ${CUSTOM_MODEL_DISPLAYS[$i]} (${CUSTOM_MODEL_NAMES[$i]})"
+                done
             fi
             ;;
     esac
@@ -440,15 +635,20 @@ fi
         PROVIDER_KEYS_BLOCK="${PROVIDER_KEYS_BLOCK}MISTRAL_API_KEY=${MISTRAL_API_KEY}
 "
     fi
-
-    # Build COMPOSE_PROFILES line (only for gateway auto-start)
-    COMPOSE_PROFILES_LINE=""
-    if [ -n "$COMPOSE_PROFILES" ]; then
-        COMPOSE_PROFILES_LINE="COMPOSE_PROFILES=${COMPOSE_PROFILES}"
+    for i in "${!DEDUP_URLS[@]}"; do
+        local_idx=$((i + 1))
+        PROVIDER_KEYS_BLOCK="${PROVIDER_KEYS_BLOCK}CUSTOM_LLM_BASE_URL_${local_idx}=${DEDUP_URLS[$i]}
+"
+        PROVIDER_KEYS_BLOCK="${PROVIDER_KEYS_BLOCK}CUSTOM_LLM_API_KEY_${local_idx}=${DEDUP_KEYS[$i]}
+"
+    done
+    if [ -n "$OLLAMA_BASE_URL" ]; then
+        PROVIDER_KEYS_BLOCK="${PROVIDER_KEYS_BLOCK}OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+"
     fi
 
-    cat > "$ENV_FILE" << EOF
-# .env file — Generated by initial_setup.sh on $(date '+%Y-%m-%d %H:%M')
+    cat > "$ENV_FILE" << ENVEOF
+# .env file — Generated by setup.sh on $(date '+%Y-%m-%d %H:%M')
 # Setup mode: ${SETUP_MODE}
 
 # --- LLM Connection -----------------------------------------------------------
@@ -457,12 +657,13 @@ LLM_API_TOKEN=${LLM_API_TOKEN}
 
 # --- Provider API Keys (LiteLLM Gateway) --------------------------------------
 # Only the keys for your selected providers are populated below.
-${PROVIDER_KEYS_BLOCK}
-# --- LiteLLM Gateway Auto-start -----------------------------------------------
-# Set COMPOSE_PROFILES=gateway to start the gateway with every 'docker compose up'.
-# Remove or comment out to start the gateway manually:
-#   docker compose --profile gateway up -d
-${COMPOSE_PROFILES_LINE}
+ENVEOF
+
+    # Use printf to safely write user-supplied values (API keys/URLs may contain
+    # double-quotes which would cause "unexpected EOF" inside an unquoted heredoc)
+    printf '%s\n' "${PROVIDER_KEYS_BLOCK}" >> "$ENV_FILE"
+
+    cat >> "$ENV_FILE" << ENVEOF
 
 # --- Bulk Size ----------------------------------------------------------------
 BULK_SIZE=${BULK_SIZE}
@@ -495,8 +696,7 @@ EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
 # --- User IDs for Docker Compose ----------------------------------------------
 UID=${DETECTED_UID}
 GID=${DETECTED_GID}
-EOF
-
+ENVEOF
 
 
 # ── Permissions ────────────────────────────────────────────────────────────────
@@ -514,21 +714,24 @@ section "📦 EMBEDDING MODEL"
 echo "   Downloading the default embedding model (${EMBEDDING_MODEL_NAME})."
 echo "   This is a one-time download (~1.3GB)."
 bash "${PROJECT_ROOT}/bin/download-model.sh"
-
-# ── Next steps ─────────────────────────────────────────────────────────────────
 echo ""
-echo "📢 To enable post-processing, run 'bash bin/setup_post_processing.sh'."
+# ── Offer to start Docker Compose now ──────────────────────────────────────────
+echo "🐳 Would you like to start the project now?"
 echo ""
-echo "📢 If you want to run a demo, run 'bash bin/demo_prep.sh'."
+COMPOSE_CMD="docker compose up -d"
+echo "   This will run: ${COMPOSE_CMD}"
 echo ""
-echo "📢 Refer to README.md for how to run the translation process."
-echo ""
-echo "📢 The default embedding model is ${EMBEDDING_MODEL_NAME}."
-echo "   To switch models, run 'bash bin/switch-embedding-model.sh'."
-echo ""
-if [ "$SETUP_MODE" = "gateway" ] && [ -z "$COMPOSE_PROFILES" ]; then
-    echo "📢 Start the LiteLLM gateway manually when needed:"
-    echo "     docker compose --profile gateway up -d"
+read -p "   Run it now? [Y/n]: " START_NOW
+START_NOW="${START_NOW:-Y}"
+if [[ "$START_NOW" =~ ^[Yy]$ ]]; then
     echo ""
+    echo "🚀 Starting..."
+    $COMPOSE_CMD
+    echo ""
+    echo "✅ Done! Containers are starting up."
+else
+    echo ""
+    echo "📢 When ready, start the project with:"
+    echo "     ${COMPOSE_CMD}"
 fi
-echo "📢 You can now run 'docker compose up -d'."
+echo ""

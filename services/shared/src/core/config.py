@@ -29,6 +29,10 @@ class Config:
     # --- LLM ---
     LLM_API_TOKEN: str = os.environ.get("LLM_API_TOKEN", "")
     LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "")
+    # Maximum number of output tokens the LLM may generate per request.
+    # Increase this if you hit truncation errors with large BULK_SIZE values or
+    # verbose models (e.g. Gemini 2.5 Pro). Decrease to cap costs on cheaper tiers.
+    LLM_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_TOKENS", 4096))
     TM_THRESHOLD: float = float(os.environ.get("TM_THRESHOLD", 0.27))
     GLOSSARY_THRESHOLD: float = float(os.environ.get("GLOSSARY_THRESHOLD", 0.36))
     RAG_STRICT_DISTANCE_THRESHOLD: float = float(os.environ.get("RAG_STRICT_DISTANCE_THRESHOLD", 0.15))
@@ -57,7 +61,7 @@ class Config:
         logger.info(f"🔧 Config: CHROMA_HOST={cls.CHROMA_HOST}:{cls.CHROMA_PORT}")
         logger.info(f"🔧 Config: TM_THRESHOLD={cls.TM_THRESHOLD}, GLOSSARY_THRESHOLD={cls.GLOSSARY_THRESHOLD}")
         logger.info(f"🔧 Config: TARGET_LANG={cls.TARGET_LANG}")
-        logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(direct — no gateway)'}")
+        logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(not set — check .env)'}")
 
 
 def load_models_config(models_path: str = None, custom_path: str = None) -> List[Dict[str, Any]]:
@@ -118,7 +122,11 @@ def load_models_config(models_path: str = None, custom_path: str = None) -> List
     return base_models
 
 
-_BOOLEAN_FLAGS = ("is_dry_run", "omit_temperature", "use_max_completion_tokens")
+# Note: omit_temperature and use_max_completion_tokens were removed in v5.0.0.
+# LiteLLM normalises provider-specific parameter differences (temperature,
+# max_tokens vs max_completion_tokens) transparently, so these flags are no
+# longer needed in direct app code.
+_BOOLEAN_FLAGS = ("is_dry_run",)
 
 
 def _validate_model_flags(models: List[Dict[str, Any]]) -> None:

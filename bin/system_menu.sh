@@ -81,7 +81,7 @@ _collect_status_messages() {
     STATUS_MESSAGES=()
 
     if ! _has_env; then
-        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [0] to get started.")
+        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [S] to get started.")
         return  # skip all further checks — nothing will work without .env
     fi
 
@@ -126,7 +126,7 @@ _render_menu() {
 
     echo ""
     echo -e "  ${BOLD}Getting Started${RESET}"
-    echo -e "    ${CYAN}0)${RESET} Initial setup                  — Configure LLM, API keys, and .env"
+    echo -e "    ${CYAN}S)${RESET} Setup                          — Configure LLM, API keys, and .env"
     echo -e "    ${CYAN}D)${RESET} Download demo data             — Fetch sample data for Japanese"
     echo ""
     echo -e "  ${BOLD}Context (RAG)${RESET}"
@@ -208,8 +208,8 @@ while true; do
     case "$choice" in
 
         # ── Getting Started ────────────────────────────────────────────────
-        0)
-            bash "$SCRIPT_DIR/initial_setup.sh"
+        s|S)
+            bash "$SCRIPT_DIR/setup.sh"
             # Reload env so subsequent status checks reflect new .env
             if [ -f .env ]; then load_env; fi
             _post_run_pause
@@ -226,6 +226,18 @@ while true; do
 
         # ── Context (RAG) ──────────────────────────────────────────────────
         i|I)
+            echo ""
+            echo "  ────────────────────────────────────────────────────"
+            echo -e "  ${BOLD}📦 ChromaDB Overview (current state)${RESET}"
+            echo "  ────────────────────────────────────────────────────"
+            db_overview=
+            if db_overview=$(docker compose exec -T toolbox python3 /app/src/check_db.py 2>/dev/null); then
+                echo "$db_overview" | sed 's/^/     /'
+            else
+                echo -e "  ${YELLOW}⚠️  Could not retrieve DB overview (is the stack running?).${RESET}"
+            fi
+            echo "  ────────────────────────────────────────────────────"
+            echo ""
             if _preflight \
 "Place your translation memory (.po) and glossary (.csv) files under:
   data/tm_source/<langcode>/   (e.g. data/tm_source/ja/)
@@ -233,6 +245,16 @@ while true; do
 The Docker stack must be running (docker compose up -d).
 📖 See: README.md §3 \"Place the files\" and docs/1_architecture.md"; then
                 bash "$SCRIPT_DIR/ingest.sh"
+                echo ""
+                echo "  ────────────────────────────────────────────────────"
+                echo -e "  ${BOLD}📦 ChromaDB Overview (post-ingest)${RESET}"
+                echo "  ────────────────────────────────────────────────────"
+                if db_overview=$(docker compose exec -T toolbox python3 /app/src/check_db.py 2>/dev/null); then
+                    echo "$db_overview" | sed 's/^/     /'
+                else
+                    echo -e "  ${YELLOW}⚠️  Could not retrieve DB overview (is the stack running?).${RESET}"
+                fi
+                echo "  ────────────────────────────────────────────────────"
                 _post_run_pause
                 echo ""
                 echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
@@ -350,7 +372,7 @@ You will need to re-ingest all data afterwards.
         # ── Invalid ────────────────────────────────────────────────────────
         *)
             echo ""
-            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter 0, D, I, B, T, E, A, P, M, X, or q.${RESET}"
+            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter S, D, I, B, T, E, A, P, M, X, or q.${RESET}"
             sleep 1
             ;;
     esac

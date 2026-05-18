@@ -14,13 +14,13 @@ from unittest.mock import MagicMock, patch, mock_open
 import json
 from core.config import Config
 
-# Ensure we can import app
-# Ensure we can import app
+# sys.path is configured via pytest.ini (pythonpath). The Docker-side path is
+# kept as a fallback so the file can also be run directly inside the container.
 sys.path.append("/app/services/rag-proxy/src")
 
-# Patch external dependencies BEFORE importing app to prevent side effects
-# Patch external dependencies BEFORE importing app to prevent side effects
-# We also need to patch the shared layer which app imports at top level
+# app.py runs _validate_embedding_model_consistency() at import time, which
+# tries to reach ChromaDB. Patch all three external touch-points BEFORE the
+# import so the startup side-effects are completely suppressed in unit tests.
 with patch('infrastructure.get_chroma_client'), \
         patch('infrastructure.get_embedding_function'), \
         patch('openai.OpenAI'):
@@ -425,6 +425,64 @@ def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_ge
     messages_arg = call_args[1]['messages']
     system_msg = messages_arg[0]['content']
     assert "<tm_matches>" in system_msg  # RAG content injected
+
+
+# --- Part 3b: call_kwargs Construction Tests ---
+# These tests pin the upstream API call parameters (temperature, max_tokens) to
+# guard against regressions. Since v5.0.0, LiteLLM normalises all provider-
+# specific differences transparently — temperature=0 and max_tokens are always
+# forwarded as-is. The omit_temperature / use_max_completion_tokens flags were
+# removed from app.py and config.py; tests for those dead code paths are gone.
+
+
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_real_call_includes_temperature_by_default(mock_config, mock_rag, mock_get_client, client):
+    """Standard models (no flags) must receive temperature=0 in the API call."""
+    mock_config.return_value = [{"id": "standard-model", "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": "standard-model",
+        "messages": [{"role": "user", "content": "hello"}],
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "temperature" in call_kwargs, "temperature must be present for standard models"
+    assert call_kwargs["temperature"] == 0
+
+
+@patch('app.get_upstream_client')
+@patch('app.perform_rag_lookup')
+@patch('app.get_models_config')
+def test_real_call_uses_max_tokens_by_default(mock_config, mock_rag, mock_get_client, client):
+    """Standard models (no flags) must receive max_tokens, not max_completion_tokens."""
+    mock_config.return_value = [{"id": "standard-model", "is_dry_run": False}]
+    mock_rag.return_value = ("", [])
+
+    mock_openai = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.model_dump.return_value = {"choices": [{"message": {"content": "ok"}}]}
+    mock_openai.chat.completions.create.return_value = mock_completion
+    mock_get_client.return_value = mock_openai
+
+    client.post('/v1/chat/completions', json={
+        "model": "standard-model",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 500,
+    })
+
+    call_kwargs = mock_openai.chat.completions.create.call_args[1]
+    assert "max_tokens" in call_kwargs, "max_tokens must be present for standard models"
+    assert call_kwargs["max_tokens"] == 500
+    assert "max_completion_tokens" not in call_kwargs, "max_completion_tokens must be absent"
 
 
 @patch('app.get_chroma_client')

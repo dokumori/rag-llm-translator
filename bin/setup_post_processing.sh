@@ -18,7 +18,7 @@ source "$(dirname "$0")/common.sh"
 ENV_FILE="${PROJECT_ROOT}/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "❌ .env file not found. Please run 'bash bin/initial_setup.sh' first."
+  echo "❌ .env file not found. Please run 'bash bin/setup.sh' first."
   exit 1
 fi
 

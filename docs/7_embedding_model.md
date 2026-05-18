@@ -56,7 +56,7 @@ The `rag-proxy` container reads the model from this directory at startup with `H
 > [!IMPORTANT]
 > Run `docker compose build` first. The download script runs inside the `rag-proxy` image, which must exist before it can be used.
 
-The default model is downloaded automatically by `bin/initial_setup.sh`. If you skipped that step or need to re-download:
+The default model is downloaded automatically by `bin/setup.sh`. If you skipped that step or need to re-download:
 
 ```bash
 bin/download-model.sh                          # re-downloads EMBEDDING_MODEL_NAME from .env
