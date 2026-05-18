@@ -649,7 +649,7 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
                 "model": requested_model,
                 "messages": new_messages,
                 "temperature": 0,
-                "max_tokens": data.get("max_tokens", 1000),
+                "max_tokens": data.get("max_tokens", Config.LLM_MAX_TOKENS),
             }
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)

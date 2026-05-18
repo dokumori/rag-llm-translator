@@ -29,6 +29,10 @@ class Config:
     # --- LLM ---
     LLM_API_TOKEN: str = os.environ.get("LLM_API_TOKEN", "")
     LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "")
+    # Maximum number of output tokens the LLM may generate per request.
+    # Increase this if you hit truncation errors with large BULK_SIZE values or
+    # verbose models (e.g. Gemini 2.5 Pro). Decrease to cap costs on cheaper tiers.
+    LLM_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_TOKENS", 4096))
     TM_THRESHOLD: float = float(os.environ.get("TM_THRESHOLD", 0.27))
     GLOSSARY_THRESHOLD: float = float(os.environ.get("GLOSSARY_THRESHOLD", 0.36))
     RAG_STRICT_DISTANCE_THRESHOLD: float = float(os.environ.get("RAG_STRICT_DISTANCE_THRESHOLD", 0.15))
