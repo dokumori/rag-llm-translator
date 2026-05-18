@@ -17,11 +17,11 @@ services:
       - chroma_data:/data
       - ./config/chroma/config.yaml:/config.yaml:ro
     healthcheck:
-      test: [ "CMD-SHELL", "grep -q '00000000:1F40 00000000:0000 0A' /proc/net/tcp || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8000; echo -e \"GET /api/v2/heartbeat HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; cat <&3 | grep -q \"200 OK\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
 
   rag-proxy:
     build:
@@ -48,9 +48,10 @@ services:
       - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
       - GLOSSARY_COLLECTION=app_glossary
       - TM_COLLECTION=app_tm
-      # Also uses from .env (via env_file):
+      # Also uses from .env / .env.defaults (via env_file):
       # - LLM_API_TOKEN
       # - LLM_BASE_URL
+      # - LLM_MAX_TOKENS       (output token cap; default 4096 in .env.defaults)
       # - EMBEDDING_MODEL_NAME
       # - TM_THRESHOLD
       # - GLOSSARY_THRESHOLD
@@ -70,11 +71,11 @@ services:
       litellm:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "grep -q '00000000:1388 00000000:0000 0A' /proc/net/tcp || exit 1" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\" || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10       # 10 × 5s = 50s of retry budget after start_period
+      start_period: 20s # allow time for the embedding model to load before failures count
     networks:
       - app_network
     user: "${UID}:${GID}"
@@ -194,11 +195,11 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: [ "CMD-SHELL", "grep -q '00000000:0FA0 00000000:0000 0A' /proc/net/tcp || exit 1" ]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')\" || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
 
 networks:
   app_network:
