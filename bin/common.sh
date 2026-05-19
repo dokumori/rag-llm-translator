@@ -66,7 +66,7 @@ list_available_langs() {
         local dir_name=$(basename "$d")
         is_langcode "$dir_name" || continue
         
-        if find "$d" -maxdepth 2 -name "*${ext}" -print -quit 2>/dev/null | grep -q .; then
+        if find "$d" -maxdepth 1 -name "*${ext}" -print -quit 2>/dev/null | grep -q .; then
             echo "$dir_name"
         fi
     done
