@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-05-20
+
+### Added
+- **BATS shell test suite**: introduced [BATS](https://github.com/bats-core/bats-core) as the shell script testing framework, added as Git submodules under `tests/bats/` (core, support, assert). A `tests/shell/test_helper.bash` file provides common setup shared across all test files.
+- **`tests/shell/`**: comprehensive BATS test files covering `bin/common.sh`, `bin/manage-backup.sh`, `bin/setup_post_processing.sh`, `bin/translate.sh`, and `bin/run_tests.sh`.
+- **`bin/run_bash_tests.sh`**: new script that discovers and runs all `.bats` files in `tests/shell/`.
+- **`bin/lib/env_helpers.sh`**: new shared helper library extracted from `bin/setup_post_processing.sh`, containing the `_build_plugin_lines` and `_patch_env` functions so they can be sourced and unit-tested independently.
+- **`bin/lib/model_config.py`**: new Python module centralising model-list loading and merging logic (previously duplicated as inline heredocs in `bin/translate.sh` and `bin/eval_quality.sh`). Provides a CLI interface (`list --format names|lookup`) consumed by both scripts.
+- **`tests/unit/test_model_config.py`**: pytest unit tests for `bin/lib/model_config.py`.
+
+### Changed
+- **`bin/translate.sh`** and **`bin/eval_quality.sh`**: replaced duplicated inline Python heredocs (`load_merged_models`) with calls to `bin/lib/model_config.py`, eliminating ~40 lines of duplicated logic from each script.
+- **`bin/setup_post_processing.sh`**: `_build_plugin_lines` and `_patch_env` are now sourced from `bin/lib/env_helpers.sh` rather than defined inline.
+
+### Fixed
+- **`bin/common.sh` — `list_available_langs`**: replaced a fragile character-length heuristic (`[ ${#dir_name} -gt 5 ]`) with a proper BCP-47-compliant `is_langcode` regex function, preventing false positives from non-language directory names.
+- **`bin/common.sh` — `list_available_langs`**: corrected the `find` depth from `maxdepth 2` to `maxdepth 1`, so the function only considers `.po` files directly inside a language directory rather than recursing into subdirectories.
+
 ## [5.0.3] - 2026-05-18
 
 ### Fixed
