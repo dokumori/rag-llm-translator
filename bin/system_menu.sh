@@ -14,6 +14,11 @@
 # that gracefully without killing the menu loop.
 set +e
 
+# Ignore Ctrl+C in the menu itself so the loop stays alive.
+# Use ':' (no-op), NOT '' (SIG_IGN) — SIG_IGN is inherited by children
+# and cannot be overridden, which would break child scripts' own traps.
+trap ':' INT
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"

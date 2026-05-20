@@ -24,6 +24,24 @@ set -e
 # Source shared helpers
 source "$(dirname "$0")/common.sh"
 
+# ---------------------------------------------------------------------------
+# Interrupt handling — Ctrl+C kills the in-container process but keeps
+# Docker containers running so the user can immediately retry.
+# ---------------------------------------------------------------------------
+_INTERRUPTED=0
+_handle_interrupt() {
+  stty sane 2>/dev/null || true   # restore terminal if docker's PTY left it in raw mode
+  echo ""
+  echo "⚠️  Translation interrupted!"
+  # No kill needed — Python re-raises SIGINT as a real signal death,
+  # so the container process is already gone by the time we get here.
+  _INTERRUPTED=1
+  echo "✅ Translation process stopped. Containers are still running."
+  echo "   To fully stop containers, run: docker compose stop"
+  exit 130
+}
+trap '_handle_interrupt' INT TERM
+
 echo "----------------------------------------------------------------"
 echo "RAG LLM Translation System"
 echo "----------------------------------------------------------------"
@@ -208,6 +226,7 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # 4. Execute Modular Translation Runner
 echo "📦 Starting Modular Translation Runner..."
+_dc_rc=0
 docker compose exec \
   toolbox python3 -u /app/src/translate_runner.py \
   --model "$SELECTED_MODEL" \
@@ -217,7 +236,17 @@ docker compose exec \
   --model-slug "$MODEL_SLUG" \
   --rag-mode "$RAG_MODE" \
   --timestamp "$TIMESTAMP" \
-  $SKIP_RAG_FLAG
+  $SKIP_RAG_FLAG \
+  || _dc_rc=$?
+
+# Fallback: if docker converted the signal death to a normal exit 130,
+# bash's WCE discards the pending SIGINT and the INT trap never fires.
+# Detect that case here and run the handler explicitly.
+if [ "$_dc_rc" -eq 130 ] && [ "$_INTERRUPTED" -eq 0 ]; then
+  _handle_interrupt
+fi
+# Non-interrupt failure — let set -e handle it
+[ "$_dc_rc" -eq 0 ] || [ "$_dc_rc" -eq 130 ] || exit "$_dc_rc"
 
 # 5. Post-Processing
   echo "✨ Running Post-Process..."
@@ -226,5 +255,10 @@ docker compose exec \
 done
 
 echo "----------------------------------------------------------------"
-echo "✅ Translation Workflow Complete!"
+if [ "$_INTERRUPTED" -eq 1 ]; then
+  echo "⚠️  Translation was interrupted — workflow did not complete."
+  echo "   Containers are still running. Run translate.sh again to retry."
+else
+  echo "✅ Translation Workflow Complete!"
+fi
 echo "----------------------------------------------------------------"

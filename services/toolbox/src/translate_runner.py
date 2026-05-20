@@ -238,4 +238,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run_translation_workflow(args.model, args.input, args.output, args.model_slug, args.rag_mode, args.timestamp, skip_rag=args.skip_rag, target_lang=args.target_lang)
+    try:
+        run_translation_workflow(args.model, args.input, args.output, args.model_slug, args.rag_mode, args.timestamp, skip_rag=args.skip_rag, target_lang=args.target_lang)
+    except KeyboardInterrupt:
+        # Re-raise as a real signal death so the parent shell's INT trap fires.
+        # Using SystemExit(130) would be a "normal exit" — bash's SIGINT WCE
+        # (wait-and-cooperative-exit) would discard its own pending SIGINT,
+        # preventing the shell trap handler from ever running.
+        import signal
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGINT)
