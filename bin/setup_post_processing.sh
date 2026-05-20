@@ -13,6 +13,7 @@ PROJECT_ROOT="$(pwd)"
 
 # Source shared helpers
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/lib/env_helpers.sh"
 
 # ─── Pre-flight ──────────────────────────────────────────────────────
 ENV_FILE="${PROJECT_ROOT}/.env"
@@ -232,60 +233,7 @@ if [ ${#LANG_KEYS[@]} -eq 0 ]; then
 fi
 
 # ─── Step 6: Patch .env ──────────────────────────────────────────────
-_build_plugin_lines() {
-  local lines=""
-  for i in "${!LANG_KEYS[@]}"; do
-    local lang="${LANG_KEYS[$i]}"
-    local val="${LANG_VALS[$i]}"
-    local env_key="POST_PROCESS_PLUGINS_$(echo "$lang" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
-    lines+="${env_key}=${val}"$'\n'
-  done
-  echo -n "$lines"
-}
-
-_patch_env() {
-  local enabled_value="$1"
-  local plugin_lines="$2"
-
-  # Create a temp file for the new .env
-  local tmp_file
-  tmp_file=$(mktemp "${PROJECT_ROOT}/.env.tmp.XXXXXX")
-
-  # Copy all lines except old post-processing config
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    # Skip old post-processing lines (both active and commented from template)
-    case "$line" in
-      POST_PROCESSING_ENABLED=*) continue ;;
-      POST_PROCESS_PLUGINS=*) continue ;;
-      POST_PROCESS_PLUGINS_*=*) continue ;;
-      "# --- Post-Processing"*) continue ;;
-      "#   bash bin/setup_post_processing.sh"*) continue ;;
-      "# To configure post-processing"*) continue ;;
-      "# Or uncomment and edit manually"*) continue ;;
-      "# POST_PROCESS_PLUGINS_"*) continue ;;
-      "# See docs/2_post_processing.md"*) continue ;;
-      "# ----"*) continue ;;
-      "#"*) ;; # keep other comments
-    esac
-    echo "$line" >> "$tmp_file"
-  done < "$ENV_FILE"
-
-  # Remove trailing blank lines
-  sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmp_file" 2>/dev/null || true
-
-  # Append post-processing block
-  {
-    echo ""
-    echo "# --- Post-Processing (configured by setup_post_processing.sh) ---"
-    echo "POST_PROCESSING_ENABLED=${enabled_value}"
-    if [ -n "$plugin_lines" ]; then
-      echo -n "$plugin_lines"
-    fi
-  } >> "$tmp_file"
-
-  # Replace original
-  mv "$tmp_file" "$ENV_FILE"
-}
+# _build_plugin_lines and _patch_env are sourced from bin/lib/env_helpers.sh
 
 PLUGIN_LINES=$(_build_plugin_lines)
 _patch_env "true" "$PLUGIN_LINES"

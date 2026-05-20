@@ -62,41 +62,22 @@ else
 fi
 
 
-# Helper: load models with custom override support
-load_merged_models() {
-  python3 -c "
-import json, os
-base = json.load(open('$MODELS_JSON')).get('models', [])
-custom_path = '$CUSTOM_MODELS_JSON'
-if custom_path and os.path.exists(custom_path):
-    custom = json.load(open(custom_path)).get('models', [])
-    dry_run = next((m for m in custom if m.get('is_dry_run')), next((m for m in base if m.get('is_dry_run')), None))
-    # Ensure dry run model is always at the end
-    models = [m for m in custom if not m.get('is_dry_run')] + ([dry_run] if dry_run else [])
-else:
-    # Move any dry run model in base to the end
-    models = [m for m in base if not m.get('is_dry_run')] + [m for m in base if m.get('is_dry_run')]
-
-for m in models:
-    # Add (dry run) suffix to name if missing and it is a dry run model
-    if m.get('is_dry_run') and '(dry run)' not in m.get('name', '').lower():
-        m['name'] = f\"{m['name']} (dry run)\"
-    print(json.dumps(m))
-"
-}
+# Helper: path to shared model config script
+MODEL_CONFIG="bin/lib/model_config.py"
 
 # 1. Model Selection Menu
 menu_options=()
 while IFS= read -r line; do
   menu_options+=("$line")
-done < <(load_merged_models | python3 -c "import sys, json; [print(json.loads(l)['name']) for l in sys.stdin]")
+done < <(python3 "$MODEL_CONFIG" list --base "$MODELS_JSON" --custom "$CUSTOM_MODELS_JSON" --format names)
 PS3="Enter the number of your choice: "
 
 select opt in "${menu_options[@]}"
 do
   if [ -n "$opt" ]; then
-    SELECTED_MODEL=$(load_merged_models | python3 -c "import sys, json; [print(json.loads(l)['id']) for l in sys.stdin if json.loads(l)['name'] == '$opt']" | head -1)
-    IS_DRY_RUN=$(load_merged_models | python3 -c "import sys, json; [print(str(json.loads(l)['is_dry_run']).lower()) for l in sys.stdin if json.loads(l)['name'] == '$opt']" | head -1)
+    LOOKUP_OUTPUT=$(python3 "$MODEL_CONFIG" list --base "$MODELS_JSON" --custom "$CUSTOM_MODELS_JSON" --format lookup --name "$opt")
+    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | head -1)
+    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT" | tail -1)
     break
   else
     echo "❌ Invalid option. Please try again."

@@ -35,7 +35,7 @@ fi
 # 1. -p no:cacheprovider: Disables the pytest cache to avoid permission errors.
 # 2. PYTHONPATH: We add the rag-proxy src path so integration tests can find 'app'.
 docker compose exec \
-  -e PYTHONPATH="/app/src:/app/services/rag-proxy/src:/app/shared" \
+  -e PYTHONPATH="/app/src:/app/services/rag-proxy/src:/app/shared:/app/bin/lib" \
   toolbox python -m pytest \
   -p no:cacheprovider \
   --maxfail=2 \

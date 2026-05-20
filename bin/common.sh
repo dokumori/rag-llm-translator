@@ -43,6 +43,14 @@ discover_lang_dirs() {
     done
 }
 
+# Returns 0 (true) if the argument looks like a BCP-47 langcode.
+# Matches: 2–3 lowercase letters, optionally followed by a hyphen and 2–4 alphanumerics.
+# Examples: ja, en, fra, pt-br, zh-Hant
+# Rejects:  with_rag, debug, 12345, a
+is_langcode() {
+    [[ "$1" =~ ^[a-z]{2,3}(-[a-zA-Z0-9]{2,4})?$ ]]
+}
+
 # Lists available language codes by scanning for subdirectories
 # that contain at least one file matching the given extension.
 #
@@ -56,11 +64,9 @@ list_available_langs() {
     for d in "$base_dir"/*/; do
         [ -d "$d" ] || continue
         local dir_name=$(basename "$d")
-        # Ignore directories longer than 5 chars (e.g. 'with_rag', 'without_rag')
-        # assuming the longest langcode would be something like pt-br
-        [ ${#dir_name} -gt 5 ] && continue
+        is_langcode "$dir_name" || continue
         
-        if find "$d" -maxdepth 2 -name "*${ext}" -print -quit 2>/dev/null | grep -q .; then
+        if find "$d" -maxdepth 1 -name "*${ext}" -print -quit 2>/dev/null | grep -q .; then
             echo "$dir_name"
         fi
     done
