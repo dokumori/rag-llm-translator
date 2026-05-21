@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-05-20
+
+> ⚠️ **Breaking change:** The JSON-based model config files (`config/models/models.json`, `config/models/custom/models.json`) are **no longer supported** and will not be read. Existing configurations will stop working until migrated.
+
+> **Upgrade:** Re-run `bin/setup.sh`, then `docker compose up -d --build` (`--build` is required — new pip dependencies were added). See migration notes below.
+
+> **Migration:** Re-run `bin/setup.sh` — it will guide you through provider selection and regenerate `config/models.yaml` from scratch. The old JSON files (`config/models/models.json`, `config/models/custom/models.json`, `config/models/custom/models.example.json`) are no longer read and can be deleted.
+
+### Added
+- **`config/models.yaml`** — single source of truth for all model definitions, replacing the three separate JSON files. Supports comments, pricing metadata, and full provider/model field schema in one place.
+- **`config/models.example.yaml`** — git-tracked template for the new YAML model config format.
+- **`bin/lib/model_config.py`**:
+  - **`load_models_yaml()`**: reads from the new YAML schema; returns the same `list[dict]` shape all callers already expect.
+  - **`generate_litellm_config()`**: derives `config/litellm/config.yaml` from `models.yaml` automatically. LiteLLM config is now auto-generated and should not be edited by hand.
+  - **`generate-litellm` CLI subcommand**: regenerates LiteLLM config on demand.
+- **`PyYAML>=6.0`** pinned as an explicit dependency for toolbox and rag-proxy.
+
+### Changed
+- **`bin/setup.sh`**: wizard now writes `config/models.yaml` as the single config output; LiteLLM config is derived from it automatically.
+- **`bin/translate.sh`** and **`bin/eval_quality.sh`**: model menu now populated via the toolbox container (YAML) instead of a host-side Python call (JSON), removing the host-side PyYAML dependency.
+- **`load_models_config()`**: simplified to a single YAML load; `custom_path` parameter and `CUSTOM_MODELS_CONFIG_PATH` env var removed.
+- **`docker-compose.yml`**: updated to use `config/models.yaml`; `CUSTOM_MODELS_CONFIG_PATH` removed.
+- **`docs/8_multi_llm_support.md`**: rewritten for the single-file workflow.
+
+### Removed
+- **`config/models/models.json`** — superseded by `config/models.yaml`.
+- **`config/models/custom/models.example.json`** — superseded by `config/models.example.yaml`.
+- **`config/litellm/config.example.yaml`** — superseded by `config/models.example.yaml`.
+
+### Fixed
+- Model definitions were previously duplicated across multiple files, causing configuration drift and high maintenance overhead. The new architecture ensures all model metadata has exactly one canonical location.
+
+---
+
 ## [5.1.1] - 2026-05-21
 
 ### Fixed
