@@ -190,6 +190,21 @@ teardown() {
     assert_line "ja"
 }
 
+@test "[common.sh::list_available_langs] finds langs with .po files in subdirectories (eval with_rag/without_rag structure)" {
+    local tmpdir="${BATS_TEST_TMPDIR}/langs_subdirs"
+    mkdir -p "$tmpdir/it/with_rag"
+    mkdir -p "$tmpdir/it/without_rag"
+    mkdir -p "$tmpdir/nl"
+    touch "$tmpdir/it/with_rag/file.po"
+    touch "$tmpdir/it/without_rag/file.po"
+    # nl has no .po files at all — should be excluded
+
+    run list_available_langs "$tmpdir"
+    assert_success
+    assert_line "it"
+    refute_line "nl"
+}
+
 
 # ---------------------------------------------------------------------------
 # load_env (lines 110–117 of common.sh)
