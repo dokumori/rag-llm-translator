@@ -8,8 +8,6 @@
 # BATS is vendored as a Git submodule in tests/bats/bats-core/.
 # If missing, run: git submodule update --init --recursive
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -21,10 +19,48 @@ if [ ! -x "$BATS_BIN" ]; then
     exit 1
 fi
 
+# Collect the list of files to run
 if [ $# -gt 0 ]; then
-    # Run specific files passed as arguments
-    "$BATS_BIN" --timing "$@"
+    FILES=("$@")
 else
-    # Run all .bats files in tests/shell/
-    "$BATS_BIN" --timing "${PROJECT_ROOT}/tests/shell/"*.bats
+    FILES=("${PROJECT_ROOT}/tests/shell/"*.bats)
 fi
+
+# ── Run each file and track results ──────────────────────────────────────────
+passed_files=()
+failed_files=()
+
+for file in "${FILES[@]}"; do
+    echo ""
+    if "$BATS_BIN" --timing "$file"; then
+        passed_files+=("$file")
+    else
+        failed_files+=("$file")
+    fi
+done
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+total=$(( ${#passed_files[@]} + ${#failed_files[@]} ))
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo " Test Suite Summary  ($total file(s) run)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ ${#passed_files[@]} -gt 0 ]; then
+    echo "  ✅ Passed (${#passed_files[@]}):"
+    for f in "${passed_files[@]}"; do
+        echo "     • $(basename "$f")"
+    done
+fi
+
+if [ ${#failed_files[@]} -gt 0 ]; then
+    echo "  ❌ Failed (${#failed_files[@]}):"
+    for f in "${failed_files[@]}"; do
+        echo "     • $(basename "$f")"
+    done
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Exit with failure if any file failed
+[ ${#failed_files[@]} -eq 0 ]
