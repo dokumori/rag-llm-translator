@@ -49,13 +49,12 @@ echo "----------------------------------------------------------------"
 # Ensure we are running from project root
 cd "$(dirname "$0")/.."
 
-MODELS_JSON="config/models/models.json"
-CUSTOM_MODELS_JSON="config/models/custom/models.json"  # (Optional) override file
+MODELS_YAML="config/models.yaml"
 
-# Safety check for required system models
-if [ ! -f "$MODELS_JSON" ]; then
-  echo "❌ Error: System models configuration not found at $MODELS_JSON"
-  echo "   Please ensure you are running this from the project root."
+# Safety check for required models config
+if [ ! -f "$MODELS_YAML" ]; then
+  echo "❌ Error: Models configuration not found at $MODELS_YAML"
+  echo "   Run bin/setup.sh to generate it, or copy config/models.example.yaml to config/models.yaml."
   exit 1
 fi
 
@@ -80,20 +79,21 @@ else
 fi
 
 
-# Helper: path to shared model config script
-MODEL_CONFIG="bin/lib/model_config.py"
+# Helper: path to shared model config script (runs inside toolbox to avoid host PyYAML dep)
+MODEL_CONFIG="/app/bin/lib/model_config.py"
+CONTAINER_MODELS_YAML="/app/config/models.yaml"
 
 # 1. Model Selection Menu
 menu_options=()
 while IFS= read -r line; do
   menu_options+=("$line")
-done < <(python3 "$MODEL_CONFIG" list --base "$MODELS_JSON" --custom "$CUSTOM_MODELS_JSON" --format names)
+done < <(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format names)
 PS3="Enter the number of your choice: "
 
 select opt in "${menu_options[@]}"
 do
   if [ -n "$opt" ]; then
-    LOOKUP_OUTPUT=$(python3 "$MODEL_CONFIG" list --base "$MODELS_JSON" --custom "$CUSTOM_MODELS_JSON" --format lookup --name "$opt")
+    LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
     SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | head -1)
     IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT" | tail -1)
     break

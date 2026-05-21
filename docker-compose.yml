@@ -44,8 +44,7 @@ services:
       - TORCH_COMPILE_DISABLE=1
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
       - PROMPTS_DIR=/app/config/prompts
-      - MODELS_CONFIG_PATH=/app/config/models/models.json
-      - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
+      - MODELS_CONFIG_PATH=/app/config/models.yaml
       - GLOSSARY_COLLECTION=app_glossary
       - TM_COLLECTION=app_tm
       # Also uses from .env / .env.defaults (via env_file):
@@ -104,8 +103,7 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app/src:/app/shared:/app/services/rag-proxy/src:/app/bin/lib
       - PYTHONUNBUFFERED=1
-      - MODELS_CONFIG_PATH=/app/config/models/models.json
-      - CUSTOM_MODELS_CONFIG_PATH=/app/config/models/custom/models.json
+      - MODELS_CONFIG_PATH=/app/config/models.yaml
       # Also uses from .env (via env_file):
       # - LLM_API_TOKEN
       # - LLM_BASE_URL

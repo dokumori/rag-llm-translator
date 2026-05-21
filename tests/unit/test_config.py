@@ -1,245 +1,137 @@
 """
 Unit Test: Shared Config – load_models_config
 ----------------------------------------------
-Tests the model configuration loading and merging logic in core/config.py.
-Covers: base-only loading, custom overrides, dry-run preservation, and error handling.
+Tests the model configuration loading logic in core/config.py.
+Covers: YAML loading, ordering, dry-run handling, and error handling.
 
 Run Command:
     bash bin/run_tests.sh tests/unit/test_config.py -v
 """
-import json
 import pytest
-from unittest.mock import patch, mock_open, call
+import yaml
 from core.config import load_models_config
 
 
 # ---------------------------------------------------------------------------
-# Helpers – build JSON strings that mirror the real models.json format
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _models_json(models: list) -> str:
-    return json.dumps({"models": models})
+def _write_yaml(path, models: list) -> str:
+    path.write_text(yaml.dump({"models": models}, default_flow_style=False))
+    return str(path)
+
+
+def _make(id_, name, is_dry_run=False):
+    m = {"id": id_, "name": name, "is_dry_run": is_dry_run}
+    if not is_dry_run:
+        m["provider"] = "anthropic"
+        m["model"] = id_
+        m["api_key_env"] = "ANTHROPIC_API_KEY"
+    return m
 
 
 BASE_MODELS = [
-    {"id": "model-a", "name": "Model A", "is_dry_run": False},
-    {"id": "model-b", "name": "Model B", "is_dry_run": False},
-    {"id": "dry-run-model", "name": "Dry Run", "is_dry_run": True},
-]
-
-CUSTOM_MODELS = [
-    {"id": "custom-1", "name": "Custom 1", "is_dry_run": False},
+    _make("model-a", "Model A"),
+    _make("model-b", "Model B"),
+    _make("dry-run-model", "Dry Run", is_dry_run=True),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Tests: YAML loading
 # ---------------------------------------------------------------------------
 
-class TestLoadModelsConfigBaseOnly:
-    """Scenarios where NO custom override file exists."""
+class TestLoadModelsConfigYaml:
 
-    def test_returns_base_models_when_no_custom_file(self, tmp_path):
-        """With only a base file present, all base models are returned."""
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(BASE_MODELS))
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(tmp_path / "nonexistent.json"),
-        )
-
+    def test_loads_from_yaml_file(self, tmp_path):
+        """Loads models from a valid YAML file, returning all entries."""
+        f = _write_yaml(tmp_path / "models.yaml", BASE_MODELS)
+        result = load_models_config(models_path=f)
         assert len(result) == 3
         ids = [m["id"] for m in result]
         assert "model-a" in ids
         assert "dry-run-model" in ids
 
-    def test_returns_empty_list_when_base_missing(self, tmp_path):
-        """If the base file is also missing, return an empty list (no crash)."""
-        result = load_models_config(
-            models_path=str(tmp_path / "missing.json"),
-            custom_path=str(tmp_path / "also_missing.json"),
-        )
+    def test_dry_run_ordered_last(self, tmp_path):
+        """Dry-run model is always placed at the end of the list."""
+        models = [
+            _make("dry-run", "Dry Run", is_dry_run=True),
+            _make("model-a", "Model A"),
+        ]
+        f = _write_yaml(tmp_path / "models.yaml", models)
+        result = load_models_config(models_path=f)
+        assert result[-1]["id"] == "dry-run"
+        assert result[-1]["is_dry_run"] is True
 
+    def test_returns_empty_list_when_file_missing(self, tmp_path):
+        """Missing file logs a warning and returns empty list (no crash)."""
+        result = load_models_config(models_path=str(tmp_path / "missing.yaml"))
         assert result == []
 
-    def test_returns_empty_on_malformed_base_json(self, tmp_path):
-        """A corrupted base file should not crash; returns empty list."""
-        bad_file = tmp_path / "models.json"
-        bad_file.write_text("{not valid json!!!")
-
-        result = load_models_config(
-            models_path=str(bad_file),
-            custom_path=str(tmp_path / "nonexistent.json"),
-        )
-
+    def test_returns_empty_on_malformed_yaml(self, tmp_path):
+        """Corrupted YAML logs an error and returns empty list (no crash)."""
+        bad = tmp_path / "models.yaml"
+        bad.write_text("{not: valid: yaml: [[[")
+        result = load_models_config(models_path=str(bad))
         assert result == []
 
+    def test_empty_models_list_returns_empty(self, tmp_path):
+        """A valid YAML file with an empty models list returns []."""
+        f = _write_yaml(tmp_path / "models.yaml", [])
+        result = load_models_config(models_path=f)
+        assert result == []
 
-class TestLoadModelsConfigCustomOverride:
-    """Scenarios where a custom override file IS present."""
+    def test_pricing_fields_preserved(self, tmp_path):
+        """Pricing metadata survives loading unchanged."""
+        models = [{**_make("m", "M"), "pricing": {
+            "prompt_per_1k_tokens": 0.003,
+            "completion_per_1k_tokens": 0.015,
+        }}]
+        f = _write_yaml(tmp_path / "models.yaml", models)
+        result = load_models_config(models_path=f)
+        assert result[0]["pricing"]["completion_per_1k_tokens"] == pytest.approx(0.015)
 
-    def test_custom_replaces_base_and_preserves_dry_run(self, tmp_path):
-        """
-        When a custom file exists, its models replace base models entirely.
-        The dry-run model from the base file is auto-appended if not already
-        present in the custom list.
-        """
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(BASE_MODELS))
-
-        custom_file = tmp_path / "custom.json"
-        custom_file.write_text(_models_json(CUSTOM_MODELS))
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(custom_file),
-        )
-
-        ids = [m["id"] for m in result]
-        # Custom model is present
-        assert "custom-1" in ids
-        # Base-only models are NOT carried over
-        assert "model-a" not in ids
-        assert "model-b" not in ids
-        # Dry-run model from base IS auto-appended
-        assert "dry-run-model" in ids
-        assert len(result) == 2  # custom-1 + dry-run-model
-
-    def test_no_duplicate_dry_run_when_custom_includes_it(self, tmp_path):
-        """
-        If the custom file already defines the dry-run model id,
-        it should NOT be appended again from the base config.
-        """
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(BASE_MODELS))
-
-        custom_with_dry = [
-            {"id": "custom-1", "name": "Custom 1", "is_dry_run": False},
-            {"id": "dry-run-model", "name": "Custom Dry Run", "is_dry_run": True},
-        ]
-        custom_file = tmp_path / "custom.json"
-        custom_file.write_text(_models_json(custom_with_dry))
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(custom_file),
-        )
-
-        ids = [m["id"] for m in result]
-        # Exactly 2 entries, no duplicate dry-run
-        assert ids.count("dry-run-model") == 1
-        assert len(result) == 2
-
-    def test_custom_without_base_dry_run(self, tmp_path):
-        """
-        If the base config has no dry-run model, custom models are returned
-        as-is with nothing extra appended.
-        """
-        base_no_dry = [
-            {"id": "model-a", "name": "Model A", "is_dry_run": False},
-        ]
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(base_no_dry))
-
-        custom_file = tmp_path / "custom.json"
-        custom_file.write_text(_models_json(CUSTOM_MODELS))
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(custom_file),
-        )
-
-        assert len(result) == 1
-        assert result[0]["id"] == "custom-1"
-
-    def test_malformed_custom_falls_back_to_base(self, tmp_path):
-        """
-        If the custom file exists but is corrupted, the function should
-        gracefully fall back to the base models.
-        """
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(BASE_MODELS))
-
-        bad_custom = tmp_path / "custom.json"
-        bad_custom.write_text("<<< not json >>>")
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(bad_custom),
-        )
-
-        assert len(result) == 3
-        ids = [m["id"] for m in result]
-        assert "model-a" in ids
-
-    def test_empty_custom_models_list(self, tmp_path):
-        """
-        A valid custom file with an empty models array should return just
-        the dry-run model (if one exists in base).
-        """
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json(BASE_MODELS))
-
-        custom_file = tmp_path / "custom.json"
-        custom_file.write_text(_models_json([]))
-
-        result = load_models_config(
-            models_path=str(base_file),
-            custom_path=str(custom_file),
-        )
-
-        # Only the auto-appended dry-run model
-        assert len(result) == 1
-        assert result[0]["id"] == "dry-run-model"
+    def test_uses_default_path_env_var(self, tmp_path, monkeypatch):
+        """MODELS_CONFIG_PATH env var controls the default path."""
+        f = _write_yaml(tmp_path / "models.yaml", BASE_MODELS)
+        monkeypatch.setenv("MODELS_CONFIG_PATH", f)
+        # Re-evaluate Config class attribute by patching at call time
+        import core.config as cfg_mod
+        original = cfg_mod.Config.MODELS_CONFIG_PATH
+        cfg_mod.Config.MODELS_CONFIG_PATH = f
+        try:
+            result = load_models_config()  # no explicit path
+            assert len(result) == 3
+        finally:
+            cfg_mod.Config.MODELS_CONFIG_PATH = original
 
 
 # ---------------------------------------------------------------------------
-# Tests for _validate_model_flags (phase-0 gap coverage)
+# Tests for _validate_model_flags
 # ---------------------------------------------------------------------------
 
 class TestValidateModelFlags:
-    """Unit tests for the private _validate_model_flags validator."""
 
     def test_warns_when_flag_is_string_instead_of_bool(self, tmp_path, caplog):
-        """
-        _validate_model_flags must emit a warning when a boolean flag field
-        contains a string value (e.g. "false") instead of an actual bool.
-        This is a common copy-paste mistake in JSON config files.
-        """
+        """_validate_model_flags must emit a warning when is_dry_run is a string."""
         import logging
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json([
-            {"id": "bad-model", "name": "Bad", "is_dry_run": "false"},
-        ]))
-
+        bad = [{
+            "id": "bad-model", "name": "Bad",
+            "provider": "anthropic", "model": "bad", "api_key_env": "KEY",
+            "is_dry_run": "false",   # string, not bool
+        }]
+        f = _write_yaml(tmp_path / "models.yaml", bad)
         with caplog.at_level(logging.WARNING):
-            load_models_config(
-                models_path=str(base_file),
-                custom_path=str(tmp_path / "nonexistent.json"),
-            )
+            load_models_config(models_path=f)
+        assert any("bad-model" in r.message and "is_dry_run" in r.message
+                   for r in caplog.records)
 
-        assert any("bad-model" in r.message and "is_dry_run" in r.message for r in caplog.records), (
-            "Expected a warning about the string 'false' value on 'is_dry_run'"
-        )
-
-    def test_no_warning_when_flags_are_correct_booleans(self, tmp_path, caplog):
-        """
-        _validate_model_flags must be silent when all boolean flags have
-        proper bool values — no spurious warnings should be emitted.
-        """
+    def test_no_warning_for_correct_booleans(self, tmp_path, caplog):
+        """_validate_model_flags must be silent for correctly typed boolean flags."""
         import logging
-        base_file = tmp_path / "models.json"
-        base_file.write_text(_models_json([
-            {"id": "good-model", "name": "Good", "is_dry_run": False},
-        ]))
-
+        good = [_make("good-model", "Good")]
+        f = _write_yaml(tmp_path / "models.yaml", good)
         with caplog.at_level(logging.WARNING):
-            load_models_config(
-                models_path=str(base_file),
-                custom_path=str(tmp_path / "nonexistent.json"),
-            )
-
+            load_models_config(models_path=f)
         flag_warnings = [r for r in caplog.records if "good-model" in r.message]
-        assert not flag_warnings, "No warnings expected for correctly typed boolean flags"
-
+        assert not flag_warnings

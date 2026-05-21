@@ -4,3 +4,4 @@ sentence-transformers~=5.3
 transformers~=5.4
 openai~=2.0
 snowballstemmer~=3.0
+PyYAML>=6.0
