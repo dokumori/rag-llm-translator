@@ -102,7 +102,10 @@ def generate_litellm_config(models_yaml_path: str, output_path: str) -> None:
         model_id = m.get("model", m["id"])
 
         params: dict[str, str] = {
-            "model": f"{prefix}/{model_id}",
+            # Only prepend the provider prefix when model_id doesn't already
+            # include one (e.g. "gemini/gemini-2.5-flash" must not become
+            # "gemini/gemini/gemini-2.5-flash").
+            "model": model_id if "/" in model_id else f"{prefix}/{model_id}",
         }
         # Reference API credentials via environment variables rather than hard-coding them.
         if m.get("api_key_env"):
