@@ -40,7 +40,7 @@ _PROVIDER_PREFIX: dict[str, str] = {
 _PROVIDER_ID_PREFIXES: dict[str, list[str]] = {
     "anthropic": ["claude-"],
     "google":    ["gemini-"],
-    "openai":    ["gpt-", "o3-", "o4-"],
+    "openai":    ["gpt-", "o3"],
     "mistral":   ["mistral-"],
 }
 

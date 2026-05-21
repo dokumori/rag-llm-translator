@@ -1,0 +1,134 @@
+# config/models.example.yaml — Template for model configuration.
+# This file is the SOURCE used by bin/setup.sh to generate config/models.yaml.
+# DO NOT edit models.yaml directly — run bin/setup.sh to regenerate it.
+#
+# To add a new well-known model, add an entry here and commit this file.
+# Custom/Ollama entries are injected at setup time; do not add them here.
+
+models:
+
+  # ── Anthropic ────────────────────────────────────────────────────────────────
+  - id: claude-haiku-4-5
+    name: Claude Haiku 4.5
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    api_key_env: ANTHROPIC_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0008
+      completion_per_1k_tokens: 0.004
+
+  - id: claude-sonnet-4-6
+    name: Claude Sonnet 4.6
+    provider: anthropic
+    model: claude-sonnet-4-6
+    api_key_env: ANTHROPIC_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.003
+      completion_per_1k_tokens: 0.015
+
+  - id: claude-opus-4-7
+    name: Claude Opus 4.7
+    provider: anthropic
+    model: claude-opus-4-7
+    api_key_env: ANTHROPIC_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.015
+      completion_per_1k_tokens: 0.075
+
+  # ── Google ───────────────────────────────────────────────────────────────────
+  # Source: https://ai.google.dev/gemini-api/docs/models (2026-05-22)
+  # Pricing: https://ai.google.dev/gemini-api/docs/pricing (standard tier, per 1M tokens)
+
+  - id: gemini-2-5-flash-lite
+    name: Gemini 2.5 Flash-Lite
+    provider: google
+    model: gemini/gemini-2.5-flash-lite
+    api_key_env: GEMINI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0001
+      completion_per_1k_tokens: 0.0004
+
+  - id: gemini-2-5-flash
+    name: Gemini 2.5 Flash
+    provider: google
+    model: gemini/gemini-2.5-flash
+    api_key_env: GEMINI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0003
+      completion_per_1k_tokens: 0.0025
+
+  - id: gemini-2-5-pro
+    name: Gemini 2.5 Pro
+    provider: google
+    model: gemini/gemini-2.5-pro
+    api_key_env: GEMINI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.00125
+      completion_per_1k_tokens: 0.010
+
+  # ── OpenAI ───────────────────────────────────────────────────────────────────
+  # Source: https://openai.com/api/pricing/ (2026-05-22)
+  # gpt-4o, gpt-4o-mini, o3-mini, o4-mini are deprecated/retired.
+
+  - id: gpt-4-1-nano
+    name: GPT-4.1 Nano
+    provider: openai
+    model: gpt-4.1-nano
+    api_key_env: OPENAI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0001
+      completion_per_1k_tokens: 0.0004
+
+  - id: gpt-4-1-mini
+    name: GPT-4.1 Mini
+    provider: openai
+    model: gpt-4.1-mini
+    api_key_env: OPENAI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0004
+      completion_per_1k_tokens: 0.0016
+
+  - id: gpt-4-1
+    name: GPT-4.1
+    provider: openai
+    model: gpt-4.1
+    api_key_env: OPENAI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.002
+      completion_per_1k_tokens: 0.008
+
+  - id: o3
+    name: o3
+    provider: openai
+    model: o3
+    api_key_env: OPENAI_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.002
+      completion_per_1k_tokens: 0.008
+
+  # ── Mistral ──────────────────────────────────────────────────────────────────
+  # Source: https://mistral.ai/technology/#models (2026-05-22)
+  # mistral-medium-latest is discontinued; lineup is now Small 4 + Large 3.
+
+  - id: mistral-small
+    name: Mistral Small
+    provider: mistral
+    model: mistral-small-latest
+    api_key_env: MISTRAL_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.00015
+      completion_per_1k_tokens: 0.0006
+
+  - id: mistral-large
+    name: Mistral Large
+    provider: mistral
+    model: mistral-large-latest
+    api_key_env: MISTRAL_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.0005
+      completion_per_1k_tokens: 0.0015
+
+  # ── Dry-run sentinel (always included, regardless of provider selection) ──────
+  - id: dry-run-dummy
+    name: Dry Run (No API calls)
+    is_dry_run: true
