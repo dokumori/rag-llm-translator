@@ -4,7 +4,7 @@ import argparse
 import logging
 import tempfile
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 from core.config import load_models_config
 from core.utils import find_po_files
 from core.token_tracker import TokenTracker, build_price_table_from_config
@@ -145,7 +145,7 @@ def process_single_file(src_file: str, output_base_dir: str, ctx: TranslationCon
         return False
 
 
-def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False, target_lang: str = None) -> None:
+def run_translation_workflow(model: str, input_base_dir: str, output_base_dir: str, model_slug: str, rag_mode: str, timestamp: str, skip_rag: bool = False, target_lang: Optional[str] = None) -> None:
     """
     Main orchestration function for the translation workflow.
     """

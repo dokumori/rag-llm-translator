@@ -11,6 +11,7 @@ import os
 import sys
 import pytest
 from unittest.mock import MagicMock
+from typing import Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../services/shared/src")))
 
@@ -21,7 +22,7 @@ from core.token_tracker import TokenTracker, build_price_table_from_config
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_usage(prompt: int, completion: int, total: int = None):
+def _make_usage(prompt: int, completion: int, total: Optional[int] = None):
     """Return a MagicMock mimicking an openai CompletionUsage object."""
     m = MagicMock()
     m.prompt_tokens = prompt
@@ -30,7 +31,7 @@ def _make_usage(prompt: int, completion: int, total: int = None):
     return m
 
 
-def _make_usage_dict(prompt: int, completion: int, total: int = None):
+def _make_usage_dict(prompt: int, completion: int, total: Optional[int] = None):
     """Return a dict mimicking a usage payload."""
     return {
         "prompt_tokens": prompt,
