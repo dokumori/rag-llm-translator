@@ -2,11 +2,11 @@
 # tests/shell/test_translate.bats
 #
 # Unit tests for the MODEL_SLUG construction logic in bin/translate.sh
-# (lines 177–182).
+# (line 199).
 
 load test_helper
 
-# Stub mirroring the inline MODEL_SLUG logic from translate.sh (lines 177–182)
+# Stub mirroring the inline MODEL_SLUG logic from translate.sh (line 199)
 # so it can be tested without sourcing (and executing) the full script.
 # TODO: extract this logic into bin/lib/translate_helpers.sh so it can be sourced
 # directly — testing a copy risks the stub silently diverging from the real code.
