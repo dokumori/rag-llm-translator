@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] - 2026-05-21
+
+### Fixed
+- **`bin/common.sh` — `list_available_langs`**: restored `maxdepth 2` (reverts the 5.1.0 change), as the previous change caused an issue where the .po files for the evaluation workflow were not found.
+- **`tests/shell/test_common.sh.bats`**: added regression test covering the `with_rag/without_rag` subdirectory layout to prevent reintroduction.
+
 ## [5.1.0] - 2026-05-20
 
 ### Added
