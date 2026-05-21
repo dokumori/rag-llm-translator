@@ -406,6 +406,12 @@ def test_handle_translation_real_call(mock_config, mock_rag, mock_parse, mock_ge
     mock_completion.model_dump.return_value = {
         "choices": [{"message": {"content": "Translated Text"}}]
     }
+    # Wire up choices explicitly so the app's finish_reason and content reads
+    # return real values rather than opaque MagicMock objects.
+    mock_choice = MagicMock()
+    mock_choice.finish_reason = "stop"
+    mock_choice.message.content = "Translated Text"
+    mock_completion.choices = [mock_choice]
     mock_openai.chat.completions.create.return_value = mock_completion
     mock_get_client.return_value = mock_openai
 

@@ -148,8 +148,8 @@ Once the translation is complete, the .po file with the translated strings will 
 You can override the default list of LLM models by providing a custom model configuration file. This is useful when adding providers not covered by the setup wizard, or when customising the model menu labels.
 
 - **Location**: `config/models/custom/`
-- **Setup**: Copy `config/models/custom/models.example.json` to `config/models/custom/models.json` and add your model definitions.
-- **Effect**: If present, the system will load models from this file instead of `config/models/models.json`. The default `dry-run` model is automatically preserved to ensure testing capability.
+- **Setup**: Copy `config/models.example.yaml` to `config/models.yaml` (or run `bin/setup.sh` to generate it) and add your model definitions.
+- **Effect**: Edit `config/models.yaml` then regenerate the LiteLLM config: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models.yaml --output /app/config/litellm/config.yaml` and restart with `docker compose restart litellm`.
 - **Model config changes** are picked up automatically — no container restart is needed.
 
 See [docs/8_multi_llm_support.md](docs/8_multi_llm_support.md) for full details on custom provider configuration.

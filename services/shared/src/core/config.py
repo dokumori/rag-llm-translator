@@ -1,7 +1,6 @@
 import os
-import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,7 @@ class Config:
 
     # --- Paths ---
     PROMPTS_DIR: str = os.environ.get("PROMPTS_DIR", "/app/config/prompts")
-    MODELS_CONFIG_PATH: str = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models/models.json")
-    CUSTOM_MODELS_CONFIG_PATH: str = os.environ.get("CUSTOM_MODELS_CONFIG_PATH", "/app/config/models/custom/models.json")
+    MODELS_CONFIG_PATH: str = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models.yaml")
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
 
     # --- Embedding ---
@@ -64,62 +62,39 @@ class Config:
         logger.info(f"🔧 Config: LLM_BASE_URL={cls.LLM_BASE_URL or '(not set — check .env)'}")
 
 
-def load_models_config(models_path: str = None, custom_path: str = None) -> List[Dict[str, Any]]:
+def load_models_config(models_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Loads model configurations with custom override support.
+    Load model configurations from models.yaml (single source of truth).
 
-    Base models are loaded from `models_path` (defaults to Config.MODELS_CONFIG_PATH).
-    If a custom `models.json` exists at `custom_path` (defaults to Config.CUSTOM_MODELS_CONFIG_PATH),
-    its entries override base entries by matching `id`, and any new entries are appended.
+    Models are read from `models_path` (defaults to Config.MODELS_CONFIG_PATH).
+    The file format is YAML with a top-level ``models`` list; see
+    ``config/models.example.yaml`` for the schema.
 
-    The custom file uses the same format as models.json:
-      { "models": [ { "id": "...", "name": "...", ... }, ... ] }
+    Returns a list of model dicts; regular models first, dry-run last.
+    Returns an empty list on any error so callers degrade gracefully.
     """
+    import yaml
+
     if models_path is None:
         models_path = Config.MODELS_CONFIG_PATH
-    if custom_path is None:
-        custom_path = Config.CUSTOM_MODELS_CONFIG_PATH
 
-    # Load base models
-    base_models: List[Dict[str, Any]] = []
-    if os.path.exists(models_path):
-        try:
-            with open(models_path, "r", encoding="utf-8") as f:
-                base_models = json.load(f).get("models", [])
-        except Exception as e:
-            logger.error(f"❌ Failed to load base models config from {models_path}: {e}")
-    else:
+    if not os.path.exists(models_path):
         logger.warning(f"⚠️ Models config file not found at: {models_path}")
+        return []
 
-    # Custom override strategy: when custom/models.json exists it
-    # REPLACES the base model list entirely — not merges with it.  Only the single
-    # dry-run sentinel from the base file is carried over so that test/dry-run mode
-    # always works regardless of what the custom file contains.
-    #
-    # Practical implication: any model you want available at runtime must be listed
-    # in custom/models.json when that file exists.  Adding a model only to the base
-    # models.json has no effect while a custom file is present.
-    if os.path.exists(custom_path):
-        try:
-            with open(custom_path, "r", encoding="utf-8") as f:
-                custom_models = json.load(f).get("models", [])
-            custom_ids = {m["id"] for m in custom_models if "id" in m}
-
-            dry_run = next((m for m in base_models if m.get("is_dry_run")), None)
-
-            final_models = list(custom_models)
-            if dry_run and dry_run.get("id") not in custom_ids:
-                final_models.append(dry_run)
-
-            logger.info(f"📋 Loaded {len(custom_models)} custom models and {'one' if dry_run else 'zero'} default dry-run model")
-            _validate_model_flags(final_models)
-            return final_models
-
-        except Exception as e:
-            logger.error(f"❌ Failed to load custom models config from {custom_path}: {e}")
-
-    _validate_model_flags(base_models)
-    return base_models
+    try:
+        with open(models_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        models: List[Dict[str, Any]] = data.get("models", [])
+        regular = [m for m in models if not m.get("is_dry_run")]
+        dry_runs = [m for m in models if m.get("is_dry_run")]
+        all_models = regular + dry_runs
+        logger.info(f"📋 Loaded {len(regular)} model(s) + {len(dry_runs)} dry-run sentinel from {models_path}")
+        _validate_model_flags(all_models)
+        return all_models
+    except Exception as e:
+        logger.error(f"❌ Failed to load models config from {models_path}: {e}")
+        return []
 
 
 # Note: omit_temperature and use_max_completion_tokens were removed in v5.0.0.

@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, Response
 from openai import OpenAI
+
 import os
 import json
 import time
@@ -533,7 +534,7 @@ def _extract_lang_from_path(path: str) -> Optional[str]:
 @app.route('/v1/skip_rag/models', methods=['GET'])
 @app.route('/v1/lang_<target_lang_code>/models', methods=['GET'])
 @app.route('/v1/lang_<target_lang_code>/skip_rag/models', methods=['GET'])
-def list_models(target_lang_code: str = None) -> Response:
+def list_models(target_lang_code: Optional[str] = None) -> Response:
     """Returns a dynamic list of models from configuration."""
     config_models = get_models_config()
     return jsonify({
@@ -549,7 +550,7 @@ def list_models(target_lang_code: str = None) -> Response:
 @app.route('/v1/skip_rag/chat/completions', methods=['POST'])
 @app.route('/v1/lang_<target_lang_code>/chat/completions', methods=['POST'])
 @app.route('/v1/lang_<target_lang_code>/skip_rag/chat/completions', methods=['POST'])
-def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Response, int]]:
+def handle_translation(target_lang_code: Optional[str] = None) -> Union[Response, Tuple[Response, int]]:
     """Main endpoint for handling translation requests."""
     start_time = time.time()
     try:
@@ -665,7 +666,16 @@ def handle_translation(target_lang_code: str = None) -> Union[Response, Tuple[Re
                 call_kwargs["temperature"] = 0
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)
-            
+            # Guard: ensure we received a complete response, not a stream.
+            # We check structural shape rather than the SDK-specific ChatCompletion
+            # type so this works with LiteLLM, any OpenAI-compatible proxy, and
+            # plain mocks in tests — and is never stripped by `python -O`.
+            if not (hasattr(response, "choices") and isinstance(response.choices, list)):
+                raise TypeError(
+                    f"Expected a complete chat response with a 'choices' list, "
+                    f"got {type(response)!r}. Ensure 'stream' is not set in call_kwargs."
+                )
+
             # --- API ERROR CHECKS ---
             for choice in response.choices:
                 if choice.finish_reason in ["safety", "content_filter"]:

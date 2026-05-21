@@ -15,7 +15,7 @@ import random
 import csv
 import logging
 import argparse
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import datetime
 import requests
 from openai import OpenAI
@@ -135,7 +135,7 @@ def format_file_info(file_paths: List[str]) -> str:
         info.append(f"{fname} (in {dname}/)")
     return ", ".join(info)
 
-def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False, tracker: TokenTracker = None, target_lang: str = "") -> Dict[str, Any]:
+def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], prompt_template: str, dry_run: bool = False, tracker: Optional[TokenTracker] = None, target_lang: str = "") -> Optional[Dict[str, Any]]:
     """Calls the Judge LLM to evaluate the pair, or returns mock data on dry run."""
     source_text = sample["source"]
     source_context = sample.get("context", "")
@@ -278,7 +278,7 @@ def evaluate_translation(client: OpenAI, model: str, sample: Dict[str, str], pro
         logger.error(f"Evaluation failed for string: {source_text[:50]}... Error: {e}")
         return None
 
-def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool, tracker: TokenTracker = None, target_lang: str = "") -> List[Dict[str, Any]]:
+def run_evaluation_loop(client: OpenAI, model: str, paired_data: List[Dict[str, str]], limit: int, prompt_template: str, is_dry_run: bool, tracker: Optional[TokenTracker] = None, target_lang: str = "") -> List[Dict[str, Any]]:
     """Runs the primary evaluation loop, calling the judge LLM for each sample."""
     target_evals = min(limit, len(paired_data)) if limit > 0 else len(paired_data)
     target_str = str(target_evals) if limit > 0 else "ALL"

@@ -14,7 +14,9 @@ The LiteLLM gateway is a required service — it starts automatically with `dock
 bash bin/setup.sh
 ```
 
-The wizard lets you choose one or more providers, collects API keys (hidden input), and auto-generates `config/litellm/config.yaml` and `config/models/custom/models.json`.
+The wizard lets you choose one or more providers, collects API keys (hidden input), and auto-generates:
+- `config/models.yaml` — single source of truth for all model definitions
+- `config/litellm/config.yaml` — auto-derived from `models.yaml` (do not edit directly)
 
 ### Manual Setup
 
@@ -23,30 +25,20 @@ If you prefer to configure manually:
 #### Step 1: Create your config file
 
 ```bash
-cp config/litellm/config.example.yaml config/litellm/config.yaml
+cp config/models.example.yaml config/models.yaml
 ```
 
-#### Step 2: Enable the models you need
+Edit `config/models.yaml` and uncomment the entries for providers you want to use.
 
-Edit `config/litellm/config.yaml` and uncomment entries for the providers you want to use:
+#### Step 2: Generate the LiteLLM config
 
-```yaml
-model_list:
-  - model_name: claude-haiku-4-5
-    litellm_params:
-      model: anthropic/claude-haiku-4-5-20251001
-      api_key: os.environ/ANTHROPIC_API_KEY
+```bash
+docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
+    --models /app/config/models.yaml \
+    --output /app/config/litellm/config.yaml
 ```
 
-The `model_name` must match the `id` of an entry in your `models.json`. In `config/models/models.json` (or `config/models/custom/models.json`):
-
-```json
-{
-  "id": "claude-haiku-4-5",
-  "name": "Claude Haiku 4.5",
-  "is_dry_run": false
-}
-```
+Or you can write `config/litellm/config.yaml` by hand — see the schema below.
 
 #### Step 3: Set provider API keys in `.env`
 
@@ -94,15 +86,49 @@ docker compose up -d
 
 ---
 
-## Custom Model List
+## Adding or Editing Models
 
-If you want to use models not in the default `config/models/models.json`, create a custom override:
+All model definitions live in a single file: **`config/models.yaml`**.
 
-1. Copy `config/models/custom/models.example.json` to `config/models/custom/models.json`
-2. Add or edit model entries
-3. Restart `rag-proxy` — custom models are loaded automatically
+```yaml
+# config/models.yaml example
+models:
+  - id: claude-sonnet-4-6
+    name: Claude Sonnet 4.6
+    provider: anthropic
+    model: claude-sonnet-4-6
+    api_key_env: ANTHROPIC_API_KEY
+    pricing:
+      prompt_per_1k_tokens: 0.003
+      completion_per_1k_tokens: 0.015
 
-When a custom `models.json` is present it replaces the base model list entirely (the dry-run sentinel is always preserved). See comments in `config/models/models.json` for available flags.
+  - id: dry-run-dummy
+    name: Dry Run (No API calls)
+    is_dry_run: true
+```
+
+After editing `config/models.yaml`, regenerate the LiteLLM config and restart:
+
+```bash
+docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
+    --models /app/config/models.yaml \
+    --output /app/config/litellm/config.yaml
+
+docker compose restart litellm
+```
+
+### Field Reference
+
+| Field | Required | Notes |
+|---|---|---|
+| `id` | ✅ | Short identifier used by `--model` flag and menus (no spaces) |
+| `name` | ✅ | Display name in translation/evaluation menus |
+| `provider` | ✅ (non-dry-run) | `anthropic` \| `google` \| `openai` \| `mistral` \| `ollama` \| `custom` |
+| `model` | ✅ (non-dry-run) | API model identifier (without provider prefix) |
+| `api_key_env` | for most providers | Name of the env var holding the API key |
+| `api_base_env` | for `custom`/`ollama` | Name of the env var holding the base URL |
+| `is_dry_run` | dry-run only | Set `true` for the no-API-calls sentinel |
+| `pricing` | optional | `prompt_per_1k_tokens` / `completion_per_1k_tokens` in USD |
 
 ---
 
@@ -110,20 +136,20 @@ When a custom `models.json` is present it replaces the base model list entirely 
 
 **`Translation provider unavailable` (502)**
 - Check `docker compose logs rag-proxy` for the upstream error
-- Verify `config/litellm/config.yaml` has an entry for the model you selected
+- Verify `config/models.yaml` has an entry for the model you selected
 - Check `docker compose logs litellm` for provider-side errors
 - Ensure the relevant API key is set in `.env`
 
 **Gateway container not starting**
-- Ensure `config/litellm/config.yaml` has at least one uncommented model entry — LiteLLM requires at least one configured model to start
+- Ensure `config/litellm/config.yaml` has at least one model entry — LiteLLM requires at least one configured model to start
 - Run `docker compose logs litellm` to see the startup error
+- Regenerate with: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models.yaml --output /app/config/litellm/config.yaml`
 
 ---
 
 ## Using Custom OpenAI-Compatible Endpoints via Gateway
 
-If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a corporate API gateway),
-you can route them through the LiteLLM gateway alongside Claude, Gemini, and other providers.
+If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a corporate API gateway), add them to `config/models.yaml` with `provider: custom`:
 
 ### Setup via Wizard (recommended)
 
@@ -138,13 +164,9 @@ The wizard will ask for each endpoint:
 
 After each endpoint, you'll be asked **"Add another custom endpoint?"** — answer `y` to add more.
 
-The wizard automatically writes `.env`, `config/litellm/config.yaml`, and
-`config/models/custom/models.json` for all configured endpoints.
+The wizard automatically writes `config/models.yaml` and derives `config/litellm/config.yaml`.
 
 ### Manual Setup
-
-The `litellm` container loads `.env` directly, so any variable name you define there is
-automatically available. You can add as many endpoints as you like.
 
 1. Add to `.env`:
    ```bash
@@ -154,63 +176,51 @@ automatically available. You can add as many endpoints as you like.
    CUSTOM_LLM_API_KEY_2=sk-another-key
    ```
 
-2. Add to `config/litellm/config.yaml`:
+2. Add to `config/models.yaml`:
    ```yaml
-   - model_name: amazee-llama3
-     litellm_params:
-       model: openai/llama-3.1-70b-instruct
-       api_base: os.environ/CUSTOM_LLM_BASE_URL_1
-       api_key: os.environ/CUSTOM_LLM_API_KEY_1
+   - id: amazee-llama3
+     name: "amazee.ai — Llama 3.1"
+     provider: custom
+     model: llama-3.1-70b-instruct
+     api_base_env: CUSTOM_LLM_BASE_URL_1
+     api_key_env: CUSTOM_LLM_API_KEY_1
 
-   - model_name: example-gpt
-     litellm_params:
-       model: openai/gpt-4o
-       api_base: os.environ/CUSTOM_LLM_BASE_URL_2
-       api_key: os.environ/CUSTOM_LLM_API_KEY_2
-   ```
-   The `model` value after `openai/` must be the model identifier your remote server expects.
-
-3. Add to `config/models/custom/models.json`:
-   ```json
-   { "id": "amazee-llama3", "name": "Amazee Llama 3", "is_dry_run": false },
-   { "id": "example-gpt", "name": "Example GPT", "is_dry_run": false }
+   - id: example-gpt
+     name: "Example — GPT-4o"
+     provider: custom
+     model: gpt-4o
+     api_base_env: CUSTOM_LLM_BASE_URL_2
+     api_key_env: CUSTOM_LLM_API_KEY_2
    ```
 
-4. Restart:
+3. Regenerate LiteLLM config and restart:
    ```bash
-   docker compose up -d
+   docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
+       --models /app/config/models.yaml \
+       --output /app/config/litellm/config.yaml
+   docker compose restart litellm
    ```
 
 > [!NOTE]
-> The `openai/` prefix with a custom `api_base` tells LiteLLM to use an OpenAI-compatible
-> client pointed at your endpoint instead of the official OpenAI API.
->
-> Variable names in `.env` are completely free-form — use any convention you like. The wizard
-> uses `CUSTOM_LLM_BASE_URL_N` / `CUSTOM_LLM_API_KEY_N` for the entries it generates, but
-> manual additions can use any name and will work without touching `docker-compose.yml`.
-
+> The `custom` provider maps to the openai-compatible client with a custom `api_base`.
+> Variable names in `.env` are completely free-form — the wizard uses `CUSTOM_LLM_BASE_URL_N` / `CUSTOM_LLM_API_KEY_N` but any name works.
 
 ---
 
 ## Using Ollama via Gateway
 
-Routing Ollama through the gateway lets you use local models **alongside** cloud providers
-in the same session without changing any config.
+Routing Ollama through the gateway lets you use local models **alongside** cloud providers in the same session without changing any config.
 
 ### Prerequisites
 
 1. **Ollama must be running** on the host machine.
-2. **Ollama must accept external connections** — set `OLLAMA_HOST=0.0.0.0` before starting
-   Ollama (otherwise it only listens on `127.0.0.1` and Docker containers cannot reach it).
-3. **Linux only:** The shipped `docker-compose.yml` already includes
-   `extra_hosts: ["host.docker.internal:host-gateway"]` on the `litellm` service, which is
-   required for `host.docker.internal` to resolve on Linux. On macOS/Windows this is a no-op.
+2. **Ollama must accept external connections** — set `OLLAMA_HOST=0.0.0.0` before starting Ollama (otherwise it only listens on `127.0.0.1` and Docker containers cannot reach it).
+3. **Linux only:** The shipped `docker-compose.yml` already includes `extra_hosts: ["host.docker.internal:host-gateway"]` on the `litellm` service.
 
 ### Setup via Wizard (recommended)
 
 Run `bash bin/setup.sh`, choose **Local** mode.
-Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and
-generates the config and models entries automatically.
+Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and writes `config/models.yaml` with the Ollama entries automatically.
 
 ### Manual Setup
 
@@ -219,24 +229,22 @@ generates the config and models entries automatically.
    OLLAMA_BASE_URL=http://host.docker.internal:11434
    ```
 
-2. Add to `config/litellm/config.yaml` (one entry per model):
+2. Add to `config/models.yaml`:
    ```yaml
-   - model_name: llama3.1
-     litellm_params:
-       model: ollama/llama3.1
-       api_base: os.environ/OLLAMA_BASE_URL
+   - id: llama3.1
+     name: "Ollama — llama3.1"
+     provider: ollama
+     model: llama3.1
+     api_base_env: OLLAMA_BASE_URL
    ```
 
-3. Add to `config/models/custom/models.json`:
-   ```json
-   { "id": "llama3.1", "name": "Ollama — llama3.1", "is_dry_run": false }
-   ```
-
-4. Start:
+3. Regenerate and restart:
    ```bash
-   docker compose up -d
+   docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
+       --models /app/config/models.yaml \
+       --output /app/config/litellm/config.yaml
+   docker compose restart litellm
    ```
 
 > [!TIP]
-> You can mix Ollama models with cloud providers in the same `config.yaml`. After setup,
-> simply select your Ollama model name in the translation or evaluation menus.
+> You can mix Ollama models with cloud providers in the same `models.yaml`. After setup, simply select your Ollama model name in the translation or evaluation menus.
