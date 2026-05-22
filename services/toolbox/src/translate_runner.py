@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import Dict, Optional
 from core.config import load_models_config
-from core.utils import find_po_files
+from core.utils import find_po_files, langcode
 from core.token_tracker import TokenTracker, build_price_table_from_config
 from po_translator import translate_po_file
 
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="LLM Model ID")
     parser.add_argument("--input", required=True, help="Input directory")
     parser.add_argument("--output", required=True, help="Output directory")
-    parser.add_argument("--target-lang", default=None, help="Target language code (overrides TARGET_LANG env var)")
+    parser.add_argument("--target-lang", default=None, type=langcode, help="Target language code (overrides TARGET_LANG env var)")
     parser.add_argument("--model-slug", required=True, help="Model slug for numbering")
     parser.add_argument("--rag-mode", required=True, help="RAG mode label")
     parser.add_argument("--timestamp", required=True, help="Run timestamp")

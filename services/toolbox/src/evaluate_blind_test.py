@@ -20,7 +20,7 @@ import datetime
 import requests
 from openai import OpenAI
 from core.config import load_models_config
-from core.utils import find_po_files
+from core.utils import find_po_files, optional_langcode
 from core.token_tracker import TokenTracker, build_price_table_from_config
 
 # Attempt to import tools for getting context from db
@@ -431,7 +431,7 @@ def main():
     parser.add_argument("--with-rag-dir", required=True, help="Directory containing with-RAG translations")
     parser.add_argument("--without-rag-dir", required=True, help="Directory containing without-RAG translations")
     parser.add_argument("--limit", type=int, default=0, help="Number of strings to evaluate (0 for all)")
-    parser.add_argument("--lang", default="", help="Target language code for RAG filtering (e.g. 'it', 'ja'). Without this, glossary/TM lookups will not be language-filtered.")
+    parser.add_argument("--lang", default="", type=optional_langcode, help="Target language code for RAG filtering (e.g. 'it', 'ja'). Without this, glossary/TM lookups will not be language-filtered.")
     args = parser.parse_args()
 
     logger.info("🔍 Loading translation pairs...")
