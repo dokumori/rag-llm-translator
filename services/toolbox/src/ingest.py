@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Generator, Any, Tuple, Set
 from core.config import Config
-from core.utils import find_po_files
+from core.utils import find_po_files, langcode as _langcode_type
 from core import paths
 from ingest_client import IngestClient
 
@@ -348,8 +348,10 @@ def _ingest_batches(client: IngestClient, collection_name: str, ids: List[str], 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Ingest translation data into ChromaDB.")
-    parser.add_argument("--lang", required=True,
-                        help="Target language code (e.g. ja, it). "
+    parser.add_argument("--lang", required=True, type=_langcode_type,
+                        help="Target language code (e.g. ja, it, pt-br). "
+                             "Must be a valid BCP-47 code: 2-3 lowercase letters, "
+                             "optionally followed by a hyphen and 2-4 alphanumerics. "
                              "Determines which data/tm_source/{lang}/ directory to read from.")
 
     # --glossary-only and --tm-only are mutually exclusive; omitting both runs both.
