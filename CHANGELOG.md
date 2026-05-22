@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.1] - 2026-05-22
+
+### Added
+- **BCP-47 language code validation at the CLI boundary**: `--lang` and `--target-lang` arguments in `ingest`, `translate`, and `evaluate` commands are now validated against the BCP-47 format before any processing begins. Invalid codes are rejected immediately with a clear error message rather than failing silently later in the pipeline.
+
+### Fixed
+- Invalid language code arguments could previously be passed through to the pipeline unchecked, leading to obscure failures. The validation now catches these at argument-parse time.
+
+---
+
 ## [6.0.0] - 2026-05-20
 
 > ⚠️ **Breaking change:** The JSON-based model config files (`config/models/models.json`, `config/models/custom/models.json`) are **no longer supported** and will not be read. Existing configurations will stop working until migrated.
