@@ -23,6 +23,7 @@ set -e
 
 # Source shared helpers
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/lib/translate_helpers.sh"
 
 # ---------------------------------------------------------------------------
 # Interrupt handling — Ctrl+C kills the in-container process but keeps
@@ -192,12 +193,7 @@ EOF
 done
 
 # 3. Prepare Naming Metadata
-if [ "$IS_DRY_RUN" = "true" ]; then
-  MODEL_SLUG="dry-run"
-else
-  # Convert to lowercase and replace spaces with dashes safely
-  MODEL_SLUG=$(echo "$SELECTED_MODEL" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\{2,\}/-/g' | sed 's/^-//;s/-$//')
-fi
+MODEL_SLUG=$(_compute_model_slug "$SELECTED_MODEL" "$IS_DRY_RUN")
 
 if [ -n "$SKIP_RAG_FLAG" ]; then
   RAG_MODE="norag"
