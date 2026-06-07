@@ -21,7 +21,9 @@ _model_short() {
     echo "$1" | sed 's|.*/||'
 }
 
-# Extracts the model short-name encoded in a backup filename.
+# Extracts the model short-name encoded in a backup filename for an 
+# embedding model mismatch safety check, as the distance calculation 
+# differs per model.
 # Example: "chroma_backup_20260518_120000_bge-large-en-v1.5.tar.gz" → "bge-large-en-v1.5"
 _extract_backup_model() {
     basename "$1" .tar.gz | sed 's/^chroma_backup_[0-9]*_[0-9]*_//'
