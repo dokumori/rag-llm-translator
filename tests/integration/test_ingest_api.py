@@ -8,7 +8,7 @@ This test would have caught the missing sentence-transformers dependency
 that unit tests (which mock everything) silently missed.
 
 Run Command:
-    bin/run_tests.sh --integration -k test_ingest_api
+    bin/run_tests.sh --run-integration -k test_ingest_api
     # or directly:
     docker compose exec toolbox python -m pytest /app/tests/integration/test_ingest_api.py --run-integration -v
 """

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [6.0.2]
+
+### Added
+- **`bin/lib/backup_helpers.sh`**: extracted shared backup helper library (listing, filename parsing, flag handling) from `manage-backup.sh` for reuse and testability.
+- **`bin/lib/translate_helpers.sh`**: extracted shared translate helper library from `translate.sh` for reuse and testability.
+
+### Changed
+- **`bin/manage-backup.sh`**: refactored to source the new `backup_helpers.sh` library instead of inlining the logic.
+- **`bin/translate.sh`**: refactored to source the new `translate_helpers.sh` library instead of inlining the logic.
+- **`bin/run_tests.sh`**: switched to pytest's native `--run-integration` flag directly, removing the custom `--integration` alias and its translation layer.
+- **`bin/system_menu.sh`**: updated to use the `--run-integration` flag.
+- **Integration tests**: updated the comments describing how to run integration tests to reflect the `--run-integration` flag change.
+
+### Removed
+- **`tests/shell/test_run_tests.bats`**: removed BATS tests for the `--integration` alias that no longer exists.
+- Simplified BATS tests in `test_manage_backup.bats` and `test_translate.bats` to reflect the extracted helper libraries.
+
 ## [6.0.1] - 2026-05-22
 
 ### Added

@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/lib/backup_helpers.sh"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -69,14 +70,6 @@ require_volume() {
     fi
 }
 
-list_backups() {
-    local backups=()
-    while IFS= read -r f; do
-        [ -n "$f" ] && backups+=("$f")
-    done < <(find "$BACKUP_DIR" -maxdepth 1 -name "chroma_backup_*.tar.gz" | sort -r 2>/dev/null)
-    printf '%s\n' "${backups[@]}"
-}
-
 human_size() {
     # Prints the file size in a human-readable format (macOS + GNU compatible)
     if du --version &>/dev/null 2>&1; then
@@ -91,7 +84,7 @@ human_size() {
 # ---------------------------------------------------------------------------
 
 cmd_list() {
-    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(list_backups)" ]; then
+    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(_list_backups)" ]; then
         echo "ℹ️  No backups found in ${BACKUP_DIR}/"
         exit 0
     fi
@@ -100,7 +93,7 @@ cmd_list() {
     while IFS= read -r f; do
         size=$(human_size "$f")
         printf "  %-50s  %s\n" "$(basename "$f")" "$size"
-    done < <(list_backups)
+    done < <(_list_backups)
 }
 
 # ---------------------------------------------------------------------------
@@ -193,7 +186,7 @@ cmd_restore() {
         local backups=()
         while IFS= read -r f; do
             [ -n "$f" ] && backups+=("$(basename "$f")")
-        done < <(list_backups)
+        done < <(_list_backups)
 
         if [ ${#backups[@]} -eq 0 ]; then
             echo "❌ No backups found in ${BACKUP_DIR}/"
@@ -221,8 +214,8 @@ cmd_restore() {
     # --- Model mismatch check ---
     # Extract the model short name from the filename and compare to current config.
     # Filenames: chroma_backup_YYYYMMDD_HHMMSS_<model-short>.tar.gz
-    backup_model=$(basename "$target_file" .tar.gz | sed 's/^chroma_backup_[0-9]*_[0-9]*_//')
-    current_model=$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')
+    backup_model=$(_extract_backup_model "$target_file")
+    current_model=$(_model_short "$EMBEDDING_MODEL_NAME")
 
     if [ -n "$backup_model" ] && [ "$backup_model" != "$current_model" ]; then
         echo ""
@@ -293,17 +286,11 @@ cd "$PROJECT_ROOT"
 load_env
 
 # Re-derive BACKUP_FILE now that .env is loaded (EMBEDDING_MODEL_NAME may have changed)
-MODEL_SHORT="$(echo "$EMBEDDING_MODEL_NAME" | sed 's|.*/||')"
+MODEL_SHORT="$(_model_short "$EMBEDDING_MODEL_NAME")"
 BACKUP_FILE="${BACKUP_DIR}/chroma_backup_${TIMESTAMP}_${MODEL_SHORT}.tar.gz"
 
-# Parse flags: shift through args to find -y
-REMAINING_ARGS=()
-for arg in "$@"; do
-    case "$arg" in
-        -y) AUTO_YES=true ;;
-        *)  REMAINING_ARGS+=("$arg") ;;
-    esac
-done
+# Parse flags: extract -y into AUTO_YES; everything else into REMAINING_ARGS.
+_parse_backup_args "$@"
 
 case "${REMAINING_ARGS[0]:-}" in
     --dump)    cmd_dump ;;

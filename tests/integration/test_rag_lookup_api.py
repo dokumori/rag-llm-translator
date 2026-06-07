@@ -8,7 +8,7 @@ Tests ingest data first via /api/ingest/add, then query it via /api/rag-lookup
 to confirm the full pipeline works without importing the rag-proxy's app module.
 
 Run Command:
-    bin/run_tests.sh --integration -k test_rag_lookup_api
+    bin/run_tests.sh --run-integration -k test_rag_lookup_api
     # or directly:
     docker compose exec toolbox python -m pytest /app/tests/integration/test_rag_lookup_api.py --run-integration -v
 """
