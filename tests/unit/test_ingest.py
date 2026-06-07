@@ -25,7 +25,7 @@ class TestIngest(unittest.TestCase):
     # --- 1. Utility Tests ---
 
     def test_generate_content_hash(self):
-        """Verifies consistent MD5 hash generation."""
+        """Verifies consistent SHA256 hash generation."""
         # We use hashing to identify unique content batches in the database.
         text = "Hello World"
         hash1 = ingest.generate_content_hash(text)
@@ -33,8 +33,8 @@ class TestIngest(unittest.TestCase):
 
         # Consistent output for same input
         self.assertEqual(hash1, hash2)
-        # Verify MD5 length
-        self.assertEqual(len(hash1), 32)
+        # Verify SHA256 length (64 hex chars)
+        self.assertEqual(len(hash1), 64)
         # Different output for different input
         self.assertNotEqual(
             hash1, ingest.generate_content_hash("Different"))
