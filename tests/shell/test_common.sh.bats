@@ -271,3 +271,21 @@ EOF
     run load_env
     assert_success
 }
+
+@test "[common.sh::load_env] preserves values with spaces and special characters" {
+    # Verifies that values containing spaces, +, =, &, and ? are exported verbatim.
+    # Covers: API keys with padding characters, URLs with query strings, values with spaces.
+    local tmpdir="${BATS_TEST_TMPDIR}/loadenv6"
+    mkdir -p "$tmpdir"
+    cat > "$tmpdir/.env" <<'EOF'
+API_KEY=abc+def==padding
+BASE_URL=http://example.com/api?foo=bar&baz=1
+MSG=hello world
+EOF
+
+    cd "$tmpdir"
+    load_env
+    [ "$API_KEY" = "abc+def==padding" ]
+    [ "$BASE_URL" = "http://example.com/api?foo=bar&baz=1" ]
+    [ "$MSG" = "hello world" ]
+}

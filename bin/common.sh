@@ -113,11 +113,21 @@ select_language() {
 # Loads .env.defaults first (committed defaults), then .env on top so that
 # local overrides always take priority. UID/GID are excluded to avoid shell
 # conflicts with the shell's read-only UID variable.
+#
+# Uses a read-loop instead of `export $(... | xargs)` to correctly handle
+# values that contain spaces, quotes, or shell metacharacters (e.g. API keys
+# containing +, =, or &).
 load_env() {
-    if [ -f .env.defaults ]; then
-        export $(grep -v '^#' .env.defaults | grep -vE '^(UID|GID)' | xargs)
-    fi
-    if [ -f .env ]; then
-        export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
-    fi
+    local env_file
+    for env_file in .env.defaults .env; do
+        [ -f "$env_file" ] || continue
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip blank lines and comments
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$line" ]] && continue
+            # Skip UID/GID to avoid conflicts with the shell's read-only UID variable
+            [[ "$line" =~ ^(UID|GID)= ]] && continue
+            export "$line"
+        done < "$env_file"
+    done
 }
