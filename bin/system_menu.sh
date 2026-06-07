@@ -357,7 +357,7 @@ You will need to re-ingest all data afterwards.
             read -rp "  Include integration tests? (requires Docker stack) [y/N]: " run_integ
             run_integ="${run_integ:-N}"
             if [[ "$run_integ" =~ ^[Yy]$ ]]; then
-                bash "$SCRIPT_DIR/run_tests.sh" --integration
+                bash "$SCRIPT_DIR/run_tests.sh" --run-integration
             else
                 bash "$SCRIPT_DIR/run_tests.sh"
             fi
