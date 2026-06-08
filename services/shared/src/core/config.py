@@ -17,7 +17,16 @@ def _require_env(var: str) -> str:
 
 
 class Config:
-    """Centralized configuration for the application."""
+    """Centralized configuration for the application.
+
+    All attributes are evaluated at **import time** as class variables.
+    This means:
+    - Values are frozen when this module is first imported.
+    - Required env vars (via ``_require_env``) must be set *before* importing
+      this module — they cannot be injected lazily at call time.
+    - For testing, monkeypatch ``os.environ`` before the first import (or use
+      ``importlib.reload(config)`` between tests).
+    """
 
     # --- ChromaDB ---
     CHROMA_HOST: str = os.environ.get("CHROMA_HOST", "chroma")
