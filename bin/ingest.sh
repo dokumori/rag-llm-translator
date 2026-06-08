@@ -115,7 +115,7 @@ echo "----------------------------------------------------------------"
 # Non-interactive reset-all mode (used by bin/switch-embedding-model.sh)
 if [ "$RESET_ALL" = true ]; then
   choice=4
-  FLAGS="--reset-only"
+  INGEST_FLAGS=(--reset-only)
   SCOPE_KEY="all_langs"
   if [ "$AUTO_YES" = true ]; then
     echo "🗑️  Resetting ALL collections (--reset-all -y)..."
@@ -139,10 +139,10 @@ else
   read -p "Choice [1-4]: " choice
 
   case $choice in
-    1) FLAGS="" ;;
-    2) FLAGS="--glossary-only" ;;
-    3) FLAGS="--tm-only" ;;
-    4) ;; # FLAGS is set below after reset scope is chosen
+    1) INGEST_FLAGS=() ;;
+    2) INGEST_FLAGS=(--glossary-only) ;;
+    3) INGEST_FLAGS=(--tm-only) ;;
+    4) ;; # INGEST_FLAGS is set below after reset scope is chosen
     *) echo "Invalid choice"; exit 1 ;;
   esac
 fi
@@ -158,9 +158,9 @@ if [ "$RESET_ALL" = false ] && [ "$choice" -eq 4 ]; then
   echo "----------------------------------------------------------------"
   read -p "Choice [1-3]: " reset_scope
   case $reset_scope in
-    1) FLAGS="--reset-only --tm-only"       ; SCOPE_KEY="tm_langs" ;;
-    2) FLAGS="--reset-only --glossary-only" ; SCOPE_KEY="glossary_langs" ;;
-    3) FLAGS="--reset-only"                 ; SCOPE_KEY="all_langs" ;;
+    1) INGEST_FLAGS=(--reset-only --tm-only)       ; SCOPE_KEY="tm_langs" ;;
+    2) INGEST_FLAGS=(--reset-only --glossary-only) ; SCOPE_KEY="glossary_langs" ;;
+    3) INGEST_FLAGS=(--reset-only)                 ; SCOPE_KEY="all_langs" ;;
     *) echo "Invalid choice"; exit 1 ;;
   esac
 
@@ -255,7 +255,7 @@ for LANG_CODE in "${TARGET_LANGS[@]}"; do
   fi
   echo "================================================================"
   # Use -u to ensure logs appear immediately in the terminal
-  if ! docker compose exec toolbox python3 -u /app/src/ingest.py --lang "$LANG_CODE" $FLAGS; then
+  if ! docker compose exec toolbox python3 -u /app/src/ingest.py --lang "$LANG_CODE" "${INGEST_FLAGS[@]}"; then
     echo "⚠️  Operation failed for $LANG_CODE — continuing with remaining languages."
     FAILED_LANGS+=("$LANG_CODE")
   else
