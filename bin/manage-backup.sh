@@ -72,11 +72,7 @@ require_volume() {
 
 human_size() {
     # Prints the file size in a human-readable format (macOS + GNU compatible)
-    if du --version &>/dev/null 2>&1; then
-        du -sh "$1" | cut -f1   # GNU
-    else
-        du -sh "$1" | cut -f1   # macOS
-    fi
+    du -sh "$1" | cut -f1
 }
 
 # ---------------------------------------------------------------------------
