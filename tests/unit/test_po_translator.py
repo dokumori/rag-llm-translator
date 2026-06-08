@@ -105,6 +105,10 @@ class TestGetPluralCount:
         assert _get_plural_count(po, "ru") == 3
         assert _get_plural_count(po, "ja") == 1
         assert _get_plural_count(po, "ar") == 6
+        # Celtic / Irish entries added in #16
+        assert _get_plural_count(po, "cy") == 4   # Welsh
+        assert _get_plural_count(po, "mt") == 4   # Maltese
+        assert _get_plural_count(po, "ga") == 5   # Irish
 
     def test_defaults_to_2_for_unknown_language(self):
         po = self._po()
