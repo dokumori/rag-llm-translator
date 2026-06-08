@@ -477,18 +477,18 @@ def main():
         base_url=os.environ.get("LLM_BASE_URL")
     )
 
-    tracker = TokenTracker(model=args.model)
     # Pricing: read from models config, keyed by exact model ID
+    _prompt_rate, _completion_rate = None, None
     try:
         _price_table = build_price_table_from_config(models_list)
         _prompt_rate, _completion_rate = _price_table.get(args.model, (None, None))
-        tracker = TokenTracker(
-            model=args.model,
-            cost_per_1k_prompt=_prompt_rate,
-            cost_per_1k_completion=_completion_rate,
-        )
     except Exception:
-        pass  # tracker already set above with no pricing
+        pass
+    tracker = TokenTracker(
+        model=args.model,
+        cost_per_1k_prompt=_prompt_rate,
+        cost_per_1k_completion=_completion_rate,
+    )
     if not args.lang:
         logger.warning("⚠️ No --lang argument provided. RAG lookups will not be language-filtered and may return results from any language in the database.")
     results = run_evaluation_loop(client, args.model, paired_data, args.limit, prompt_template, is_dry_run, tracker=tracker, target_lang=args.lang)
