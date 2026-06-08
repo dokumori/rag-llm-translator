@@ -4,6 +4,7 @@ import glob
 import argparse
 import importlib.util
 import logging
+from typing import List, Optional
 from core.utils import find_po_files
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def load_plugin(plugin_name):
         logger.error("❌ Failed to load plugin '%s': %s", plugin_name, e)
         return None
 
-def resolve_plugins(lang: str | None = None) -> list[str]:
+def resolve_plugins(lang: Optional[str] = None) -> List[str]:
     """
     Resolve the plugin list for a specific language.
 
@@ -101,7 +102,10 @@ def process_single_file(file_path: str, loaded_plugins: list) -> None:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Run content through each loaded plugin sequentially
+        # Run content through each loaded plugin sequentially.
+        # If a plugin raises, the chain is aborted and the file is NOT written
+        # to preserve the original (partial transformations are discarded).
+        all_ok = True
         for plugin in loaded_plugins:
             try:
                 if hasattr(plugin, 'run'):
@@ -109,11 +113,22 @@ def process_single_file(file_path: str, loaded_plugins: list) -> None:
                 else:
                     logger.warning("⚠️ Plugin module does not have a 'run' function. Skipping.")
             except Exception as e:
-                logger.error("❌ Error running plugin: %s", e)
+                logger.error(
+                    "❌ Error running plugin '%s': %s. Aborting plugin chain for this file.",
+                    getattr(plugin, '__name__', type(plugin).__name__), e
+                )
+                all_ok = False
+                break
 
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        logger.info("✅ Processed: %s", file_path)
+        if all_ok:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            logger.info("✅ Processed: %s", file_path)
+        else:
+            logger.warning(
+                "⚠️ Skipped writing %s due to plugin error (original file preserved).",
+                file_path
+            )
     except Exception as e:
         logger.error("❌ Failed to process %s: %s", file_path, e)
 
