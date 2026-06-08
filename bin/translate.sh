@@ -3,27 +3,12 @@
 
 # Executes the translation pipeline
 
-# Load environment variables safely — xargs performs word-splitting which breaks
-# values containing spaces or shell metacharacters.
-if [ -f .env ]; then
-  while IFS= read -r line; do
-    # Skip blank lines and comments
-    case "$line" in
-      ''|\#*) continue ;;
-    esac
-    # Skip UID/GID which may conflict with system values
-    case "$line" in
-      UID=*|GID=*) continue ;;
-    esac
-    export "$line"
-  done < .env
-fi
-
 set -e
 
-# Source shared helpers
+# Source shared helpers and load .env safely
 source "$(dirname "$0")/common.sh"
 source "$(dirname "$0")/lib/translate_helpers.sh"
+load_env
 
 # ---------------------------------------------------------------------------
 # Interrupt handling — Ctrl+C kills the in-container process but keeps
@@ -119,11 +104,11 @@ PS3="Enter the number of your choice: "
 select rag_opt in "${rag_options[@]}"
 do
   if [ "$REPLY" -eq 1 ]; then
-    SKIP_RAG_FLAG=""
+    SKIP_RAG_ARGS=()
     echo "🧠 Mode: WITH RAG"
     break
   elif [ "$REPLY" -eq 2 ]; then
-    SKIP_RAG_FLAG="--skip-rag"
+    SKIP_RAG_ARGS=(--skip-rag)
     echo "⏩ Mode: WITHOUT RAG (skip-rag)"
     break
   else
@@ -195,7 +180,7 @@ done
 # 3. Prepare Naming Metadata
 MODEL_SLUG=$(_compute_model_slug "$SELECTED_MODEL" "$IS_DRY_RUN")
 
-if [ -n "$SKIP_RAG_FLAG" ]; then
+if [ ${#SKIP_RAG_ARGS[@]} -gt 0 ]; then
   RAG_MODE="norag"
 else
   RAG_MODE="rag"
@@ -232,7 +217,7 @@ docker compose exec \
   --model-slug "$MODEL_SLUG" \
   --rag-mode "$RAG_MODE" \
   --timestamp "$TIMESTAMP" \
-  $SKIP_RAG_FLAG \
+  "${SKIP_RAG_ARGS[@]}" \
   || _dc_rc=$?
 
 # Fallback: if docker converted the signal death to a normal exit 130,

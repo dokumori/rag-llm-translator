@@ -66,19 +66,13 @@ fi
 CURRENT_MODEL="$EMBEDDING_MODEL_NAME"
 
 # ---------------------------------------------------------------------------
-# Step 1: Blocklist check
+# Step 1: Blocklist check (delegates to model_config.py — single source of truth)
 # ---------------------------------------------------------------------------
 
-for pattern in "intfloat/e5-" "intfloat/multilingual-e5-"; do
-    if [[ "$NEW_MODEL" == "$pattern"* ]]; then
-        echo ""
-        echo "❌ Unsupported model: '$NEW_MODEL'"
-        echo "   Models in the 'intfloat/e5-*' and 'intfloat/multilingual-e5-*' families"
-        echo "   require query:/passage: prefixes which are not supported by this application."
-        echo "   See docs/7_embedding_model.md for compatible model requirements."
-        exit 1
-    fi
-done
+if ! python3 bin/lib/model_config.py validate-model --name "$NEW_MODEL" 2>/dev/null; then
+    python3 bin/lib/model_config.py validate-model --name "$NEW_MODEL"
+    exit 1
+fi
 
 if [ "$NEW_MODEL" = "$CURRENT_MODEL" ]; then
     # .env already matches — but check if ChromaDB collections are also consistent.

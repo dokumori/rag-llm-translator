@@ -46,7 +46,7 @@ def generate_content_hash(text: str, langcode: str = "", msgctxt: str = "") -> s
     (or with different Drupal msgctxt values) produces distinct IDs.
     """
     composite = f"{langcode}:{msgctxt}:{text}"
-    return hashlib.md5(composite.encode('utf-8')).hexdigest()
+    return hashlib.sha256(composite.encode('utf-8')).hexdigest()
 
 
 def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
@@ -333,7 +333,7 @@ def _ingest_batches(client: IngestClient, collection_name: str, ids: List[str], 
                 logger.error(
                     f"❌ Error adding batch to {label}: {e}", exc_info=True)
                 # Fail fast on write errors to avoid partial/corrupted state
-                raise e
+                raise
 
         if (total_new + total_skipped) % 2000 == 0:
             logger.info(

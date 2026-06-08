@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [6.0.2]
+## [6.0.3] - 2026-06-08
+
+### Added
+- **`bin/lib/model_config.py`**: `validate-model` CLI subcommand to check whether a model ID is blocked before starting a run.
+- **Plural counts** for Welsh (`cy`), Maltese (`mt`), and Irish (`ga`).
+- New test coverage for plural counts, model-blocklist validation, and the post-processing plugin error-abort behaviour.
+
+### Changed
+- **`bin/download-model.sh`**: hardened with `set -euo pipefail` and `curl --fail` so a failed download (e.g. 404) is caught instead of silently saving the error page.
+- **`bin/translate.sh`**: `TARGET_LANG` is now passed via environment variable instead of shell-interpolated into Python; bare `except` narrowed to avoid catching `KeyboardInterrupt`.
+- **`bin/lib/model_config.py`**: blocked-model list consolidated here; removed the duplicate list that previously lived in `translate.sh`.
+- **`bin/manage-backup.sh`**: build FLAGS as an array to prevent glob expansion.
+- **Post-processing plugin runner**: plugin chain now aborts on error instead of writing partially transformed output to disk; added `Optional` type hints.
+- **`TokenTracker`**: instance is now created once instead of being discarded and recreated on the happy path.
+- Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)`.
+- Replaced deprecated `md5` hashing with `sha256`.
+- Simplified `human_size()` — removed a macOS/GNU conditional whose branches were identical :D
+- Added inline documentation for import-time evaluation on `Config` and a cross-reference for the synced blocklist in `translate.sh`.
+
+### Fixed
+- **`bin/common.sh`**: `discover_lang_dirs()` now validates directory names against the BCP-47 langcode pattern, preventing non-language directories (e.g. `_BK_`) from appearing in the post-processing setup and ingestion flows. Also fixed `load_env()` silently corrupting values containing special characters (e.g. `+`, `=`, `&`).
+
+
+
+## [6.0.2] - 2026-06-07
 
 ### Added
 - **`bin/lib/backup_helpers.sh`**: extracted shared backup helper library (listing, filename parsing, flag handling) from `manage-backup.sh` for reuse and testability.

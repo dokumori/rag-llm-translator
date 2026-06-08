@@ -559,7 +559,7 @@ def handle_translation(target_lang_code: Optional[str] = None) -> Union[Response
         requested_model = (data.get('model') or "dry-run-dummy").strip()
 
         log_entry: Dict[str, Any] = {
-            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "model": requested_model,
             "rag_matches": [],
             "input_text": []

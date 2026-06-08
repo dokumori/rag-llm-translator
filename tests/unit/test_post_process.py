@@ -139,6 +139,49 @@ class TestCorePostProcess(unittest.TestCase):
                 self.assertEqual(mock_process.call_count, 2)
 
 
+class TestProcessSingleFile(unittest.TestCase):
+    """Tests for process_single_file — specifically plugin chain error handling."""
+
+    def _make_plugin(self, run_fn):
+        m = MagicMock()
+        m.run.side_effect = run_fn
+        return m
+
+    def test_successful_plugins_write_file(self, tmp_path=None):
+        """All plugins succeed: transformed content is written to disk."""
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.po', delete=False) as f:
+            f.write("original")
+            path = f.name
+        try:
+            plugin = self._make_plugin(lambda content: content + "_modified")
+            with self.assertLogs('post_process', level='DEBUG'):
+                post_process.process_single_file(path, [plugin])
+            with open(path) as f:
+                self.assertEqual(f.read(), "original_modified")
+        finally:
+            os.unlink(path)
+
+    def test_plugin_error_aborts_chain_and_preserves_file(self):
+        """A plugin error stops the chain; the original file is not overwritten."""
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.po', delete=False) as f:
+            f.write("original")
+            path = f.name
+        try:
+            bad_plugin = self._make_plugin(lambda content: (_ for _ in ()).throw(RuntimeError("boom")))
+            good_plugin = self._make_plugin(lambda content: content + "_never_reached")
+            with self.assertLogs('post_process', level='ERROR'):
+                post_process.process_single_file(path, [bad_plugin, good_plugin])
+            # File must be unchanged
+            with open(path) as f:
+                self.assertEqual(f.read(), "original")
+            # Second plugin must not have been called
+            good_plugin.run.assert_not_called()
+        finally:
+            os.unlink(path)
+
+
 class TestWaouSpacingPlugin(unittest.TestCase):
     """Tests for the Japanese-Alphanumeric (Waou) spacing logic."""
 
