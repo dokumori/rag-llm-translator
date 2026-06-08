@@ -41,18 +41,12 @@ done
 MODEL="${MODEL:-$EMBEDDING_MODEL_NAME}"
 CACHE_DIR="${PROJECT_ROOT}/data/cache/huggingface"
 
-# --- Blocklist check (mirrors infrastructure.py) ---
+# --- Blocklist check (delegates to model_config.py — single source of truth) ---
 # Fail early on the host side before spinning up the container.
-for pattern in "intfloat/e5-" "intfloat/multilingual-e5-"; do
-    if [[ "$MODEL" == "$pattern"* ]]; then
-        echo ""
-        echo "❌ Unsupported model: '$MODEL'"
-        echo "   Models in the 'intfloat/e5-*' and 'intfloat/multilingual-e5-*' families"
-        echo "   require query:/passage: prefixes which are not supported by this application."
-        echo "   See docs/7_embedding_model.md for compatible model requirements."
-        exit 1
-    fi
-done
+if ! python3 bin/lib/model_config.py validate-model --name "$MODEL" 2>/dev/null; then
+    python3 bin/lib/model_config.py validate-model --name "$MODEL"
+    exit 1
+fi
 
 echo ""
 echo "===================================================================="
