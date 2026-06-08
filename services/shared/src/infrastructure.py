@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 # Models known to require query:/passage: prefixes — incompatible with this application.
 # See docs/7_embedding_model.md for model requirements.
+#
+# NOTE: This list must stay in sync with _BLOCKED_MODEL_PATTERNS in
+# bin/lib/model_config.py (the canonical host-side copy used by shell scripts).
 _BLOCKED_MODEL_PATTERNS = [
     "intfloat/e5-",
     "intfloat/multilingual-e5-",
