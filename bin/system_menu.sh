@@ -33,6 +33,7 @@ fi
 # ── Colours ───────────────────────────────────────────────────────────────────
 BOLD="\033[1m"
 DIM="\033[2m"
+GREEN="\033[32m"
 YELLOW="\033[33m"
 CYAN="\033[36m"
 RESET="\033[0m"
@@ -78,79 +79,167 @@ _has_input_po() {
     find "$PROJECT_ROOT/data/translations/input" -name "*.po" -print -quit 2>/dev/null | grep -q .
 }
 
-# ── Status Messages ───────────────────────────────────────────────────────────
-# Builds an array of warning/info messages using short-circuit logic.
-# Only the most actionable checks are shown — deeper checks are skipped
-# when a prerequisite problem is already detected.
-_collect_status_messages() {
-    STATUS_MESSAGES=()
+# Returns 0 if any langcode subdirectory under data/translations/eval/ contains
+# both with_rag/ and without_rag/ subdirectories (required for [E] Evaluate)
+_has_eval_data() {
+    local eval_base="${TRANSLATIONS_ROOT}/eval"
+    [ -d "$eval_base" ] || return 1
+    for d in "$eval_base"/*/; do
+        [ -d "$d" ] || continue
+        [ -d "${d}with_rag" ] && [ -d "${d}without_rag" ] && return 0
+    done
+    return 1
+}
 
-    if ! _has_env; then
-        STATUS_MESSAGES+=("⚠️  No .env file found. Run option [S] to get started.")
-        return  # skip all further checks — nothing will work without .env
+# ── Status Refresh ────────────────────────────────────────────────────────────
+# Called once per menu render. Sets global boolean string variables ("true"/"false")
+# consumed by both the dashboard and per-option badge logic.
+# Docker-level checks (layer 2) are skipped when prerequisites aren't met,
+# keeping the menu fast when the stack is down.
+_refresh_status() {
+    # Layer 1: fast host-level checks (no Docker involvement)
+    HAS_ENV=false;    _has_env        && HAS_ENV=true
+    DOCKER_OK=false;  _docker_running && DOCKER_OK=true
+    HAS_TM=false;     _has_tm_data    && HAS_TM=true
+    HAS_INPUT=false;  _has_input_po   && HAS_INPUT=true
+    HAS_EVAL=false;   _has_eval_data  && HAS_EVAL=true
+
+    # Layer 2: container-level checks (only when Docker is reachable)
+    STACK_OK=false
+    CHROMA_OK=false
+    CHROMA_COUNT="?"
+    if [ "$HAS_ENV" = true ] && [ "$DOCKER_OK" = true ]; then
+        _stack_healthy && STACK_OK=true
+        if [ "$STACK_OK" = true ]; then
+            local count
+            count=$(docker compose exec -T toolbox python3 -c "
+import os, chromadb
+host = os.environ.get('CHROMA_HOST', 'localhost')
+port = int(os.environ.get('CHROMA_PORT', 8000))
+c = chromadb.HttpClient(host=host, port=port)
+print(len(c.list_collections()))
+" 2>/dev/null || echo "0")
+            CHROMA_COUNT="$count"
+            [ "${count:-0}" -gt 0 ] 2>/dev/null && CHROMA_OK=true
+        fi
     fi
+}
 
-    if ! _docker_running; then
-        STATUS_MESSAGES+=("⚠️  Docker is not running. Start Docker Desktop and try again.")
-        return
-    fi
-
-    if ! _stack_healthy; then
-        STATUS_MESSAGES+=("ℹ️  Docker stack is not running. Start with: docker compose up -d")
-        return  # skip collection check — toolbox isn't reachable
-    fi
-
-    if ! _chroma_has_collections; then
-        STATUS_MESSAGES+=("⚠️  ChromaDB has no collections. Run [I] to ingest your TM/glossary.")
-    fi
-
-    if ! _has_tm_data; then
-        STATUS_MESSAGES+=("ℹ️  No TM/glossary source data found in data/tm_source/. Run [D] for demo data.")
-    fi
-
-    if ! _has_input_po; then
-        STATUS_MESSAGES+=("ℹ️  No input .po files found. Place files in data/translations/input/<lang>/")
+# ── Menu Item Renderer ────────────────────────────────────────────────────────
+# Renders one option line, with cyan key when ready or dimmed key + hint when not.
+#
+# Arguments:
+#   $1 — key letter (e.g. "S")
+#   $2 — "true" if the option is ready to use, any other value to dim it
+#   $3 — label text
+#   $4 — description text
+#   $5 — (optional) hint shown in yellow when dimmed
+_menu_item() {
+    local key="$1" ready="$2" label="$3" desc="$4" hint="${5:-}"
+    if [ "$ready" = true ]; then
+        printf "    ${CYAN}%s)${RESET} %s — %s\n" "$key" "$label" "$desc"
+    elif [ -n "$hint" ]; then
+        printf "    ${DIM}%s) %s — %s${RESET}  ${YELLOW}%s${RESET}\n" "$key" "$label" "$desc" "$hint"
+    else
+        printf "    ${DIM}%s) %s — %s${RESET}\n" "$key" "$label" "$desc"
     fi
 }
 
 # ── Menu Rendering ────────────────────────────────────────────────────────────
 _render_menu() {
+    _refresh_status
+
     echo ""
     echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
     echo -e "${BOLD}  RAG-LLM Translator — System Menu${RESET}"
     echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
 
-    # Status messages
-    _collect_status_messages
-    if [ ${#STATUS_MESSAGES[@]} -gt 0 ]; then
-        echo ""
-        for msg in "${STATUS_MESSAGES[@]}"; do
-            echo -e "  ${YELLOW}${msg}${RESET}"
-        done
+    # ── Compact status dashboard ──────────────────────────────────────────────
+    echo ""
+    local env_badge docker_badge stack_badge chroma_badge
+
+    if [ "$HAS_ENV" = true ]; then
+        env_badge="${GREEN}✅${RESET}"
+    else
+        env_badge="${YELLOW}❌ run [S]${RESET}"
     fi
+
+    if [ "$HAS_ENV" = false ]; then
+        docker_badge="${DIM}—${RESET}"
+        stack_badge="${DIM}—${RESET}"
+        chroma_badge="${DIM}—${RESET}"
+    elif [ "$DOCKER_OK" = false ]; then
+        docker_badge="${YELLOW}❌ start Docker${RESET}"
+        stack_badge="${DIM}—${RESET}"
+        chroma_badge="${DIM}—${RESET}"
+    elif [ "$STACK_OK" = false ]; then
+        docker_badge="${GREEN}✅${RESET}"
+        stack_badge="${YELLOW}❌ run: docker compose up -d${RESET}"
+        chroma_badge="${DIM}—${RESET}"
+    else
+        docker_badge="${GREEN}✅${RESET}"
+        stack_badge="${GREEN}✅${RESET}"
+        if [ "$CHROMA_OK" = true ]; then
+            chroma_badge="${GREEN}${CHROMA_COUNT} collection(s)${RESET}"
+        else
+            chroma_badge="${YELLOW}0 collections — run [I]${RESET}"
+        fi
+    fi
+
+    echo -e "  .env: ${env_badge}  │  Docker: ${docker_badge}  │  Stack: ${stack_badge}  │  ChromaDB: ${chroma_badge}"
+
+    # ── Menu options ──────────────────────────────────────────────────────────
+    local stack_hint=""
+    [ "$STACK_OK" = false ] && stack_hint="needs stack"
 
     echo ""
     echo -e "  ${BOLD}Getting Started${RESET}"
-    echo -e "    ${CYAN}S)${RESET} Setup                          — Configure LLM, API keys, and .env"
-    echo -e "    ${CYAN}D)${RESET} Download demo data             — Fetch sample data for Japanese"
+    _menu_item "S" true "Setup                         " "Configure LLM, API keys, and .env"
+    _menu_item "D" true "Download demo data            " "Fetch sample data for Japanese"
+
     echo ""
     echo -e "  ${BOLD}Context (RAG)${RESET}"
-    echo -e "    ${CYAN}I)${RESET} Ingest TM / Glossary           — Load translation memory into ChromaDB"
-    echo -e "    ${CYAN}B)${RESET} Backup or restore context data — Manage ChromaDB snapshots"
+    _menu_item "I" "$STACK_OK" "Ingest TM / Glossary          " "Load translation memory into ChromaDB" "$stack_hint"
+    _menu_item "B" "$STACK_OK" "Backup or restore context data" "Manage ChromaDB snapshots" "$stack_hint"
+
     echo ""
     echo -e "  ${BOLD}Translate${RESET}"
-    echo -e "    ${CYAN}T)${RESET} Translate                      — Run the translation pipeline"
+    local t_ready=false t_hint=""
+    if [ "$STACK_OK" = false ]; then
+        t_hint="needs stack"
+    elif [ "$CHROMA_OK" = false ]; then
+        t_hint="run [I] to ingest first"
+    elif [ "$HAS_INPUT" = false ]; then
+        t_hint="no input .po files found"
+    else
+        t_ready=true
+    fi
+    _menu_item "T" "$t_ready" "Translate                     " "Run the translation pipeline" "$t_hint"
+
     echo ""
     echo -e "  ${BOLD}Evaluate & Tune${RESET}"
-    echo -e "    ${CYAN}E)${RESET} Evaluate translation quality   — LLM-as-a-Judge blind test"
-    echo -e "    ${CYAN}A)${RESET} Analyse RAG matching           — Generate RAG performance report"
+    local e_ready=false e_hint=""
+    if [ "$STACK_OK" = false ]; then
+        e_hint="needs stack"
+    elif [ "$HAS_EVAL" = false ]; then
+        e_hint="place files in data/translations/eval/<lang>/with_rag & without_rag"
+    else
+        e_ready=true
+    fi
+    _menu_item "E" "$e_ready" "Evaluate translation quality  " "LLM-as-a-Judge blind test" "$e_hint"
+    _menu_item "A" "$STACK_OK" "Analyse RAG matching          " "Generate RAG performance report" "$stack_hint"
+
     echo ""
     echo -e "  ${BOLD}Configuration${RESET}"
-    echo -e "    ${CYAN}P)${RESET} Post-processing config         — Enable/disable per-language plugins"
-    echo -e "    ${CYAN}M)${RESET} Model switch                   — Change the sentence-transformer model"
+    local env_hint=""
+    [ "$HAS_ENV" = false ] && env_hint="run [S] Setup first"
+    _menu_item "P" "$HAS_ENV" "Post-processing config        " "Enable/disable per-language plugins" "$env_hint"
+    _menu_item "M" "$STACK_OK" "Model switch                  " "Change the sentence-transformer model" "$stack_hint"
+
     echo ""
     echo -e "  ${BOLD}Development${RESET}"
-    echo -e "    ${CYAN}X)${RESET} eXecute tests                  — Run the test suite"
+    _menu_item "X" true "eXecute tests                 " "Run the test suite"
+
     echo ""
     echo -e "    ${DIM}q) Quit${RESET}"
     echo ""
@@ -231,6 +320,12 @@ while true; do
 
         # ── Context (RAG) ──────────────────────────────────────────────────
         i|I)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
             echo ""
             echo "  ────────────────────────────────────────────────────"
             echo -e "  ${BOLD}📦 ChromaDB Overview (current state)${RESET}"
@@ -269,6 +364,12 @@ The Docker stack must be running (docker compose up -d).
             ;;
 
         b|B)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
             bash "$SCRIPT_DIR/manage-backup.sh"
             _post_run_pause
             echo ""
@@ -277,6 +378,22 @@ The Docker stack must be running (docker compose up -d).
 
         # ── Translate ──────────────────────────────────────────────────────
         t|T)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            elif [ "$CHROMA_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  No data ingested yet. Run [I] Ingest first.${RESET}"
+                sleep 1.5
+                continue
+            elif [ "$HAS_INPUT" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  No input .po files found. Place files in data/translations/input/<lang>/${RESET}"
+                sleep 1.5
+                continue
+            fi
             if _preflight \
 "Place untranslated .po files under:
   data/translations/input/<langcode>/   (e.g. data/translations/input/ja/)
@@ -294,6 +411,17 @@ Ensure you have already ingested TM/glossary data ([I] Ingest).
 
         # ── Evaluate & Tune ────────────────────────────────────────────────
         e|E)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            elif [ "$HAS_EVAL" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Eval files not found. Place .po files under data/translations/eval/<lang>/with_rag/ and without_rag/${RESET}"
+                sleep 1.5
+                continue
+            fi
             if _preflight \
 "Place translated .po files for comparison under:
   data/translations/eval/<langcode>/with_rag/
@@ -311,6 +439,12 @@ Each directory must contain exactly one .po file.
             ;;
 
         a|A)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
             if _preflight \
 "You must have run at least one translation ([T] Translate) so that
 rag-proxy has produced traffic logs to analyse.
@@ -326,6 +460,12 @@ rag-proxy has produced traffic logs to analyse.
 
         # ── Configuration ──────────────────────────────────────────────────
         p|P)
+            if [ "$HAS_ENV" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  No .env file found. Run [S] Setup first.${RESET}"
+                sleep 1.5
+                continue
+            fi
             bash "$SCRIPT_DIR/setup_post_processing.sh"
             _post_run_pause
             echo ""
@@ -333,6 +473,12 @@ rag-proxy has produced traffic logs to analyse.
             ;;
 
         m|M)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
             if _preflight \
 "Switching models will wipe all ChromaDB collections.
 You will need to re-ingest all data afterwards.
