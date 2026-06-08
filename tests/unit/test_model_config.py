@@ -10,7 +10,12 @@ No mocking required: the functions read real files.
 import pytest
 import yaml
 
-from model_config import load_models_yaml, generate_litellm_config, generate_models_yaml
+from model_config import (
+    load_models_yaml,
+    generate_litellm_config,
+    generate_models_yaml,
+    _BLOCKED_MODEL_PATTERNS,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -303,3 +308,32 @@ class TestGenerateModelsYaml:
         out = str(tmp_path / "out" / "models.yaml")
         generate_models_yaml(example_file, out, providers=["anthropic"])
         assert (tmp_path / "out" / "models.yaml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Tests: _BLOCKED_MODEL_PATTERNS / validate-model
+# ---------------------------------------------------------------------------
+
+
+class TestBlockedModelPatterns:
+
+    @pytest.mark.parametrize("model", [
+        "intfloat/e5-small-v2",
+        "intfloat/e5-large-v2",
+        "intfloat/multilingual-e5-base",
+        "intfloat/multilingual-e5-large",
+    ])
+    def test_blocked_models_match_patterns(self, model):
+        """All models in the unsupported families are caught by the blocklist."""
+        matched = any(model.startswith(p) for p in _BLOCKED_MODEL_PATTERNS)
+        assert matched, f"{model!r} should be blocked but was not matched"
+
+    @pytest.mark.parametrize("model", [
+        "BAAI/bge-base-en-v1.5",
+        "sentence-transformers/all-mpnet-base-v2",
+        "intfloat/e5",          # exact string without trailing dash — not blocked
+    ])
+    def test_compatible_models_not_blocked(self, model):
+        """Models outside the blocked families are not rejected."""
+        matched = any(model.startswith(p) for p in _BLOCKED_MODEL_PATTERNS)
+        assert not matched, f"{model!r} should be allowed but was blocked"
