@@ -39,6 +39,7 @@ discover_lang_dirs() {
         [ -d "$d" ] || continue
         lang=$(basename "$d")
         [[ "$lang" == .* ]] && continue
+        is_langcode "$lang" || continue
         echo "$lang"
     done
 }

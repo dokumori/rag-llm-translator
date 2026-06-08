@@ -92,6 +92,19 @@ teardown() {
     assert_output ""
 }
 
+@test "[common.sh::discover_lang_dirs] skips non-langcode directories" {
+    local tmpdir="${BATS_TEST_TMPDIR}/discover_nonlang"
+    mkdir -p "$tmpdir"/{ja,_BK_,debug,12345,with_rag}
+
+    run discover_lang_dirs "$tmpdir"
+    assert_success
+    assert_line "ja"
+    refute_line "_BK_"
+    refute_line "debug"
+    refute_line "12345"
+    refute_line "with_rag"
+}
+
 # ---------------------------------------------------------------------------
 # is_langcode (bin/common.sh)
 # ---------------------------------------------------------------------------
