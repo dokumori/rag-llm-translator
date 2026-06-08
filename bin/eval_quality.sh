@@ -2,15 +2,11 @@
 # bin/eval_quality.sh
 # Executes the LLM-as-a-Judge Evaluation Pipeline
 
-# Load environment variables
-if [ -f .env ]; then
-  export $(grep -v '^#' .env | grep -vE '^(UID|GID)' | xargs)
-fi
-
 set -e
 
-# Source shared helpers
+# Source shared helpers and load .env safely
 source "$(dirname "$0")/common.sh"
+load_env
 
 echo "----------------------------------------------------------------"
 echo "RAG LLM Translation Quality Evaluation (LLM-as-a-Judge)"
@@ -111,13 +107,14 @@ echo "----------------------------------------------------------------"
 # 2. Limit Selection & Statistical Sampling
 
 # Helper Python script to compute total overlapping pairs and Cochran's formula
-OVERLAPPING_COUNT=$(docker compose exec -T toolbox python3 -c "
+OVERLAPPING_COUNT=$(docker compose exec -T -e TARGET_LANG="$TARGET_LANG" toolbox python3 -c "
 import os, glob
 try:
     import polib
 except ImportError:
     print('0')
     exit(0)
+lang = os.environ['TARGET_LANG']
 def load_po_keys(directory):
     keys = set()
     for file_path in glob.glob(os.path.join(directory, '**/*.po'), recursive=True):
@@ -126,12 +123,12 @@ def load_po_keys(directory):
             for entry in po:
                 if entry.msgid and entry.msgstr:
                     keys.add(entry.msgid)
-        except:
+        except Exception:
             pass
     return keys
 
-with_rag = load_po_keys('/app/po/eval/$TARGET_LANG/with_rag')
-without_rag = load_po_keys('/app/po/eval/$TARGET_LANG/without_rag')
+with_rag = load_po_keys(f'/app/po/eval/{lang}/with_rag')
+without_rag = load_po_keys(f'/app/po/eval/{lang}/without_rag')
 print(len(with_rag.intersection(without_rag)))
 ")
 
