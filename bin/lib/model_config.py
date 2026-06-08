@@ -10,6 +10,7 @@ Provides:
 
 CLI subcommands:
   python3 bin/lib/model_config.py list            --models <path> --format names|json|lookup [--name <name>]
+  python3 bin/lib/model_config.py validate-model  --name <model>
   python3 bin/lib/model_config.py generate-litellm --models <path> --output <path>
   python3 bin/lib/model_config.py generate         --models <path> --output <path> --providers <str> [options]
 """
@@ -43,6 +44,19 @@ _PROVIDER_ID_PREFIXES: dict[str, list[str]] = {
     "openai":    ["gpt-", "o3"],
     "mistral":   ["mistral-"],
 }
+
+# ---------------------------------------------------------------------------
+# Embedding model blocklist
+# ---------------------------------------------------------------------------
+# Models that require query:/passage: prefixes -- incompatible with this
+# application.  This is the SINGLE SOURCE OF TRUTH for the blocklist.
+# Must be kept in sync with services/shared/src/infrastructure.py which
+# maintains a copy for the in-container runtime check.
+# See docs/7_embedding_model.md for model requirements.
+_BLOCKED_MODEL_PATTERNS: list[str] = [
+    "intfloat/e5-",
+    "intfloat/multilingual-e5-",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +140,6 @@ def generate_litellm_config(models_yaml_path: str, output_path: str) -> None:
         "model_list": model_list,
     }
 
-    import yaml as _yaml  # re-import in scope for dump
     # Prepend a comment block.
     header = (
         f"# LiteLLM Gateway Configuration\n"
@@ -135,7 +148,7 @@ def generate_litellm_config(models_yaml_path: str, output_path: str) -> None:
         f"# Regenerate with: python3 bin/lib/model_config.py generate-litellm "
         f"--models config/models.yaml --output config/litellm/config.yaml\n\n"
     )
-    content = header + _yaml.dump(config, default_flow_style=False, sort_keys=False)
+    content = header + yaml.dump(config, default_flow_style=False, sort_keys=False)
 
     # Write to stdout or to a file.
     if output_path == "-":
@@ -327,6 +340,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     list_p.add_argument("--name", default=None, help="Model name to look up (required for --format lookup)")
 
+    # -- validate-model subcommand --
+    val_p = sub.add_parser(
+        "validate-model",
+        help="Check whether a model name is compatible (not in the blocklist).",
+    )
+    val_p.add_argument("--name", required=True, help="Embedding model name to validate")
+
     # -- generate-litellm subcommand --
     gen_litellm_p = sub.add_parser(
         "generate-litellm",
@@ -357,6 +377,18 @@ if __name__ == "__main__":
     # Dispatch to the appropriate subcommand handler.
     if args.command == "list":
         _cmd_list(args)
+    elif args.command == "validate-model":
+        for pattern in _BLOCKED_MODEL_PATTERNS:
+            if args.name.startswith(pattern):
+                print(
+                    f"Unsupported model: '{args.name}'\n"
+                    f"Models matching '{pattern}*' require query:/passage: prefixes\n"
+                    f"which are not supported by this application.\n"
+                    f"See docs/7_embedding_model.md for compatible model requirements.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        print(f"ok")
     elif args.command == "generate-litellm":
         _cmd_generate_litellm(args)
     elif args.command == "generate":
