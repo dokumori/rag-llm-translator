@@ -67,6 +67,10 @@ _PLURAL_COUNTS: Dict[str, int] = {
     # 3 forms — Slavic and Baltic languages
     "ru": 3, "uk": 3, "pl": 3, "cs": 3, "hr": 3, "sr": 3, "sk": 3,
     "lt": 3, "lv": 3, "ro": 3,
+    # 4 forms — Celtic languages (Welsh, Maltese)
+    "cy": 4, "mt": 4,
+    # 5 forms — Irish
+    "ga": 5,
     # 6 forms — Arabic
     "ar": 6,
 }
