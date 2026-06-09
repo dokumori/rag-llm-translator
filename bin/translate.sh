@@ -44,6 +44,10 @@ if [ ! -f "$MODELS_YAML" ]; then
   exit 1
 fi
 
+# Steps 0–1.75 are wrapped in a loop so the user can restart language,
+# model, and RAG selection if they decline the cost estimate.
+while true; do
+
 # 0. Language Selection
 if [[ "$1" == -* ]]; then
   TARGET_LANG="${1#-}"
@@ -80,8 +84,9 @@ select opt in "${menu_options[@]}"
 do
   if [ -n "$opt" ]; then
     LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
-    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | head -1)
-    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT" | tail -1)
+    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
+    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
+    MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
     break
   else
     echo "❌ Invalid option. Please try again."
@@ -117,6 +122,73 @@ do
 done
 
 echo "----------------------------------------------------------------"
+
+# 1.75 Pre-flight Cost Estimate
+# Only runs for non-dry-run, non-local models.
+# Custom endpoint models are included so users still see the estimate prompt
+# (or a clear message when no pricing data is configured).
+_is_remote_model() {
+  [ "$IS_DRY_RUN" != "true" ] \
+    && [ "$MODEL_PROVIDER" != "ollama" ]
+}
+
+if _is_remote_model; then
+  for _est_lang in "${TARGET_LANGS[@]}"; do
+    _est_input_dir=$(input_dir "$_est_lang")
+    if [ -d "$_est_input_dir" ]; then
+      ESTIMATE_OUTPUT=$(docker compose exec -T toolbox python3 -u /app/src/estimate_cost.py \
+        --input "/app/po/input/$_est_lang" \
+        --model "$SELECTED_MODEL" \
+        --target-lang "$_est_lang" \
+        --bulk-size "${BULK_SIZE:-15}" \
+        "${SKIP_RAG_ARGS[@]}" \
+        2>/dev/null) || true
+
+      if [ -n "$ESTIMATE_OUTPUT" ]; then
+        EST_STRINGS=$(echo "$ESTIMATE_OUTPUT" | grep '^STRINGS='    | cut -d= -f2)
+        EST_BATCHES=$(echo "$ESTIMATE_OUTPUT" | grep '^BATCHES='    | cut -d= -f2)
+        EST_COST_LOW=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_LOW='  | cut -d= -f2)
+        EST_COST_HIGH=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_HIGH=' | cut -d= -f2)
+        HAS_PRICING=$(echo "$ESTIMATE_OUTPUT"  | grep '^HAS_PRICING=' | cut -d= -f2)
+
+        echo "----------------------------------------------------------------"
+        echo "📊 Cost Estimate — $opt ($EST_STRINGS strings, $_est_lang)"
+        echo "   Strings to translate  : $EST_STRINGS"
+        echo "   Batches (~${BULK_SIZE:-15} strings/batch) : $EST_BATCHES"
+        if [ "$HAS_PRICING" = "true" ]; then
+          echo "   Estimated cost (range): \$$EST_COST_LOW – \$$EST_COST_HIGH"
+        else
+          echo "   Estimated cost        : N/A"
+          echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models.yaml."
+          echo "      Cost estimate cannot be displayed. To enable it, add a 'pricing' block"
+          echo "      to this model's entry in config/models.yaml, e.g.:"
+          echo "        pricing:"
+          echo "          prompt_per_1k_tokens: 0.001"
+          echo "          completion_per_1k_tokens: 0.005"
+        fi
+        if [ "$HAS_PRICING" = "true" ] && [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
+          echo "   ⓘ  Actual cost will vary depending on the volume of RAG context"
+          echo "      injected per batch (size of glossary/TM)."
+        fi
+        echo "----------------------------------------------------------------"
+      fi
+    fi
+  done
+
+  read -rp "Proceed with translation? [Y/n/q — q to quit]: " _est_confirm
+  _est_confirm="${_est_confirm:-Y}"
+  if [[ "$_est_confirm" =~ ^[Qq]$ ]]; then
+    echo "❌ Translation cancelled."
+    exit 0
+  elif [[ ! "$_est_confirm" =~ ^[Yy]$ ]]; then
+    echo "↩️  Restarting selection..."
+    echo "----------------------------------------------------------------"
+    continue   # loop back to language selection
+  fi
+fi
+
+break   # confirmed (or non-remote model) — proceed to translation
+done   # end of selection retry loop
 
 # 2. Metadata Validation (Pre-flight check)
 for LANG_ITER in "${TARGET_LANGS[@]}"; do

@@ -265,7 +265,7 @@ def _cmd_list(args: argparse.Namespace) -> None:
         for m in models:
             print(json.dumps(m))
 
-    # Print the model id and is_dry_run flag for a single model looked up by name.
+    # Print the model id, is_dry_run flag, and provider for a single model looked up by name.
     elif args.format == "lookup":
         if not args.name:
             print("error: --name is required for --format lookup", file=sys.stderr)
@@ -276,6 +276,7 @@ def _cmd_list(args: argparse.Namespace) -> None:
             sys.exit(1)
         print(match["id"])
         print(str(match.get("is_dry_run", False)).lower())
+        print(match.get("provider", ""))
 
     else:
         print(f"error: unknown format: {args.format!r}", file=sys.stderr)
