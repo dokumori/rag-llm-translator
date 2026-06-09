@@ -120,11 +120,30 @@ class TestCountAndEstimate:
         assert batches == 1
 
     def test_input_tokens_positive_for_nonempty_input(self, tmp_path):
-        """At least some tokens are estimated when there are entries to translate."""
+        """Input token estimate is > 0 when there are entries to translate."""
         from estimate_cost import count_and_estimate
-        _write_po(tmp_path, "test.po", _simple_po([("Hello world", "")]))
+        po_content = 'msgid ""\nmsgstr ""\n"Language: ja\\n"\n\nmsgid "Hello world"\nmsgstr ""'
+        (tmp_path / "test.po").write_text(po_content)
         _, _, tokens = count_and_estimate(str(tmp_path), "ja", 15)
         assert tokens > 0
+
+    def test_skip_rag_reduces_token_estimate(self, tmp_path):
+        """With RAG on, token estimate is higher than with RAG off (overhead removed)."""
+        from estimate_cost import count_and_estimate, RAG_OVERHEAD_TOKENS_PER_BATCH
+        entries = [(f"String {i}", "") for i in range(15)]
+        (tmp_path / "test.po").write_text(_simple_po(entries))
+        _, batches, tokens_with_rag    = count_and_estimate(str(tmp_path), "ja", 15, skip_rag=False)
+        _, _,       tokens_without_rag = count_and_estimate(str(tmp_path), "ja", 15, skip_rag=True)
+        expected_diff = batches * RAG_OVERHEAD_TOKENS_PER_BATCH
+        assert tokens_with_rag - tokens_without_rag == expected_diff
+
+    def test_skip_rag_false_by_default(self, tmp_path):
+        """Default behaviour (skip_rag omitted) matches skip_rag=False."""
+        from estimate_cost import count_and_estimate
+        _write_po(tmp_path, "test.po", _simple_po([("Hello", "")]))
+        _, _, tokens_default  = count_and_estimate(str(tmp_path), "ja", 15)
+        _, _, tokens_explicit = count_and_estimate(str(tmp_path), "ja", 15, skip_rag=False)
+        assert tokens_default == tokens_explicit
 
     def test_multiple_po_files_are_aggregated(self, tmp_path):
         """Slots from multiple .po files in the same directory are summed."""
@@ -143,6 +162,84 @@ class TestCountAndEstimate:
         slots, _, _ = count_and_estimate(str(tmp_path), "ja", 15)
         # bad.po is skipped, good.po contributes 1
         assert slots == 1
+
+    def test_token_arithmetic_matches_formula(self, tmp_path):
+        """End-to-end: computed tokens must equal the documented formula exactly.
+
+        input_tokens = floor((source_chars + JSON_WRAP * slots) / CHARS_PER_TOKEN)
+                     + batches * (BASE_OVERHEAD + RAG_OVERHEAD)
+        """
+        from estimate_cost import (
+            count_and_estimate,
+            BASE_OVERHEAD_TOKENS_PER_BATCH,
+            RAG_OVERHEAD_TOKENS_PER_BATCH,
+            JSON_WRAP_CHARS_PER_SLOT,
+            CHARS_PER_TOKEN,
+        )
+        source_text = "Hello world"   # 11 chars, single slot, untranslated
+        _write_po(tmp_path, "test.po", _simple_po([(source_text, "")]))
+        slots, batches, tokens = count_and_estimate(str(tmp_path), "ja", 15, skip_rag=False)
+
+        source_chars = len(source_text) + JSON_WRAP_CHARS_PER_SLOT
+        expected_tokens = int(source_chars / CHARS_PER_TOKEN) + batches * (
+            BASE_OVERHEAD_TOKENS_PER_BATCH + RAG_OVERHEAD_TOKENS_PER_BATCH
+        )
+        assert tokens == expected_tokens
+
+    def test_json_wrap_is_included_in_token_estimate(self, tmp_path):
+        """Token estimate for a non-empty source is higher than source chars alone would give.
+
+        Without JSON_WRAP_CHARS_PER_SLOT the estimate would be lower; verifying
+        the delta confirms the wrapping constant is applied.
+        """
+        from estimate_cost import (
+            count_and_estimate,
+            JSON_WRAP_CHARS_PER_SLOT,
+            CHARS_PER_TOKEN,
+        )
+        source_text = "A" * 100   # 100 chars, one slot
+        _write_po(tmp_path, "test.po", _simple_po([(source_text, "")]))
+        _, batches, tokens_actual = count_and_estimate(str(tmp_path), "ja", 15, skip_rag=True)
+
+        # Tokens if wrapping were absent (source chars only, no JSON overhead)
+        tokens_without_wrap = int(len(source_text) / CHARS_PER_TOKEN)
+        assert tokens_actual > tokens_without_wrap
+
+    def test_plural_entry_expands_to_plural_count_slots(self, tmp_path):
+        """A plural entry must expand to plural_count slots, not 1.
+
+        Japanese has 1 plural form (nplurals=1), so a plural msgid produces
+        exactly 1 slot.  A language with nplurals=3 (e.g. Russian) would produce 3.
+        We test with an explicit Plural-Forms header to be independent of the
+        language lookup table.
+        """
+        from estimate_cost import count_and_estimate
+        # nplurals=3 → 1 plural entry should contribute 3 slots
+        po_content = (
+            'msgid ""\n'
+            'msgstr ""\n'
+            '"Language: ru\\n"\n'
+            '"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\\n"\n'
+            '\n'
+            'msgid "One item"\n'
+            'msgid_plural "Many items"\n'
+            'msgstr[0] ""\n'
+            'msgstr[1] ""\n'
+            'msgstr[2] ""\n'
+        )
+        _write_po(tmp_path, "ru.po", po_content)
+        slots, _, _ = count_and_estimate(str(tmp_path), "ru", 15)
+        assert slots == 3
+
+    def test_bulk_size_one_gives_one_batch_per_slot(self, tmp_path):
+        """With bulk_size=1 every slot is its own batch; batches == slots."""
+        from estimate_cost import count_and_estimate
+        entries = [(f"String {i}", "") for i in range(5)]
+        _write_po(tmp_path, "test.po", _simple_po(entries))
+        slots, batches, _ = count_and_estimate(str(tmp_path), "ja", bulk_size=1)
+        assert slots == 5
+        assert batches == 5
+
 
 
 # ---------------------------------------------------------------------------
