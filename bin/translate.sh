@@ -124,12 +124,12 @@ done
 echo "----------------------------------------------------------------"
 
 # 1.75 Pre-flight Cost Estimate
-# Only runs for remote-billed models: skip dry-run and local providers
-# (ollama, custom) where there is no per-token charge.
+# Only runs for non-dry-run, non-local models.
+# Custom endpoint models are included so users still see the estimate prompt
+# (or a clear message when no pricing data is configured).
 _is_remote_model() {
   [ "$IS_DRY_RUN" != "true" ] \
-    && [ "$MODEL_PROVIDER" != "ollama" ] \
-    && [ "$MODEL_PROVIDER" != "custom" ]
+    && [ "$MODEL_PROVIDER" != "ollama" ]
 }
 
 if _is_remote_model; then
@@ -158,9 +158,15 @@ if _is_remote_model; then
         if [ "$HAS_PRICING" = "true" ]; then
           echo "   Estimated cost (range): \$$EST_COST_LOW – \$$EST_COST_HIGH"
         else
-          echo "   Estimated cost        : N/A (add 'pricing' to models.yaml to enable)"
+          echo "   Estimated cost        : N/A"
+          echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models.yaml."
+          echo "      Cost estimate cannot be displayed. To enable it, add a 'pricing' block"
+          echo "      to this model's entry in config/models.yaml, e.g.:"
+          echo "        pricing:"
+          echo "          prompt_per_1k_tokens: 0.001"
+          echo "          completion_per_1k_tokens: 0.005"
         fi
-        if [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
+        if [ "$HAS_PRICING" = "true" ] && [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
           echo "   ⓘ  Actual cost will vary depending on the volume of RAG context"
           echo "      injected per batch (size of glossary/TM)."
         fi
