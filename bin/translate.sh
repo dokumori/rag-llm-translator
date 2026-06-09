@@ -44,6 +44,10 @@ if [ ! -f "$MODELS_YAML" ]; then
   exit 1
 fi
 
+# Steps 0–1.75 are wrapped in a loop so the user can restart language,
+# model, and RAG selection if they decline the cost estimate.
+while true; do
+
 # 0. Language Selection
 if [[ "$1" == -* ]]; then
   TARGET_LANG="${1#-}"
@@ -80,8 +84,9 @@ select opt in "${menu_options[@]}"
 do
   if [ -n "$opt" ]; then
     LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
-    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | head -1)
-    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT" | tail -1)
+    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
+    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
+    MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
     break
   else
     echo "❌ Invalid option. Please try again."
@@ -119,10 +124,15 @@ done
 echo "----------------------------------------------------------------"
 
 # 1.75 Pre-flight Cost Estimate
-# Show a cost estimate per language before committing to a live API run.
-# Skipped for dry-run models (no cost) and degrades gracefully if the
-# estimate script fails (|| true ensures translate.sh is never blocked).
-if [ "$IS_DRY_RUN" != "true" ]; then
+# Only runs for remote-billed models: skip dry-run and local providers
+# (ollama, custom) where there is no per-token charge.
+_is_remote_model() {
+  [ "$IS_DRY_RUN" != "true" ] \
+    && [ "$MODEL_PROVIDER" != "ollama" ] \
+    && [ "$MODEL_PROVIDER" != "custom" ]
+}
+
+if _is_remote_model; then
   for _est_lang in "${TARGET_LANGS[@]}"; do
     _est_input_dir=$(input_dir "$_est_lang")
     if [ -d "$_est_input_dir" ]; then
@@ -131,6 +141,7 @@ if [ "$IS_DRY_RUN" != "true" ]; then
         --model "$SELECTED_MODEL" \
         --target-lang "$_est_lang" \
         --bulk-size "${BULK_SIZE:-15}" \
+        "${SKIP_RAG_ARGS[@]}" \
         2>/dev/null) || true
 
       if [ -n "$ESTIMATE_OUTPUT" ]; then
@@ -149,18 +160,29 @@ if [ "$IS_DRY_RUN" != "true" ]; then
         else
           echo "   Estimated cost        : N/A (add 'pricing' to models.yaml to enable)"
         fi
+        if [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
+          echo "   ⓘ  Actual cost will vary depending on the volume of RAG context"
+          echo "      injected per batch (size of glossary/TM)."
+        fi
         echo "----------------------------------------------------------------"
       fi
     fi
   done
 
-  read -rp "Proceed with translation? [Y/n]: " _est_confirm
+  read -rp "Proceed with translation? [Y/n/q — q to quit]: " _est_confirm
   _est_confirm="${_est_confirm:-Y}"
-  if [[ ! "$_est_confirm" =~ ^[Yy]$ ]]; then
+  if [[ "$_est_confirm" =~ ^[Qq]$ ]]; then
     echo "❌ Translation cancelled."
     exit 0
+  elif [[ ! "$_est_confirm" =~ ^[Yy]$ ]]; then
+    echo "↩️  Restarting selection..."
+    echo "----------------------------------------------------------------"
+    continue   # loop back to language selection
   fi
 fi
+
+break   # confirmed (or non-remote model) — proceed to translation
+done   # end of selection retry loop
 
 # 2. Metadata Validation (Pre-flight check)
 for LANG_ITER in "${TARGET_LANGS[@]}"; do

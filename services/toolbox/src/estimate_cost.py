@@ -5,7 +5,25 @@ Counts untranslated entries in .po files, estimates token usage using a
 character-based heuristic, and computes a cost range from model pricing
 in models.yaml.  No API calls are made.
 
-Output is one KEY=VALUE line per metric so bash can parse it without jq:
+Estimation formula
+------------------
+input_tokens = (source chars + 30 chars/slot) ÷ 4  +  (batches × overhead_per_batch)
+
+overhead_per_batch:
+    475 tokens  — system prompt (375) + user-message boilerplate (100), always
+    200 tokens  — RAG context (glossary + TM hits), omitted when --skip-rag
+
+4 chars/token is conservative (real BPE averages ~3.5–4.5 for English).
+RAG overhead of 200 tokens ≈ 800 chars is an average estimate for a typical
+glossary hit + one TM match per batch; actual context varies with dataset size.
+
+Output token range:
+    low  = input_tokens × 1.0  (translations ≈ same length as source)
+    high = input_tokens × 2.0  (verbose languages + JSON wrapping)
+
+See docs/9_cost_estimation.md for full details.
+
+Output format (one KEY=VALUE per line, parseable by bash without jq):
 
     STRINGS=1247
     BATCHES=84
@@ -21,7 +39,8 @@ Usage (inside toolbox container):
         --input /app/po/input/ja \\
         --model claude-sonnet-4-6 \\
         --target-lang ja \\
-        --bulk-size 15
+        --bulk-size 15 \\
+        [--skip-rag]
 """
 
 from __future__ import annotations
@@ -54,11 +73,14 @@ logger = logging.getLogger(__name__)
 # 4.0 is deliberately conservative so we don't underestimate costs.
 CHARS_PER_TOKEN: float = 4.0
 
-# Fixed per-batch token overhead (prompt + RAG context buffer + boilerplate).
-#   System prompt:            ~1 500 chars  ÷ 4 ≈ 375 tokens
-#   RAG context (typical):    ~800 chars    ÷ 4 ≈ 200 tokens
-#   User-message boilerplate: ~400 chars    ÷ 4 ≈ 100 tokens
-OVERHEAD_TOKENS_PER_BATCH: int = 375 + 200 + 100  # = 675
+# Per-batch token overhead breakdown:
+#   System prompt instructions:  ~1500 chars ÷ 4 ≈ 375 tokens (localisation rules from prompts/{lang}.md + JSON format rules)
+#   User-message boilerplate:     ~400 chars ÷ 4 ≈ 100 tokens (JSON payload wrapping and translation prompt)
+#   RAG context (glossary + TM hits, typical match):  ~800 chars ÷ 4 ≈ 200 tokens
+#
+# The RAG overhead is only added when RAG injection is active (--skip-rag not set).
+BASE_OVERHEAD_TOKENS_PER_BATCH: int = 375 + 100       # = 475  (always)
+RAG_OVERHEAD_TOKENS_PER_BATCH: int  = 200              # added when RAG is on
 
 # JSON-payload wrapping overhead per slot: {"text": "...", "context": "..."}
 # adds roughly 30 characters on top of the source text itself.
@@ -80,6 +102,7 @@ def count_and_estimate(
     input_dir: str,
     target_lang: str,
     bulk_size: int,
+    skip_rag: bool = False,
 ) -> Tuple[int, int, int]:
     """Count untranslated slots and estimate total input tokens.
 
@@ -87,6 +110,8 @@ def count_and_estimate(
         input_dir:   Host-side directory that contains ``.po`` files.
         target_lang: BCP-47 language code (used for plural-form lookup).
         bulk_size:   Maximum slots per LLM batch request.
+        skip_rag:    When True, RAG context is not injected, so the per-batch
+                     RAG overhead is excluded from the token estimate.
 
     Returns:
         (total_slots, total_batches, estimated_input_tokens)
@@ -128,7 +153,10 @@ def count_and_estimate(
     total_batches = math.ceil(total_slots / bulk_size)
 
     source_tokens = int(total_source_chars / CHARS_PER_TOKEN)
-    overhead_tokens = total_batches * OVERHEAD_TOKENS_PER_BATCH
+    overhead_per_batch = BASE_OVERHEAD_TOKENS_PER_BATCH + (
+        0 if skip_rag else RAG_OVERHEAD_TOKENS_PER_BATCH
+    )
+    overhead_tokens = total_batches * overhead_per_batch
     estimated_input_tokens = source_tokens + overhead_tokens
 
     return total_slots, total_batches, estimated_input_tokens
@@ -202,10 +230,16 @@ def main() -> None:
         default=15,
         help="Slots per batch (default: 15, matches BULK_SIZE in .env)",
     )
+    parser.add_argument(
+        "--skip-rag",
+        action="store_true",
+        default=False,
+        help="Omit RAG context overhead from the token estimate (matches --skip-rag in translate_runner.py)",
+    )
     args = parser.parse_args()
 
     total_slots, total_batches, input_tokens = count_and_estimate(
-        args.input, args.target_lang, args.bulk_size
+        args.input, args.target_lang, args.bulk_size, skip_rag=args.skip_rag
     )
 
     # Look up pricing from models.yaml via the shared config layer.
