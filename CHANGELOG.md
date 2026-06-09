@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [6.0.4] - 2026-06-09
+
+### Added
+- **`bin/lib/translate_helpers.sh`**: `_post_process_lang()` helper wraps the `post_process.py` Docker call with `|| true`, making the exit-code suppression named, documented, and unit-testable.
+
+### Changed
+- **`bin/translate.sh`**: post-processing step now calls `_post_process_lang` instead of inlining the Docker command, ensuring the `|| true` guard is enforced through a tested function.
+- **`bin/translate.sh`**: removed the pre-flight cost estimate UI and the `while true` selection-retry loop; model lookup simplified to two fields (`SELECTED_MODEL`, `IS_DRY_RUN`).
+- **`tests/shell/test_translate.bats`**: replaced mock-loop regression tests with direct tests of `_post_process_lang` that source the real helper and stub `docker` — fixing the gap where the previous tests would pass even if `|| true` were removed from the production code.
+
+### Fixed
+- **`bin/translate.sh`**: Multi-language ("all") runs now process all selected languages. `post_process.py` exiting with code 1 when no output files are found caused `set -e` to abort after the first language (regression in `a293bcb`).
+
 ## [6.0.3] - 2026-06-08
 
 ### Added
