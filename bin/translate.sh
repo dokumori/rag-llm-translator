@@ -231,7 +231,7 @@ fi
 
 # 5. Post-Processing
   echo "✨ Running Post-Process..."
-  docker compose exec toolbox python3 /app/src/post_process.py "/app/po/output/$TARGET_LANG" --lang "$TARGET_LANG" || true
+  _post_process_lang "/app/po/output/$TARGET_LANG" "$TARGET_LANG"
 
 done
 

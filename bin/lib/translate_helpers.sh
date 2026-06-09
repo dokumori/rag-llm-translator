@@ -28,3 +28,15 @@ _compute_model_slug() {
             | sed 's/^-//;s/-$//'
     fi
 }
+
+# Runs post-processing for one language. || true is intentional: post_process.py
+# exits 1 when no output files are found ("nothing to do"), not an error.
+#
+# Arguments:
+#   $1 — container output path  (e.g. "/app/po/output/ja")
+#   $2 — language code          (e.g. "ja")
+_post_process_lang() {
+    local output_dir="$1"
+    local lang="$2"
+    docker compose exec toolbox python3 /app/src/post_process.py "$output_dir" --lang "$lang" || true
+}
