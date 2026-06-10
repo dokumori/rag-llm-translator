@@ -1,4 +1,5 @@
 # tests/shell/test_system_menu.bats
+# Added as part of the status check.
 #
 # BATS tests for functions added / modified in bin/system_menu.sh.
 #
