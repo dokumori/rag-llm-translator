@@ -44,153 +44,174 @@ if [ ! -f "$MODELS_YAML" ]; then
   exit 1
 fi
 
-# Steps 0–1.75 are wrapped in a loop so the user can restart language,
-# model, and RAG selection if they decline the cost estimate.
-while true; do
-
-# 0. Language Selection
-if [[ "$1" == -* ]]; then
-  TARGET_LANG="${1#-}"
-else
-  TARGET_LANG=$(select_language "translation" "${TRANSLATIONS_ROOT}/input" ".po")
-fi
-
-if [ -z "$TARGET_LANG" ]; then
-  echo "❌ No language selected or available. Exiting."
-  exit 1
-fi
-
-if [ "$TARGET_LANG" = "all" ]; then
-  echo "🌐 Target languages: ALL available languages"
-  TARGET_LANGS=($(list_available_langs "${TRANSLATIONS_ROOT}/input" ".po"))
-else
-  echo "🌐 Target language: $TARGET_LANG"
-  TARGET_LANGS=("$TARGET_LANG")
-fi
-
-
-# Helper: path to shared model config script (runs inside toolbox to avoid host PyYAML dep)
-MODEL_CONFIG="/app/bin/lib/model_config.py"
-CONTAINER_MODELS_YAML="/app/config/models.yaml"
-
-# 1. Model Selection Menu
-menu_options=()
-while IFS= read -r line; do
-  menu_options+=("$line")
-done < <(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format names)
-PS3="Enter the number of your choice: "
-
-select opt in "${menu_options[@]}"
-do
-  if [ -n "$opt" ]; then
-    LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
-    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
-    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
-    MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
-    break
-  else
-    echo "❌ Invalid option. Please try again."
-  fi
-done
-
-echo ""
-if [ "$IS_DRY_RUN" = "true" ]; then
-  echo "🔬 DRY RUN MODE"
-else
-  echo "🚀 LIVE RUN: Using $opt"
-fi
-
-# 1.5 RAG Mode Selection
-echo "----------------------------------------------------------------"
-echo "Select Evaluation Mode:"
-rag_options=("With RAG (Default context injection)" "Without RAG (skip-rag flag)")
-PS3="Enter the number of your choice: "
-
-select rag_opt in "${rag_options[@]}"
-do
-  if [ "$REPLY" -eq 1 ]; then
-    SKIP_RAG_ARGS=()
-    echo "🧠 Mode: WITH RAG"
-    break
-  elif [ "$REPLY" -eq 2 ]; then
-    SKIP_RAG_ARGS=(--skip-rag)
-    echo "⏩ Mode: WITHOUT RAG (skip-rag)"
-    break
-  else
-    echo "❌ Invalid option. Please try again."
-  fi
-done
-
-echo "----------------------------------------------------------------"
-
-# 1.75 Pre-flight Cost Estimate
-# Only runs for non-dry-run, non-local models.
-# Custom endpoint models are included so users still see the estimate prompt
-# (or a clear message when no pricing data is configured).
+# ---------------------------------------------------------------------------
+# _is_remote_model — returns 0 if the selected model incurs API costs.
+# Dry-run and local (ollama) models are excluded.
+# ---------------------------------------------------------------------------
 _is_remote_model() {
   [ "$IS_DRY_RUN" != "true" ] \
     && [ "$MODEL_PROVIDER" != "ollama" ]
 }
 
-if _is_remote_model; then
-  for _est_lang in "${TARGET_LANGS[@]}"; do
-    _est_input_dir=$(input_dir "$_est_lang")
-    if [ -d "$_est_input_dir" ]; then
-      ESTIMATE_OUTPUT=$(docker compose exec -T toolbox python3 -u /app/src/estimate_cost.py \
-        --input "/app/po/input/$_est_lang" \
-        --model "$SELECTED_MODEL" \
-        --target-lang "$_est_lang" \
-        --bulk-size "${BULK_SIZE:-15}" \
-        "${SKIP_RAG_ARGS[@]}" \
-        2>/dev/null) || true
+# ---------------------------------------------------------------------------
+# _select_translation_params — interactive selection of language, model, RAG
+# mode, and cost confirmation.
+#
+# Sets globals: TARGET_LANG, TARGET_LANGS, SELECTED_MODEL, IS_DRY_RUN,
+#               MODEL_PROVIDER, SKIP_RAG_ARGS
+#
+# Returns 0 if the user confirmed and translation should proceed.
+# Returns 1 if the user asked to restart the selection from the beginning.
+# ---------------------------------------------------------------------------
+_select_translation_params() {
 
-      if [ -n "$ESTIMATE_OUTPUT" ]; then
-        EST_STRINGS=$(echo "$ESTIMATE_OUTPUT" | grep '^STRINGS='    | cut -d= -f2)
-        EST_BATCHES=$(echo "$ESTIMATE_OUTPUT" | grep '^BATCHES='    | cut -d= -f2)
-        EST_COST_LOW=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_LOW='  | cut -d= -f2)
-        EST_COST_HIGH=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_HIGH=' | cut -d= -f2)
-        HAS_PRICING=$(echo "$ESTIMATE_OUTPUT"  | grep '^HAS_PRICING=' | cut -d= -f2)
+  # 1. Language Selection
+  if [[ "$1" == -* ]]; then
+    TARGET_LANG="${1#-}"
+  else
+    TARGET_LANG=$(select_language "translation" "${TRANSLATIONS_ROOT}/input" ".po")
+  fi
 
-        echo "----------------------------------------------------------------"
-        echo "📊 Cost Estimate — $opt ($EST_STRINGS strings, $_est_lang)"
-        echo "   Strings to translate  : $EST_STRINGS"
-        echo "   Batches (~${BULK_SIZE:-15} strings/batch) : $EST_BATCHES"
-        if [ "$HAS_PRICING" = "true" ]; then
-          echo "   Estimated cost (range): \$$EST_COST_LOW – \$$EST_COST_HIGH"
-        else
-          echo "   Estimated cost        : N/A"
-          echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models.yaml."
-          echo "      Cost estimate cannot be displayed. To enable it, add a 'pricing' block"
-          echo "      to this model's entry in config/models.yaml, e.g.:"
-          echo "        pricing:"
-          echo "          prompt_per_1k_tokens: 0.001"
-          echo "          completion_per_1k_tokens: 0.005"
-        fi
-        if [ "$HAS_PRICING" = "true" ] && [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
-          echo "   ⓘ  Actual cost will vary depending on the volume of RAG context"
-          echo "      injected per batch (size of glossary/TM)."
-        fi
-        echo "----------------------------------------------------------------"
-      fi
+  if [ -z "$TARGET_LANG" ]; then
+    echo "❌ No language selected or available. Exiting."
+    exit 1
+  fi
+
+  if [ "$TARGET_LANG" = "all" ]; then
+    echo "🌐 Target languages: ALL available languages"
+    TARGET_LANGS=($(list_available_langs "${TRANSLATIONS_ROOT}/input" ".po"))
+  else
+    echo "🌐 Target language: $TARGET_LANG"
+    TARGET_LANGS=("$TARGET_LANG")
+  fi
+
+  # Helper: path to shared model config script (runs inside toolbox to avoid host PyYAML dep)
+  local MODEL_CONFIG="/app/bin/lib/model_config.py"
+  local CONTAINER_MODELS_YAML="/app/config/models.yaml"
+
+  # 2. Model Selection Menu
+  local menu_options=()
+  while IFS= read -r line; do
+    menu_options+=("$line")
+  done < <(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format names)
+  PS3="Enter the number of your choice: "
+
+  local opt
+  select opt in "${menu_options[@]}"
+  do
+    if [ -n "$opt" ]; then
+      local LOOKUP_OUTPUT
+      LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
+      SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
+      IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
+      MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
+      break
+    else
+      echo "❌ Invalid option. Please try again."
     fi
   done
 
-  read -rp "Proceed with translation? [Y/n/q — q to quit]: " _est_confirm
-  _est_confirm="${_est_confirm:-Y}"
-  if [[ "$_est_confirm" =~ ^[Qq]$ ]]; then
-    echo "❌ Translation cancelled."
-    exit 0
-  elif [[ ! "$_est_confirm" =~ ^[Yy]$ ]]; then
-    echo "↩️  Restarting selection..."
-    echo "----------------------------------------------------------------"
-    continue   # loop back to language selection
+  echo ""
+  if [ "$IS_DRY_RUN" = "true" ]; then
+    echo "🔬 DRY RUN MODE"
+  else
+    echo "🚀 LIVE RUN: Using $opt"
   fi
-fi
 
-break   # confirmed (or non-remote model) — proceed to translation
-done   # end of selection retry loop
+  # 3. RAG Mode Selection
+  echo "----------------------------------------------------------------"
+  echo "Select Evaluation Mode:"
+  local rag_options=("With RAG (Default context injection)" "Without RAG (skip-rag flag)")
+  PS3="Enter the number of your choice: "
 
-# 2. Metadata Validation (Pre-flight check)
+  local rag_opt
+  select rag_opt in "${rag_options[@]}"
+  do
+    if [ "$REPLY" -eq 1 ]; then
+      SKIP_RAG_ARGS=()
+      echo "🧠 Mode: WITH RAG"
+      break
+    elif [ "$REPLY" -eq 2 ]; then
+      SKIP_RAG_ARGS=(--skip-rag)
+      echo "⏩ Mode: WITHOUT RAG (skip-rag)"
+      break
+    else
+      echo "❌ Invalid option. Please try again."
+    fi
+  done
+
+  echo "----------------------------------------------------------------"
+
+  # 4. Pre-flight Cost Estimate
+  # Only runs for non-dry-run, non-local models.
+  # Custom endpoint models are included so users still see the estimate prompt
+  # (or a clear message when no pricing data is configured).
+  if _is_remote_model; then
+    local _est_lang _est_input_dir ESTIMATE_OUTPUT
+    local EST_STRINGS EST_BATCHES EST_COST_LOW EST_COST_HIGH HAS_PRICING
+    for _est_lang in "${TARGET_LANGS[@]}"; do
+      _est_input_dir=$(input_dir "$_est_lang")
+      if [ -d "$_est_input_dir" ]; then
+        ESTIMATE_OUTPUT=$(docker compose exec -T toolbox python3 -u /app/src/estimate_cost.py \
+          --input "/app/po/input/$_est_lang" \
+          --model "$SELECTED_MODEL" \
+          --target-lang "$_est_lang" \
+          --bulk-size "${BULK_SIZE:-15}" \
+          "${SKIP_RAG_ARGS[@]}" \
+          2>/dev/null) || true
+
+        if [ -n "$ESTIMATE_OUTPUT" ]; then
+          EST_STRINGS=$(echo "$ESTIMATE_OUTPUT" | grep '^STRINGS='    | cut -d= -f2)
+          EST_BATCHES=$(echo "$ESTIMATE_OUTPUT" | grep '^BATCHES='    | cut -d= -f2)
+          EST_COST_LOW=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_LOW='  | cut -d= -f2)
+          EST_COST_HIGH=$(echo "$ESTIMATE_OUTPUT" | grep '^COST_HIGH=' | cut -d= -f2)
+          HAS_PRICING=$(echo "$ESTIMATE_OUTPUT"  | grep '^HAS_PRICING=' | cut -d= -f2)
+
+          echo "----------------------------------------------------------------"
+          echo "📊 Cost Estimate — $opt ($EST_STRINGS strings, $_est_lang)"
+          echo "   Strings to translate  : $EST_STRINGS"
+          echo "   Batches (~${BULK_SIZE:-15} strings/batch) : $EST_BATCHES"
+          if [ "$HAS_PRICING" = "true" ]; then
+            echo "   Estimated cost (range): \$$EST_COST_LOW – \$$EST_COST_HIGH"
+          else
+            echo "   Estimated cost        : N/A"
+            echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models.yaml."
+            echo "      Cost estimate cannot be displayed. To enable it, add a 'pricing' block"
+            echo "      to this model's entry in config/models.yaml, e.g.:"
+            echo "        pricing:"
+            echo "          prompt_per_1k_tokens: 0.001"
+            echo "          completion_per_1k_tokens: 0.005"
+          fi
+          if [ "$HAS_PRICING" = "true" ] && [ ${#SKIP_RAG_ARGS[@]} -eq 0 ]; then
+            echo "   ⓘ  Actual cost will vary depending on the volume of RAG context"
+            echo "      injected per batch (size of glossary/TM)."
+          fi
+          echo "----------------------------------------------------------------"
+        fi
+      fi
+    done
+
+    local _est_confirm
+    read -rp "Proceed with translation? [Y/n/q — q to quit]: " _est_confirm
+    _est_confirm="${_est_confirm:-Y}"
+    if [[ "$_est_confirm" =~ ^[Qq]$ ]]; then
+      echo "❌ Translation cancelled."
+      exit 0
+    elif [[ ! "$_est_confirm" =~ ^[Yy]$ ]]; then
+      echo "↩️  Restarting selection..."
+      echo "----------------------------------------------------------------"
+      return 1   # signal: restart the selection loop
+    fi
+  fi
+
+  return 0   # confirmed — proceed to translation
+}
+
+# Steps 1–4 are wrapped in a loop so the user can restart language,
+# model, and RAG selection if they decline the cost estimate.
+while ! _select_translation_params "$@"; do :; done
+
+# 5. Metadata Validation (Pre-flight check)
 for LANG_ITER in "${TARGET_LANGS[@]}"; do
   echo "----------------------------------------------------------------"
   echo "⚙️ Processing language: $LANG_ITER"
@@ -249,7 +270,7 @@ with open(po_file, 'w', encoding='utf-8') as f:
 EOF
 done
 
-# 3. Prepare Naming Metadata
+# 6. Prepare Naming Metadata
 MODEL_SLUG=$(_compute_model_slug "$SELECTED_MODEL" "$IS_DRY_RUN")
 
 if [ ${#SKIP_RAG_ARGS[@]} -gt 0 ]; then
@@ -258,7 +279,7 @@ else
   RAG_MODE="rag"
 fi
 
-# 3.5 Pre-flight Check for conflicting files
+# 7. Pre-flight Check for conflicting files
 echo "🔍 Checking for output conflicts..."
 CONFLICTS_FOUND=0
 while read -r input_file; do
@@ -277,7 +298,7 @@ fi
 
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
-# 4. Execute Modular Translation Runner
+# 8. Execute Modular Translation Runner
 echo "📦 Starting Modular Translation Runner..."
 _dc_rc=0
 docker compose exec \
@@ -301,7 +322,7 @@ fi
 # Non-interrupt failure — let set -e handle it
 [ "$_dc_rc" -eq 0 ] || [ "$_dc_rc" -eq 130 ] || exit "$_dc_rc"
 
-# 5. Post-Processing
+# 9. Post-Processing
   echo "✨ Running Post-Process..."
   _post_process_lang "/app/po/output/$TARGET_LANG" "$TARGET_LANG"
 
