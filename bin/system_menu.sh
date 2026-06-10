@@ -79,6 +79,7 @@ _has_input_po() {
     find "$PROJECT_ROOT/data/translations/input" -name "*.po" -print -quit 2>/dev/null | grep -q .
 }
 
+# Added as part of the status check.
 # Returns 0 if any langcode subdirectory under data/translations/eval/ contains
 # both with_rag/ and without_rag/ subdirectories (required for [E] Evaluate)
 _has_eval_data() {
@@ -92,6 +93,7 @@ _has_eval_data() {
 }
 
 # ── Status Refresh ────────────────────────────────────────────────────────────
+# Added as part of the status check.
 # Called once per menu render. Sets global boolean string variables ("true"/"false")
 # consumed by both the dashboard and per-option badge logic.
 # Docker-level checks (layer 2) are skipped when prerequisites aren't met,
@@ -126,6 +128,7 @@ print(len(c.list_collections()))
 }
 
 # ── Menu Item Renderer ────────────────────────────────────────────────────────
+# Added as part of the status check.
 # Renders one option line, with cyan key when ready or dimmed key + hint when not.
 #
 # Arguments:
