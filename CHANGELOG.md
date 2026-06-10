@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [6.1.0] - 2026-06-10
+
+### Added
+- **Pre-flight cost estimate**: before any API calls are made, the system scans the source `.po` files and displays the string count, batch count, estimated prompt tokens, and a projected USD cost range (low/high). The estimate is RAG-aware: overhead is higher when RAG context injection is active. If a model has no pricing in `models.yaml`, the cost columns show `N/A`. The actual-cost note is suppressed when no estimate was shown.
+- **`docs/9_cost_estimation.md`**: explains the token-counting approach, per-batch overhead assumptions for system prompts and RAG context, the low/high output multipliers, and how to add pricing for additional models.
+- **`tests/unit/test_estimate_cost.py`** covering token counting, batch rounding, plural-form expansion, RAG overhead toggling, cost arithmetic, and pricing fallback to `N/A`.
+
+### Changed
+- **`bin/translate.sh`**: refactored for improved readability and maintainability; step numbers renumbered to reflect the updated flow.
+
 ## [6.0.4] - 2026-06-09
 
 ### Added
