@@ -1,9 +1,22 @@
 # Glossary Extraction Guide
 
-The purpose of this script is to restore translation consistency, which often diminishes over time as projects evolve and multiple contributors (or LLM models/versions) participate. This tool helps developers grasp variations in terminology by extracting 1–3 word terms from the Translation Memory and identifying the most frequent "primary" translations. Beyond standardisation, it serves as a diagnostic tool to identify outdated phrasing and provides a data-driven foundation for a formal project glossary, ensuring a high-quality, unified user experience.
+This tool extracts 1–3 word terms from the Translation Memory and identifies the most frequent "primary" translation for each, producing a draft `glossary.csv` per language.
+
+It can also be used to restore translation consistency that has diminished over time — for example when multiple contributors or LLM versions have introduced terminology variations — and serves as a diagnostic tool to identify outdated phrasing.
 
 ## Usage
-Run this script to audit your database consistency or to create a baseline for a new `glossary.csv`:
+
+Run this tool to audit your database consistency or to create a baseline for a new `glossary.csv`.
+
+### Via the System Menu (Option G) — Recommended
+
+Make sure the Docker stack is running, then select **G** from the system menu. The menu will show you which languages are available in the database, let you pick one or extract all at once, and print a success/failure summary with the output file paths when done.
+
+> **Prerequisite:** `docker compose up -d` must be running before launching option G.
+
+### Manual (advanced)
+
+You can also invoke the script directly:
 
 **Extract all languages:**
 ```bash

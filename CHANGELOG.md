@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **G) Extract Glossary from DB** — `extract_glossary_from_db.py` is now accessible from the system menu. The menu option queries the vector DB for available TM languages, presents an interactive selector (individual language or *all*), and displays a success/failure summary. Tests added.
+- **`docs/4_glossary_extraction.md`**: updated to document the Option G system menu workflow as the recommended way to run glossary extraction.
 
 ### Changed
 - **`extract_glossary_from_db.py`**: failure paths now exit with code 1 so the shell wrapper can correctly distinguish success from failure. Noisy `httpx` HTTP request log lines suppressed. Tests updated.
