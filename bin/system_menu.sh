@@ -203,6 +203,7 @@ _render_menu() {
     echo ""
     echo -e "  ${BOLD}Context (RAG)${RESET}"
     _menu_item "I" "$STACK_OK" "Ingest TM / Glossary          " "Load translation memory into ChromaDB" "$stack_hint"
+    _menu_item "G" "$STACK_OK" "Extract Glossary from DB      " "Generate draft glossary from TM" "$stack_hint"
     _menu_item "B" "$STACK_OK" "Backup or restore context data" "Manage ChromaDB snapshots" "$stack_hint"
 
     echo ""
@@ -229,8 +230,8 @@ _render_menu() {
     else
         e_ready=true
     fi
-    _menu_item "E" "$e_ready" "Evaluate translation quality  " "LLM-as-a-Judge blind test" "$e_hint"
     _menu_item "A" "$STACK_OK" "Analyse RAG matching          " "Generate RAG performance report" "$stack_hint"
+    _menu_item "E" "$e_ready" "Evaluate translation quality  " "LLM-as-a-Judge blind test" "$e_hint"
 
     echo ""
     echo -e "  ${BOLD}Configuration${RESET}"
@@ -366,6 +367,19 @@ The Docker stack must be running (docker compose up -d).
             fi
             ;;
 
+        g|G)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
+            bash "$SCRIPT_DIR/extract_glossary.sh"
+            _post_run_pause
+            echo ""
+            echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
+            ;;
+
         b|B)
             if [ "$STACK_OK" = false ]; then
                 echo ""
@@ -413,6 +427,26 @@ Ensure you have already ingested TM/glossary data ([I] Ingest).
             ;;
 
         # ── Evaluate & Tune ────────────────────────────────────────────────
+        a|A)
+            if [ "$STACK_OK" = false ]; then
+                echo ""
+                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
+                sleep 1.5
+                continue
+            fi
+            if _preflight \
+"You must have run at least one translation ([T] Translate) so that
+rag-proxy has produced traffic logs to analyse.
+📖 See: docs/3_RAG_performance_analysis.md"; then
+                bash "$SCRIPT_DIR/analyse.sh"
+                _post_run_pause
+                echo ""
+                echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
+            else
+                clear
+            fi
+            ;;
+
         e|E)
             if [ "$STACK_OK" = false ]; then
                 echo ""
@@ -433,26 +467,6 @@ Ensure you have already ingested TM/glossary data ([I] Ingest).
 Each directory must contain exactly one .po file.
 📖 See: docs/5_translation_evaluation.md"; then
                 bash "$SCRIPT_DIR/eval_quality.sh"
-                _post_run_pause
-                echo ""
-                echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
-            else
-                clear
-            fi
-            ;;
-
-        a|A)
-            if [ "$STACK_OK" = false ]; then
-                echo ""
-                echo -e "  ${YELLOW}⚠️  Docker stack must be running. Start with: docker compose up -d${RESET}"
-                sleep 1.5
-                continue
-            fi
-            if _preflight \
-"You must have run at least one translation ([T] Translate) so that
-rag-proxy has produced traffic logs to analyse.
-📖 See: docs/3_RAG_performance_analysis.md"; then
-                bash "$SCRIPT_DIR/analyse.sh"
                 _post_run_pause
                 echo ""
                 echo -e "${BOLD}════════════════════════════════════════════════════${RESET}"
@@ -526,7 +540,7 @@ You will need to re-ingest all data afterwards.
         # ── Invalid ────────────────────────────────────────────────────────
         *)
             echo ""
-            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter S, D, I, B, T, E, A, P, M, X, or q.${RESET}"
+            echo -e "  ${YELLOW}❌ Invalid choice: '${choice}'. Please enter S, D, I, G, B, T, E, A, P, M, X, or q.${RESET}"
             sleep 1
             ;;
     esac

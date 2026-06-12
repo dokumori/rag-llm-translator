@@ -110,6 +110,45 @@ select_language() {
     done
 }
 
+# Interactive language selector backed by a pre-populated list of langcodes.
+# Accepts langcodes as positional arguments so the caller controls the data
+# source (e.g. querying the vector DB) and this function stays Docker-free
+# and unit-testable.
+#
+# All prompts go to stderr; the chosen langcode (or "all") is printed to stdout.
+# Returns 1 when given an empty list so the caller can exit cleanly.
+#
+# Usage:
+#   SELECTED=$(select_language_from_db "glossary extraction" "${langs[@]}")
+#   if [ -z "$SELECTED" ]; then exit 1; fi   # guard against Ctrl+D
+select_language_from_db() {
+    local purpose="$1"
+    shift
+    local langs=("$@")
+
+    if [ ${#langs[@]} -eq 0 ]; then
+        echo "❌ No languages available for ${purpose}." >&2
+        return 1
+    fi
+
+    # Append the "all" option
+    langs+=("all")
+
+    echo "" >&2
+    echo "Select target language for ${purpose}:" >&2
+    local saved_ps3="$PS3"
+    PS3="Enter the number of your choice: "
+
+    select lang in "${langs[@]}"; do
+        if [ -n "$lang" ]; then
+            PS3="$saved_ps3"
+            echo "$lang"
+            return 0
+        fi
+        echo "❌ Invalid option. Please try again." >&2
+    done
+}
+
 # --- Environment Loading ---
 # Loads .env.defaults first (committed defaults), then .env on top so that
 # local overrides always take priority. UID/GID are excluded to avoid shell

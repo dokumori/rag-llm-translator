@@ -302,3 +302,58 @@ EOF
     [ "$BASE_URL" = "http://example.com/api?foo=bar&baz=1" ]
     [ "$MSG" = "hello world" ]
 }
+
+
+# ---------------------------------------------------------------------------
+# select_language_from_db (bin/common.sh)
+#
+# Tests use input redirection (<<<) to feed a selection number to the
+# select built-in, simulating a non-interactive TTY.
+# ---------------------------------------------------------------------------
+
+@test "[common.sh::select_language_from_db] returns 1 and prints error when given no languages" {
+    run select_language_from_db "test"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"No languages available"* ]]
+}
+
+@test "[common.sh::select_language_from_db] appends 'all' and returns it when selected last option" {
+    # With langs=(ja es), options are: 1)ja 2)es 3)all  → select "3"
+    run bash -c "
+        source '${PROJECT_ROOT}/bin/common.sh'
+        echo '3' | select_language_from_db 'test' 'ja' 'es' 2>/dev/null
+    "
+    assert_success
+    assert_output "all"
+}
+
+@test "[common.sh::select_language_from_db] returns single language when selected" {
+    # Options: 1)ja 2)all → select "1"
+    run bash -c "
+        source '${PROJECT_ROOT}/bin/common.sh'
+        echo '1' | select_language_from_db 'test' 'ja' 2>/dev/null
+    "
+    assert_success
+    assert_output "ja"
+}
+
+@test "[common.sh::select_language_from_db] returns empty string on Ctrl+D (EOF)" {
+    # Ctrl+D is simulated by sending empty stdin; the select loop exits,
+    # nothing is echoed, so output should be empty.
+    run bash -c "
+        source '${PROJECT_ROOT}/bin/common.sh'
+        echo '' | select_language_from_db 'test' 'ja' 2>/dev/null
+    "
+    # The function falls through select without printing → empty stdout
+    assert_output ""
+}
+
+@test "[common.sh::select_language_from_db] re-prompts on invalid number before accepting valid one" {
+    # Send an invalid choice first (99), then a valid one (1)
+    run bash -c "
+        source '${PROJECT_ROOT}/bin/common.sh'
+        printf '99\n1\n' | select_language_from_db 'test' 'ja' 2>/dev/null
+    "
+    assert_success
+    assert_output "ja"
+}

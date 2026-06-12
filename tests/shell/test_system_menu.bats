@@ -134,3 +134,27 @@ setup() {
     run _menu_item "T" false "Translate" "Run the pipeline"
     [[ "$output" != *"HINT:"* ]]
 }
+
+
+# ---------------------------------------------------------------------------
+# G) Extract Glossary from DB — menu item rendering
+# ---------------------------------------------------------------------------
+
+@test "_menu_item: G ready=true renders without DIM prefix" {
+    run _menu_item "G" true "Extract Glossary from DB      " "Generate draft glossary from TM"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"G)"* ]]
+    [[ "$output" != *"DIM:"* ]]
+}
+
+@test "_menu_item: G ready=true renders label and description" {
+    run _menu_item "G" true "Extract Glossary from DB      " "Generate draft glossary from TM"
+    [[ "$output" == *"Extract Glossary from DB"* ]]
+    [[ "$output" == *"Generate draft glossary from TM"* ]]
+}
+
+@test "_menu_item: G ready=false with hint renders DIM and hint" {
+    run _menu_item "G" false "Extract Glossary from DB      " "Generate draft glossary from TM" "needs stack"
+    [[ "$output" == *"DIM:G)"* ]]
+    [[ "$output" == *"HINT:needs stack"* ]]
+}
