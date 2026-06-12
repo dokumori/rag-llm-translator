@@ -169,6 +169,11 @@ def test_perform_rag_lookup_guardrail_acceptance(mock_get_ef, mock_get_chroma):
     content, logs = app.perform_rag_lookup(query)
 
     assert "target phrase" in content
+    # Verify the reference-data framing delimiters are present when content is found.
+    # If the `if rag_content:` block were removed, raw content would appear without
+    # framing and these assertions would catch the regression.
+    assert "[REFERENCE DATA" in content
+    assert "[END REFERENCE DATA]" in content
     # Look for the glossary log entry
     glossary_log = next((l for l in logs if l['type'] == 'glossary'), None)
 
@@ -196,7 +201,7 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     mock_glossary.query.return_value = {
         'documents': [['something else']],
         'distances': [[0.8]],
-        'metadatas': [[{'target': 'no match'}]]
+        'metadatas': [[ {'target': 'no match'}]]
     }
 
     query = [{"text": "my query"}]
@@ -208,6 +213,8 @@ def test_perform_rag_lookup_guardrail_rejection(mock_get_ef, mock_get_chroma):
     assert "target phrase" not in content
     assert logs[0]['accepted'] is False
     assert logs[0]['dist'] == 0.8
+    # No accepted content → framing delimiters must be absent (empty string returned).
+    assert "[REFERENCE DATA" not in content
 
 
 @patch('app.get_chroma_client')

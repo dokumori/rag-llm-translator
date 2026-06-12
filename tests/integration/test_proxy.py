@@ -94,8 +94,7 @@ def test_rag_context_injection(client, mocker):
     # perform a RAG lookup (mocked above), and inject the context into the system prompt.
     payload = {
         "model": "deepseek-r1-v1",
-        "messages": [{"role": "user", "content": "Text to translate:\nDrupal Core"}],
-        "system": "You are a translator."
+        "messages": [{"role": "user", "content": "Text to translate:\nDrupal Core"}]
     }
 
     # Mock construct_system_prompt to verify injection
@@ -116,12 +115,13 @@ def test_rag_context_injection(client, mocker):
     # Since Safety Mode (Dry Run) is active, upstream API is NOT called.
     # We verify integration by checking that construct_system_prompt received the RAG content.
     args, _ = mock_construct.call_args
-    # signature: (original_system_data, rag_content, target_lang)
-    # rag_content is 2nd arg (index 1)
-    passed_rag_content = args[1]
-    
+    # signature: (rag_content, target_lang, item_count)
+    # rag_content is 1st arg (index 0)
+    passed_rag_content = args[0]
+
     assert "Drupal Core" in passed_rag_content, "Glossary Source missing from RAG content arg"
     assert "<glossary_matches>" in passed_rag_content, "XML tags missing from RAG content arg"
+    assert "[REFERENCE DATA" in passed_rag_content, "Reference-data framing delimiter missing from RAG content arg"
     print("✅ CHECK PASSED: RAG content passed to prompt constructor.")
 
 
