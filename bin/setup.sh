@@ -15,8 +15,8 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${PROJECT_ROOT}/.env-backups"
 ENV_FILE="${PROJECT_ROOT}/.env"
-MODELS_YAML="${PROJECT_ROOT}/config/models.yaml"
-MODELS_EXAMPLE="${PROJECT_ROOT}/config/models.example.yaml"
+MODELS_YAML="${PROJECT_ROOT}/config/models/models.yaml"
+MODELS_EXAMPLE="${PROJECT_ROOT}/config/models/models.example.yaml"
 LITELLM_CONFIG="${PROJECT_ROOT}/config/litellm/config.yaml"
 
 # ── Colours ───────────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ section "⚙️  LLM CONNECTION MODE"
                         echo ""
                         echo "   ℹ️  Custom endpoint setup"
                         echo "   ⚠️  Adding custom models will completely overwrite config/litellm/config.yaml"
-                        echo "      and config/models/custom/models.json when the setup completes."
+                        echo "      and config/models/models.yaml when the setup completes."
                         echo ""
                         echo "   Three identifiers are required for each endpoint:"
                         echo "   • Local ID    — a short identifier used inside this project to route requests (no spaces)"
@@ -223,7 +223,7 @@ section "⚙️  LLM CONNECTION MODE"
                         done
 
                         echo ""
-                        echo "   ℹ️  To add more custom endpoints later, edit config/models.yaml directly,"
+                        echo "   ℹ️  To add more custom endpoints later, edit config/models/models.yaml directly,"
                         echo "      then restart LiteLLM: docker compose restart litellm"
                         echo "      See: docs/8_multi_llm_support.md for details."
                         ;;
@@ -234,7 +234,7 @@ section "⚙️  LLM CONNECTION MODE"
                         echo ""
                         echo "   ℹ️  Ollama (local models) setup"
                         echo "   ⚠️  Adding Ollama models will completely overwrite config/litellm/config.yaml"
-                        echo "      and config/models/custom/models.json when the setup completes."
+                        echo "      and config/models/models.yaml when the setup completes."
                         echo ""
                         OLLAMA_BASE_URL="http://host.docker.internal:11434"
                         echo "   ✅ OLLAMA_BASE_URL set to: ${OLLAMA_BASE_URL}"
@@ -280,11 +280,11 @@ section "⚙️  LLM CONNECTION MODE"
                 ENDPOINT_ENV_IDX+=("$_found")
             done
 
-            # ── Generate config/models.yaml ────────────────────────────────
+            # ── Generate config/models/models.yaml ─────────────────────────
             section "📝 GENERATING MODELS CONFIGURATION"
 
             if [ ! -f "$MODELS_EXAMPLE" ]; then
-                echo "❌ models.example.yaml not found — cannot generate config/models.yaml."
+                echo "❌ models.example.yaml not found — cannot generate config/models/models.yaml."
                 echo "   Please ensure the repository is intact and try again."
                 exit 1
             fi
@@ -299,18 +299,18 @@ section "⚙️  LLM CONNECTION MODE"
                     [[ "$p" == "custom" || "$p" == "ollama" ]] && HAS_CUSTOM_DATA=true && break
                 done
                 if [ "$HAS_CUSTOM_DATA" = true ]; then
-                    echo "   ⚠️  config/models.yaml already exists."
+                    echo "   ⚠️  config/models/models.yaml already exists."
                     echo "      If you do not overwrite, the custom model information you just entered will be discarded."
                     read -p "   Overwrite with your new settings? [Y/n]: " OW_MODELS
                     OW_MODELS="${OW_MODELS:-Y}"
                 else
                     # Standard providers use well-known model IDs, so keeping the
                     # existing file is the safer default.
-                    read -p "   config/models.yaml already exists. Overwrite? [y/N]: " OW_MODELS
+                    read -p "   config/models/models.yaml already exists. Overwrite? [y/N]: " OW_MODELS
                     OW_MODELS="${OW_MODELS:-N}"
                 fi
                 if [[ ! "$OW_MODELS" =~ ^[Yy]$ ]]; then
-                    echo "   ⏭️  Keeping existing models.yaml."
+                    echo "   ⏭️  Keeping existing config/models/models.yaml."
                     GENERATE_MODELS=false
                 fi
             fi
@@ -334,7 +334,7 @@ section "⚙️  LLM CONNECTION MODE"
                 # Use --output - (stdout) to avoid writing into the read-only /app/config mount;
                 # the shell redirects stdout to the correct host-side path.
                 docker compose exec -T toolbox python3 /app/bin/lib/model_config.py generate \
-                    --example "/app/config/models.example.yaml" \
+                    --example "/app/config/models/models.example.yaml" \
                     --output "-" \
                     --providers "$PROVIDERS_ARG" \
                     --custom-names   "$CUSTOM_NAMES_STR" \
@@ -344,16 +344,16 @@ section "⚙️  LLM CONNECTION MODE"
                     --custom-key-envs  "$CUSTOM_KEY_ENVS" \
                     --ollama-models "$OLLAMA_MODELS" \
                     > "$MODELS_YAML"
-                echo "   ✅ Written: config/models.yaml"
+                echo "   ✅ Written: config/models/models.yaml"
             fi
 
-            # ── Derive config/litellm/config.yaml from models.yaml ─────────
+            # ── Derive config/litellm/config.yaml from config/models/models.yaml ──
             section "📝 GENERATING LITELLM CONFIG"
 
             # If models.yaml was not just regenerated and a litellm config already
             # exists, ask whether to overwrite it before proceeding.
             if [ -f "$LITELLM_CONFIG" ] && [ "$GENERATE_MODELS" = false ]; then
-                read -p "   config/litellm/config.yaml already exists. Regenerate from models.yaml? [y/N]: " OW_LITELLM
+                read -p "   config/litellm/config.yaml already exists. Regenerate from config/models/models.yaml? [y/N]: " OW_LITELLM
                 OW_LITELLM="${OW_LITELLM:-N}"
                 if [[ ! "$OW_LITELLM" =~ ^[Yy]$ ]]; then
                     echo "   ⏭️  Keeping existing config.yaml."
@@ -367,7 +367,7 @@ section "⚙️  LLM CONNECTION MODE"
                 # Use --output - (stdout) to avoid writing into the read-only /app/config mount.
                 mkdir -p "$(dirname "$LITELLM_CONFIG")"
                 docker compose exec -T toolbox python3 /app/bin/lib/model_config.py generate-litellm \
-                    --models /app/config/models.yaml \
+                    --models /app/config/models/models.yaml \
                     --output "-" \
                     > "$LITELLM_CONFIG"
                 echo "   ✅ Written: config/litellm/config.yaml"

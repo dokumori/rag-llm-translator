@@ -32,7 +32,7 @@ cost_high = input_tokens × prompt_rate  +  input_tokens × 2.0 × completion_ra
 
 The 1× lower bound assumes translations are roughly the same length as the source; the 2× upper bound accounts for verbose target languages and JSON array wrapping.
 
-Rates are read from the `pricing` block in `config/models.yaml`. If a model has no pricing entry, the estimate shows `N/A` — add a `pricing` block to enable it:
+Rates are read from the `pricing` block in `config/models/models.yaml`. If a model has no pricing entry, the estimate shows `N/A` — add a `pricing` block to enable it:
 
 ```yaml
 - id: my-model

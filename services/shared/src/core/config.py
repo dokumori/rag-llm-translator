@@ -47,7 +47,7 @@ class Config:
 
     # --- Paths ---
     PROMPTS_DIR: str = os.environ.get("PROMPTS_DIR", "/app/config/prompts")
-    MODELS_CONFIG_PATH: str = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models.yaml")
+    MODELS_CONFIG_PATH: str = os.environ.get("MODELS_CONFIG_PATH", "/app/config/models/models.yaml")
     TM_SOURCE_DIR: str = os.environ.get("TM_SOURCE_DIR", "/app/tm_source")
 
     # --- Embedding ---
@@ -77,7 +77,7 @@ def load_models_config(models_path: Optional[str] = None) -> List[Dict[str, Any]
 
     Models are read from `models_path` (defaults to Config.MODELS_CONFIG_PATH).
     The file format is YAML with a top-level ``models`` list; see
-    ``config/models.example.yaml`` for the schema.
+    ``config/models/models.example.yaml`` for the schema.
 
     Returns a list of model dicts; regular models first, dry-run last.
     Returns an empty list on any error so callers degrade gracefully.

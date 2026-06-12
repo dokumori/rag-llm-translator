@@ -15,13 +15,13 @@ echo "----------------------------------------------------------------"
 # Ensure we are running from project root
 cd "$(dirname "$0")/.."
 
-MODELS_YAML="config/models.yaml"
-CONTAINER_MODELS_YAML="/app/config/models.yaml"
+MODELS_YAML="config/models/models.yaml"
+CONTAINER_MODELS_YAML="/app/config/models/models.yaml"
 
 # Safety check for required models config
 if [ ! -f "$MODELS_YAML" ]; then
   echo "❌ Error: Models configuration not found at $MODELS_YAML"
-  echo "   Run bin/setup.sh to generate it, or copy config/models.example.yaml to config/models.yaml."
+  echo "   Run bin/setup.sh to generate it, or copy config/models/models.example.yaml to config/models/models.yaml."
   exit 1
 fi
 
