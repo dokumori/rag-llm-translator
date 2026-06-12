@@ -1,6 +1,7 @@
 import os
 import csv
 import re
+import sys
 import argparse
 import chromadb
 import logging
@@ -221,7 +222,7 @@ def main() -> None:
         collection = client.get_collection(name=COLLECTION_NAME)
     except Exception as e:
         logger.error(f"❌ Could not find collection '{COLLECTION_NAME}': {e}")
-        return
+        sys.exit(1)
 
     logger.info(f"📂 Accessing collection '{COLLECTION_NAME}'...")
 
@@ -231,7 +232,7 @@ def main() -> None:
 
     if not docs or not metas:
         logger.warning("❌ No data found.")
-        return
+        sys.exit(1)
 
     logger.info(f"✅ Retrieved {len(docs)} records. Partitioning by language...")
 
@@ -246,7 +247,7 @@ def main() -> None:
                 f"❌ Language '{args.lang}' not found in database. "
                 f"Available: {sorted(lang_groups.keys())}"
             )
-            return
+            sys.exit(1)
         lang_groups = {args.lang: lang_groups[args.lang]}
 
     logger.info(f"🌍 Found {len(lang_groups)} language(s): {sorted(lang_groups.keys())}")
