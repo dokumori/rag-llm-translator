@@ -56,6 +56,45 @@ def batch_generator(iterable, n=1) -> Generator[List[Any], None, None]:
         yield iterable[ndx:min(ndx + n, total)]
 
 
+def _is_suspicious_entry(src: str, tgt: str, label: str) -> bool:
+    """Shape-based sanity check for ingest entries.
+
+    Rejects entries that violate structural properties always true of legitimate
+    translation data, without attempting regex content filtering (which produces
+    false positives on real UI strings and gives false confidence against
+    creative adversaries).
+
+    Checks:
+    - Neither field contains a raw newline: genuine glossary terms and short TM
+      strings are single-line; a newline most likely means an instruction block
+      has been embedded in the value.
+    - Target length is not wildly disproportionate to the source length: a 5-char
+      source with a 500-char target is almost certainly not a translation.
+    - Neither field exceeds an absolute character cap.
+
+    Returns True if the entry looks suspicious (caller should skip it).
+    """
+    MAX_CHARS = 2000
+    MAX_LENGTH_RATIO = 5  # target may be at most 5x longer than source
+
+    if '\n' in src or '\n' in tgt:
+        logger.warning("⚠️ [%s] Skipping suspicious entry with embedded newline: %r -> %r",
+                       label, src[:60], tgt[:60])
+        return True
+
+    if len(src) > MAX_CHARS or len(tgt) > MAX_CHARS:
+        logger.warning("⚠️ [%s] Skipping suspicious oversized entry (src=%d chars, tgt=%d chars): %r",
+                       label, len(src), len(tgt), src[:60])
+        return True
+
+    if src and len(tgt) > MAX_LENGTH_RATIO * len(src):
+        logger.warning("⚠️ [%s] Skipping entry with suspicious length ratio (%dx): %r -> %r",
+                       label, len(tgt) // len(src), src[:60], tgt[:60])
+        return True
+
+    return False
+
+
 def pre_flight_check(run_glossary: bool, run_tm: bool, langcode: str = "") -> bool:
     """
     Validates input files and directory structure before performing expensive operations.
@@ -150,6 +189,11 @@ def process_glossary(client: IngestClient, langcode: str, reset: bool = False, s
                 ctx = (row_lower.get('msgctxt', '') or row_lower.get('context', '')).strip()
 
                 if src and tgt:
+                    # Shape-based sanity check: reject structurally anomalous entries
+                    # before they reach ChromaDB (and later the system prompt).
+                    if _is_suspicious_entry(src, tgt, label="Glossary"):
+                        continue
+
                     dedup_key = (src, ctx)
                     # First occurrence wins
                     if dedup_key not in unique_entries:
@@ -248,8 +292,13 @@ def process_tm(client: IngestClient, langcode: str, reset: bool = False, skip_in
 
                     # check to ensure neither is empty
                     if clean_src and clean_tgt:
+                        # Shape-based sanity check: reject structurally anomalous entries
+                        # before they reach ChromaDB (and later the system prompt).
+                        if _is_suspicious_entry(clean_src, clean_tgt, label="TM"):
+                            continue
+
                         dedup_key = (clean_src, msgctxt)
-                        
+
                         # Deduplication logic: if the same (msgid, msgctxt) is found
                         # in multiple files, first occurrence wins
                         if dedup_key not in unique_tm:
