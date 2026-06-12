@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [6.3.0] - 2026-06-12
+
+### Added
+- **G) Extract Glossary from DB** — `extract_glossary_from_db.py` is now accessible from the system menu. The menu option queries the vector DB for available TM languages, presents an interactive selector (individual language or *all*), and displays a success/failure summary. Tests added.
+
+### Changed
+- **`extract_glossary_from_db.py`**: failure paths now exit with code 1 so the shell wrapper can correctly distinguish success from failure. Noisy `httpx` HTTP request log lines suppressed. Tests updated.
+
 ## [6.2.0] - 2026-06-12
 
 > **Upgrade:** Re-run `bin/setup.sh`, or manually move your existing `config/models.yaml` to `config/models/models.yaml`. The old path will no longer be read.
