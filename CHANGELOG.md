@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [6.2.0] - 2026-06-12
+
+> **Upgrade:** Re-run `bin/setup.sh`, or manually move your existing `config/models.yaml` to `config/models/models.yaml`. The old path will no longer be read.
+
+### Changed
+- **Model config files relocated** to `config/models/`: `models.yaml` and `models.example.yaml` now live under `config/models/` instead of `config/`. The orphaned `config/models/custom/` directory has been removed. All path references updated across shell scripts, Python modules, Docker Compose, `.gitignore`, and docs.
+
 ## [6.1.0] - 2026-06-10
 
 ### Added

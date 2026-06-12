@@ -1,6 +1,6 @@
-# config/models.example.yaml — Template for model configuration.
-# This file is the SOURCE used by bin/setup.sh to generate config/models.yaml.
-# DO NOT edit models.yaml directly — run bin/setup.sh to regenerate it.
+# config/models/models.example.yaml — Template for model configuration.
+# This file is the SOURCE used by bin/setup.sh to generate config/models/models.yaml.
+# DO NOT edit config/models/models.yaml directly — run bin/setup.sh to regenerate it.
 #
 # To add a new well-known model, add an entry here and commit this file.
 # Custom/Ollama entries are injected at setup time; do not add them here.

@@ -15,7 +15,7 @@ bash bin/setup.sh
 ```
 
 The wizard lets you choose one or more providers, collects API keys (hidden input), and auto-generates:
-- `config/models.yaml` — single source of truth for all model definitions
+- `config/models/models.yaml` — single source of truth for all model definitions
 - `config/litellm/config.yaml` — auto-derived from `models.yaml` (do not edit directly)
 
 ### Manual Setup
@@ -25,16 +25,16 @@ If you prefer to configure manually:
 #### Step 1: Create your config file
 
 ```bash
-cp config/models.example.yaml config/models.yaml
+cp config/models/models.example.yaml config/models/models.yaml
 ```
 
-Edit `config/models.yaml` and uncomment the entries for providers you want to use.
+Edit `config/models/models.yaml` and uncomment the entries for providers you want to use.
 
 #### Step 2: Generate the LiteLLM config
 
 ```bash
 docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
-    --models /app/config/models.yaml \
+    --models /app/config/models/models.yaml \
     --output /app/config/litellm/config.yaml
 ```
 
@@ -88,10 +88,10 @@ docker compose up -d
 
 ## Adding or Editing Models
 
-All model definitions live in a single file: **`config/models.yaml`**.
+All model definitions live in a single file: **`config/models/models.yaml`**.
 
 ```yaml
-# config/models.yaml example
+# config/models/models.yaml example
 models:
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
@@ -107,11 +107,11 @@ models:
     is_dry_run: true
 ```
 
-After editing `config/models.yaml`, regenerate the LiteLLM config and restart:
+After editing `config/models/models.yaml`, regenerate the LiteLLM config and restart:
 
 ```bash
 docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
-    --models /app/config/models.yaml \
+    --models /app/config/models/models.yaml \
     --output /app/config/litellm/config.yaml
 
 docker compose restart litellm
@@ -136,20 +136,20 @@ docker compose restart litellm
 
 **`Translation provider unavailable` (502)**
 - Check `docker compose logs rag-proxy` for the upstream error
-- Verify `config/models.yaml` has an entry for the model you selected
+- Verify `config/models/models.yaml` has an entry for the model you selected
 - Check `docker compose logs litellm` for provider-side errors
 - Ensure the relevant API key is set in `.env`
 
 **Gateway container not starting**
 - Ensure `config/litellm/config.yaml` has at least one model entry — LiteLLM requires at least one configured model to start
 - Run `docker compose logs litellm` to see the startup error
-- Regenerate with: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models.yaml --output /app/config/litellm/config.yaml`
+- Regenerate with: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models/models.yaml --output /app/config/litellm/config.yaml`
 
 ---
 
 ## Using Custom OpenAI-Compatible Endpoints via Gateway
 
-If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a corporate API gateway), add them to `config/models.yaml` with `provider: custom`:
+If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a corporate API gateway), add them to `config/models/models.yaml` with `provider: custom`:
 
 ### Setup via Wizard (recommended)
 
@@ -164,7 +164,7 @@ The wizard will ask for each endpoint:
 
 After each endpoint, you'll be asked **"Add another custom endpoint?"** — answer `y` to add more.
 
-The wizard automatically writes `config/models.yaml` and derives `config/litellm/config.yaml`.
+The wizard automatically writes `config/models/models.yaml` and derives `config/litellm/config.yaml`.
 
 ### Manual Setup
 
@@ -176,7 +176,7 @@ The wizard automatically writes `config/models.yaml` and derives `config/litellm
    CUSTOM_LLM_API_KEY_2=sk-another-key
    ```
 
-2. Add to `config/models.yaml`:
+2. Add to `config/models/models.yaml`:
    ```yaml
    - id: amazee-llama3
      name: "amazee.ai — Llama 3.1"
@@ -196,7 +196,7 @@ The wizard automatically writes `config/models.yaml` and derives `config/litellm
 3. Regenerate LiteLLM config and restart:
    ```bash
    docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
-       --models /app/config/models.yaml \
+       --models /app/config/models/models.yaml \
        --output /app/config/litellm/config.yaml
    docker compose restart litellm
    ```
@@ -220,7 +220,7 @@ Routing Ollama through the gateway lets you use local models **alongside** cloud
 ### Setup via Wizard (recommended)
 
 Run `bash bin/setup.sh`, choose **Local** mode.
-Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and writes `config/models.yaml` with the Ollama entries automatically.
+Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and writes `config/models/models.yaml` with the Ollama entries automatically.
 
 ### Manual Setup
 
@@ -229,7 +229,7 @@ Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `
    OLLAMA_BASE_URL=http://host.docker.internal:11434
    ```
 
-2. Add to `config/models.yaml`:
+2. Add to `config/models/models.yaml`:
    ```yaml
    - id: llama3.1
      name: "Ollama — llama3.1"
@@ -241,7 +241,7 @@ Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `
 3. Regenerate and restart:
    ```bash
    docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
-       --models /app/config/models.yaml \
+       --models /app/config/models/models.yaml \
        --output /app/config/litellm/config.yaml
    docker compose restart litellm
    ```

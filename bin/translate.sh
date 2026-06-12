@@ -35,12 +35,12 @@ echo "----------------------------------------------------------------"
 # Ensure we are running from project root
 cd "$(dirname "$0")/.."
 
-MODELS_YAML="config/models.yaml"
+MODELS_YAML="config/models/models.yaml"
 
 # Safety check for required models config
 if [ ! -f "$MODELS_YAML" ]; then
   echo "❌ Error: Models configuration not found at $MODELS_YAML"
-  echo "   Run bin/setup.sh to generate it, or copy config/models.example.yaml to config/models.yaml."
+  echo "   Run bin/setup.sh to generate it, or copy config/models/models.example.yaml to config/models/models.yaml."
   exit 1
 fi
 
@@ -87,7 +87,7 @@ _select_translation_params() {
 
   # Helper: path to shared model config script (runs inside toolbox to avoid host PyYAML dep)
   local MODEL_CONFIG="/app/bin/lib/model_config.py"
-  local CONTAINER_MODELS_YAML="/app/config/models.yaml"
+  local CONTAINER_MODELS_YAML="/app/config/models/models.yaml"
 
   # 2. Model Selection Menu
   local menu_options=()
@@ -175,9 +175,9 @@ _select_translation_params() {
             echo "   Estimated cost (range): \$$EST_COST_LOW – \$$EST_COST_HIGH"
           else
             echo "   Estimated cost        : N/A"
-            echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models.yaml."
+            echo "   ⚠️  No pricing information found for '$SELECTED_MODEL' in config/models/models.yaml."
             echo "      Cost estimate cannot be displayed. To enable it, add a 'pricing' block"
-            echo "      to this model's entry in config/models.yaml, e.g.:"
+            echo "      to this model's entry in config/models/models.yaml, e.g.:"
             echo "        pricing:"
             echo "          prompt_per_1k_tokens: 0.001"
             echo "          completion_per_1k_tokens: 0.005"
