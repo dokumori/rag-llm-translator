@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`extract_glossary_from_db.py`**: failure paths now exit with code 1 so the shell wrapper can correctly distinguish success from failure. Noisy `httpx` HTTP request log lines suppressed. Tests updated.
 
+### Security
+- **RAG reference-data framing** (`app.py`): glossary and TM content injected into the system prompt is now wrapped with `[REFERENCE DATA]` / `[END REFERENCE DATA]` delimiters, structurally discouraging the LLM from treating retrieved entries as executable instructions.
+- **`system` field pass-through removed** (`app.py`): `construct_system_prompt()` no longer forwards the HTTP request body's `system` field. No client in this pipeline sends it, so it was an unnecessary injection surface.
+- **Judge prompt hardened** (`config/prompts/judge_evaluation.md`): added a preamble instructing the judge LLM to treat Translation A/B as opaque data, guarding against second-order injection via crafted translation output.
+- **Shape-based ingest validation** (`ingest.py`): new `_is_suspicious_entry()` helper rejects glossary and TM entries with embedded newlines, fields exceeding 2,000 chars, or a target-to-source length ratio above 5×. Suspicious entries are skipped with a `WARNING` log and the rest of the ingest continues.
+
 ## [6.2.0] - 2026-06-12
 
 > **Upgrade:** Re-run `bin/setup.sh`, or manually move your existing `config/models.yaml` to `config/models/models.yaml`. The old path will no longer be read.
