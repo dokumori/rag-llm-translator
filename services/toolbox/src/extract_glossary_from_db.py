@@ -11,6 +11,7 @@ from core.config import Config
 from infrastructure import get_chroma_client
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # suppress verbose HTTP request lines
 
 # --- Configuration ---
 CHROMA_HOST = Config.CHROMA_HOST
@@ -210,6 +211,8 @@ def main() -> None:
     parser.add_argument("--lang", default=None,
                         help="Optional: extract for a single language only (e.g. 'ja'). "
                              "Without this flag, all languages in the database are processed.")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress the final summary (used when called from the system menu).")
     args = parser.parse_args()
 
     client = get_chroma_client()
@@ -249,7 +252,6 @@ def main() -> None:
     logger.info(f"🌍 Found {len(lang_groups)} language(s): {sorted(lang_groups.keys())}")
 
     RAG_ANALYSIS_DIR = os.environ.get("RAG_ANALYSIS_DIR", "/app/data/rag-analysis")
-    logger.info(f"🔧 Config: RAG_ANALYSIS_DIR = {RAG_ANALYSIS_DIR}")
     os.makedirs(RAG_ANALYSIS_DIR, exist_ok=True)
 
     for langcode in sorted(lang_groups.keys()):
@@ -259,18 +261,17 @@ def main() -> None:
             output_dir=RAG_ANALYSIS_DIR,
         )
 
-    # Summary log
-    is_docker = os.path.exists('//.dockerenv')
-    output_files = [f"db_derived_glossary_{lc}.csv" for lc in sorted(lang_groups.keys())]
-
-    if is_docker:
-        logger.info("🎉 Done! Since you are running in Docker, files are available on your host at:")
-        for fname in output_files:
-            logger.info(f"   📄 ./data/rag-analysis/{fname}")
-    else:
-        logger.info(f"🎉 Done! Glossary files saved to '{RAG_ANALYSIS_DIR}':")
-        for fname in output_files:
-            logger.info(f"   📄 {fname}")
+    if not args.quiet:
+        is_docker = os.path.exists('/.dockerenv')
+        output_files = [f"db_derived_glossary_{lc}.csv" for lc in sorted(lang_groups.keys())]
+        if is_docker:
+            logger.info("🎉 Done! Since you are running in Docker, files are available on your host at:")
+            for fname in output_files:
+                logger.info(f"   📄 ./data/rag-analysis/{fname}")
+        else:
+            logger.info(f"🎉 Done! Glossary files saved to '{RAG_ANALYSIS_DIR}':")
+            for fname in output_files:
+                logger.info(f"   📄 {fname}")
 
 
 if __name__ == "__main__":

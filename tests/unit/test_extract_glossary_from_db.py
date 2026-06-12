@@ -286,7 +286,7 @@ class TestMain(unittest.TestCase):
     @patch("extract_glossary_from_db.get_chroma_client")
     @patch("argparse.ArgumentParser.parse_args")
     def test_lang_flag_filters_to_single_language(self, mock_args, mock_client):
-        mock_args.return_value = MagicMock(lang="ja")
+        mock_args.return_value = MagicMock(lang="ja", quiet=True)
         col = self._make_mock_collection(["ja", "ja", "it"])
         mock_client.return_value.get_collection.return_value = col
 
@@ -300,7 +300,7 @@ class TestMain(unittest.TestCase):
     @patch("extract_glossary_from_db.get_chroma_client")
     @patch("argparse.ArgumentParser.parse_args")
     def test_no_lang_flag_processes_all_languages(self, mock_args, mock_client):
-        mock_args.return_value = MagicMock(lang=None)
+        mock_args.return_value = MagicMock(lang=None, quiet=True)
         col = self._make_mock_collection(["ja", "it"])
         mock_client.return_value.get_collection.return_value = col
 
@@ -316,7 +316,7 @@ class TestMain(unittest.TestCase):
     @patch("extract_glossary_from_db.get_chroma_client")
     @patch("argparse.ArgumentParser.parse_args")
     def test_missing_collection_exits_gracefully(self, mock_args, mock_client):
-        mock_args.return_value = MagicMock(lang=None)
+        mock_args.return_value = MagicMock(lang=None, quiet=True)
         mock_client.return_value.get_collection.side_effect = Exception("collection not found")
 
         with self.assertLogs("extract_glossary_from_db", level="ERROR") as log:
@@ -326,7 +326,7 @@ class TestMain(unittest.TestCase):
     @patch("extract_glossary_from_db.get_chroma_client")
     @patch("argparse.ArgumentParser.parse_args")
     def test_lang_not_in_db_exits_gracefully(self, mock_args, mock_client):
-        mock_args.return_value = MagicMock(lang="fr")
+        mock_args.return_value = MagicMock(lang="fr", quiet=True)
         col = self._make_mock_collection(["ja"])
         mock_client.return_value.get_collection.return_value = col
 

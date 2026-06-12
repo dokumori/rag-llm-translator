@@ -127,7 +127,7 @@ for LANG_CODE in "${TARGET_LANGS[@]}"; do
 
     _dc_rc=0
     docker compose exec toolbox python3 -u \
-        /app/src/extract_glossary_from_db.py --lang "$LANG_CODE" \
+        /app/src/extract_glossary_from_db.py --lang "$LANG_CODE" --quiet \
         || _dc_rc=$?
 
     # Detect signal-death converted to exit 130 by docker
