@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from core.utils import find_po_files, langcode, optional_langcode
+from core.utils import find_po_files, langcode, optional_langcode, is_openai_reasoning_model, build_llm_call_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -138,3 +138,100 @@ class TestCoreUtils:
         # Ensure it didn't pick up .txt or .csv
         assert "test3.txt" not in filenames
         assert "test6.csv" not in filenames
+
+
+# ---------------------------------------------------------------------------
+# is_openai_reasoning_model
+# ---------------------------------------------------------------------------
+
+class TestIsOpenAIReasoningModel:
+    """Unit tests for core.utils.is_openai_reasoning_model()."""
+
+    @pytest.mark.parametrize("model_id", [
+        "o1",
+        "o1-mini",
+        "o1-preview",
+        "o3",
+        "o3-mini",
+        "o4",
+        "o4-mini",
+        "gpt-5",
+        "gpt-5-turbo",
+        # Case-insensitive: identifiers can arrive with varied casing
+        "O1",
+        "O3-Mini",
+        "GPT-5",
+    ])
+    def test_recognised_reasoning_models(self, model_id: str):
+        """Models matching a known O-series prefix must return True."""
+        assert is_openai_reasoning_model(model_id) is True
+
+    @pytest.mark.parametrize("model_id", [
+        "gpt-4o",
+        "gpt-4-turbo",
+        "gpt-3.5-turbo",
+        "claude-3-opus",
+        "claude-sonnet-4",
+        "mistral-7b",
+        "llama-3",
+        "deepseek-v3",
+        # Partial prefix matches that must NOT trigger — "o1" as a substring only
+        "no1se",
+        "tool1",
+    ])
+    def test_non_reasoning_models(self, model_id: str):
+        """Standard chat models and unrelated model IDs must return False."""
+        assert is_openai_reasoning_model(model_id) is False
+
+
+# ---------------------------------------------------------------------------
+# build_llm_call_kwargs
+# ---------------------------------------------------------------------------
+
+class TestBuildLlmCallKwargs:
+    """Unit tests for core.utils.build_llm_call_kwargs()."""
+
+    _MESSAGES = [{"role": "user", "content": "Hello"}]
+
+    def test_standard_model_includes_temperature_and_max_tokens(self):
+        """Standard (non-O-series) models must get temperature=0 and max_tokens."""
+        kwargs = build_llm_call_kwargs("gpt-4o", self._MESSAGES, 1024)
+
+        assert kwargs["model"] == "gpt-4o"
+        assert kwargs["messages"] is self._MESSAGES
+        assert kwargs["temperature"] == 0
+        assert kwargs["max_tokens"] == 1024
+        assert "max_completion_tokens" not in kwargs
+
+    def test_o_series_model_omits_temperature_uses_max_completion_tokens(self):
+        """O-series models must omit temperature and use max_completion_tokens."""
+        kwargs = build_llm_call_kwargs("o3-mini", self._MESSAGES, 2048)
+
+        assert kwargs["model"] == "o3-mini"
+        assert kwargs["messages"] is self._MESSAGES
+        assert "temperature" not in kwargs, "temperature must be absent for O-series models"
+        assert kwargs["max_completion_tokens"] == 2048
+        assert "max_tokens" not in kwargs
+
+    def test_gpt5_family_treated_as_reasoning_model(self):
+        """GPT-5 family must follow the same O-series rules."""
+        kwargs = build_llm_call_kwargs("gpt-5-turbo", self._MESSAGES, 512)
+
+        assert "temperature" not in kwargs
+        assert kwargs["max_completion_tokens"] == 512
+        assert "max_tokens" not in kwargs
+
+    @pytest.mark.parametrize("model_id", ["o1", "o1-mini", "o3", "o4", "o4-mini"])
+    def test_all_o_series_prefixes_omit_temperature(self, model_id: str):
+        """Every recognised O-series prefix must trigger the reasoning-model code path."""
+        kwargs = build_llm_call_kwargs(model_id, self._MESSAGES, 100)
+        assert "temperature" not in kwargs
+        assert "max_completion_tokens" in kwargs
+        assert "max_tokens" not in kwargs
+
+    def test_max_tokens_value_is_forwarded_correctly(self):
+        """The max_tokens argument must be forwarded without modification."""
+        for limit in [256, 4096, 16384]:
+            kwargs = build_llm_call_kwargs("gpt-4-turbo", self._MESSAGES, limit)
+            assert kwargs["max_tokens"] == limit
+

@@ -295,6 +295,38 @@ class TestProcessBatch:
         for item in raw_payload:
             assert isinstance(item["text"], str)
 
+    @patch("po_translator.time.sleep")
+    def test_o_series_model_omits_temperature(self, _):
+        """O-series model IDs must not receive temperature=0 (triggers a 400 error)."""
+        client = MagicMock()
+        client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content='["Hola"]'))]
+        )
+        ok, _ = _process_batch(client, "o3-mini", ["Hello"], "", max_retries=0)
+
+        assert ok is True
+        call_kwargs = client.chat.completions.create.call_args[1]
+        assert "temperature" not in call_kwargs, (
+            "O-series models must not receive temperature; they return 400 if temperature != 1"
+        )
+        assert "max_completion_tokens" in call_kwargs
+        assert "max_tokens" not in call_kwargs
+
+    @patch("po_translator.time.sleep")
+    def test_standard_model_includes_temperature(self, _):
+        """Standard (non-O-series) models must receive temperature=0 and max_tokens."""
+        client = MagicMock()
+        client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content='["Hola"]'))]
+        )
+        ok, _ = _process_batch(client, "gpt-4o", ["Hello"], "", max_retries=0)
+
+        assert ok is True
+        call_kwargs = client.chat.completions.create.call_args[1]
+        assert call_kwargs.get("temperature") == 0
+        assert "max_tokens" in call_kwargs
+        assert "max_completion_tokens" not in call_kwargs
+
 
 # ---------------------------------------------------------------------------
 # translate_po_file — end-to-end (OpenAI mocked)
