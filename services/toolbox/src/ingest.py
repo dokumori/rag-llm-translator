@@ -40,7 +40,7 @@ logging.getLogger("chromadb").setLevel(logging.WARNING)
 
 
 def generate_content_hash(text: str, langcode: str = "", msgctxt: str = "") -> str:
-    """Generates a deterministic MD5 hash incorporating langcode and msgctxt for uniqueness.
+    """Generates a deterministic SHA-256 hash incorporating langcode and msgctxt for uniqueness.
     
     This ensures the same English string ingested for different languages
     (or with different Drupal msgctxt values) produces distinct IDs.
