@@ -38,7 +38,9 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import polib
 from openai import OpenAI
+from core.config import Config
 from core.token_tracker import TokenTracker
+from core.utils import build_llm_call_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -300,11 +302,8 @@ def _process_batch(
     for attempt in range(max_retries + 1):
         # --- API call (retriable: network errors, rate limits, timeouts) ---
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0,
-            )
+            call_kwargs = build_llm_call_kwargs(model, messages, Config.LLM_MAX_TOKENS)
+            response = client.chat.completions.create(**call_kwargs)
             content = response.choices[0].message.content or ""
             logger.debug("Raw LLM response:\n%s", content)
             if tracker is not None:
