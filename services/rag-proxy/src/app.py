@@ -11,6 +11,7 @@ import logging
 import functools
 import snowballstemmer
 from core.config import Config, load_models_config
+from core.utils import build_llm_call_kwargs
 
 # Initialize stemmer globally
 _stemmer = snowballstemmer.stemmer('english')
@@ -653,27 +654,8 @@ def handle_translation(target_lang_code: Optional[str] = None) -> Union[Response
         # --- 6. REAL API CALL ---
 
         try:
-            # O-series reasoning models (o1, o3, o4) and GPT-5 family models
-            # have two constraints that differ from standard models:
-            #   1. They reject temperature values other than 1 with a 400 error.
-            #   2. They use max_completion_tokens instead of max_tokens.
-            # We do NOT rely on LiteLLM to translate these automatically — the
-            # temperature assumption burned us before, so we handle both explicitly.
-            _openai_reasoning_model_prefixes = ("o1", "o1-", "o3", "o3-", "o4", "o4-", "gpt-5")
-            _is_openai_reasoning_model = any(requested_model.lower().startswith(p) for p in _openai_reasoning_model_prefixes)
-
             output_token_limit = data.get("max_tokens", Config.LLM_MAX_TOKENS)
-            call_kwargs: Dict[str, Any] = {
-                "model": requested_model,
-                "messages": new_messages,
-            }
-            if _is_openai_reasoning_model:
-                call_kwargs["max_completion_tokens"] = output_token_limit
-            else:
-                call_kwargs["max_tokens"] = output_token_limit
-
-            if not _is_openai_reasoning_model:
-                call_kwargs["temperature"] = 0
+            call_kwargs = build_llm_call_kwargs(requested_model, new_messages, output_token_limit)
 
             response = get_upstream_client().chat.completions.create(**call_kwargs)
             # Guard: ensure we received a complete response, not a stream.
