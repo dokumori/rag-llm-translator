@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [6.3.1] - 2026-06-14
+
+### Fixed
+- **`po_translator`**: hardcoded `temperature=0` and `max_tokens` caused 400 errors when using O-series (o1, o3, o4) or GPT-5 models. Now uses shared `build_llm_call_kwargs()`, which omits `temperature` and sends `max_completion_tokens` for reasoning models — the same fix applied to `app.py` in 5.0.3, which `po_translator` had missed because it bypasses LiteLLM.
+
+### Changed
+- **`core/utils.py`**: extracted `is_openai_reasoning_model()` and `build_llm_call_kwargs()` into the shared module; `app.py` now delegates to it instead of duplicating the inline detection block.
+- **`services/toolbox/requirements.txt`**: removed unused `snowballstemmer` dependency.
+- **`ingest.py`**: corrected `generate_content_hash()` docstring ("MD5" → "SHA-256").
+
+### Tests
+- Added `TestIsOpenAIReasoningModel` and `TestBuildLlmCallKwargs` to `test_shared_utils.py`.
+- Added O-series kwargs regression tests to `TestProcessBatch` in `test_po_translator.py`.
+
 ## [6.3.0] - 2026-06-12
 
 ### Added
