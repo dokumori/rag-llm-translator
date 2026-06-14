@@ -875,3 +875,217 @@ class TestIngestLanguagesEndpoint:
         assert data["tm_langs"] == []
         assert data["all_langs"] == []
 
+
+# --- Part 7: parse_input_payload — "string" key fallback  ---
+
+
+def test_parse_input_payload_string_key_fallback():
+    """External callers using 'string' instead of 'text' as the field name must be accepted."""
+    import json
+    items = [{"string": "Save", "context": "button"}]
+    source_text = json.dumps(items)
+    result = app.parse_input_payload(source_text)
+    assert len(result) == 1
+    assert result[0] == {"text": "Save", "context": "button"}
+
+
+def test_parse_input_payload_text_takes_priority_over_string():
+    """When a caller provides both 'text' and 'string' keys, 'text' takes priority."""
+    import json
+    items = [{"text": "Primary", "string": "Fallback", "context": ""}]
+    source_text = json.dumps(items)
+    result = app.parse_input_payload(source_text)
+    assert result[0]["text"] == "Primary"
+
+
+def test_parse_input_payload_string_key_empty_text():
+    """When a caller sends an empty 'text' field alongside 'string', the parser falls back to 'string'."""
+    import json
+    items = [{"text": "", "string": "Fallback value", "context": ""}]
+    source_text = json.dumps(items)
+    result = app.parse_input_payload(source_text)
+    assert result[0]["text"] == "Fallback value"
+
+
+# --- Part 8: _query_with_context_fallback Direct Tests  ---
+
+
+class TestQueryWithContextFallback:
+    """
+    Direct unit tests for ``_query_with_context_fallback``.
+
+    This function has multiple fallback paths:
+      1. Context-specific query succeeds → return results with context_was_used=True
+      2. Context-specific empty → context-free fallback → return with context_was_used=False
+      3. Both context-specific and context-free empty → lang-only fallback
+      4. No batch_context → context-free query only
+      5. No lang_filter → plain query (no metadata filters)
+    """
+
+    @staticmethod
+    def _make_result(documents=None, distances=None, metadatas=None):
+        """Build a ChromaDB-style result dict."""
+        return {
+            "documents": documents or [[]],
+            "distances": distances or [[]],
+            "metadatas": metadatas or [[]],
+        }
+
+    def test_context_specific_hit(self):
+        """Path 1: context-filtered query returns documents → use them."""
+        collection = MagicMock()
+        collection.name = "test_col"
+        collection.query.return_value = self._make_result(
+            documents=[["source text"]],
+            distances=[[0.1]],
+            metadatas=[[{"target": "translated"}]],
+        )
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter={"langcode": "ja"},
+            batch_context="button",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is True
+        assert result["documents"] == [["source text"]]
+        # Should be called once (the context-specific query)
+        assert collection.query.call_count == 1
+        call_where = collection.query.call_args[1]["where"]
+        assert {"msgctxt": "button"} in call_where["$and"]
+
+    def test_context_specific_empty_falls_back_to_context_free(self):
+        """Path 2: context-specific returns no docs → try context-free entries."""
+        collection = MagicMock()
+        collection.name = "test_col"
+
+        # First call (context-specific) → empty; second (context-free) → hit
+        collection.query.side_effect = [
+            self._make_result(documents=[[]]),  # context-specific: empty
+            self._make_result(                  # context-free: has data
+                documents=[["ctx-free source"]],
+                distances=[[0.15]],
+                metadatas=[[{"target": "ctx-free target"}]],
+            ),
+        ]
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter={"langcode": "ja"},
+            batch_context="some_ctx",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is False
+        assert result["documents"] == [["ctx-free source"]]
+        assert collection.query.call_count == 2
+
+    def test_all_context_queries_empty_falls_back_to_lang_only(self):
+        """Path 3: context-specific + context-free both empty → lang-only."""
+        collection = MagicMock()
+        collection.name = "test_col"
+
+        lang_only_result = self._make_result(
+            documents=[["lang-only source"]],
+            distances=[[0.2]],
+            metadatas=[[{"target": "lang-only target"}]],
+        )
+
+        collection.query.side_effect = [
+            self._make_result(documents=[[]]),  # context-specific: empty
+            self._make_result(documents=[[]]),  # context-free: empty
+            lang_only_result,                   # lang-only: has data
+        ]
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter={"langcode": "ja"},
+            batch_context="missing_ctx",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is False
+        assert result["documents"] == [["lang-only source"]]
+        assert collection.query.call_count == 3
+
+    def test_no_batch_context_queries_context_free_only(self):
+        """Path 4: empty batch_context → restrict to context-free entries."""
+        collection = MagicMock()
+        collection.name = "test_col"
+        collection.query.return_value = self._make_result(
+            documents=[["no-ctx source"]],
+            distances=[[0.12]],
+            metadatas=[[{"target": "no-ctx target"}]],
+        )
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter={"langcode": "ja"},
+            batch_context="",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is False
+        assert collection.query.call_count == 1
+        call_where = collection.query.call_args[1]["where"]
+        # Should filter for msgctxt=="" (context-free entries only)
+        assert {"msgctxt": ""} in call_where["$and"]
+
+    def test_no_lang_filter_queries_without_metadata(self):
+        """Path 5: no lang_filter → plain query with no where clause."""
+        collection = MagicMock()
+        collection.name = "test_col"
+        collection.query.return_value = self._make_result(
+            documents=[["plain source"]],
+            distances=[[0.05]],
+            metadatas=[[{"target": "plain target"}]],
+        )
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter=None,
+            batch_context="anything",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is False
+        assert collection.query.call_count == 1
+        # Should NOT have a 'where' key
+        assert "where" not in collection.query.call_args[1]
+
+    def test_context_specific_query_error_falls_back(self):
+        """If the context-specific query raises, fall back gracefully."""
+        collection = MagicMock()
+        collection.name = "test_col"
+
+        collection.query.side_effect = [
+            Exception("ChromaDB timeout"),      # context-specific: error
+            self._make_result(                  # context-free: works
+                documents=[["fallback"]],
+                distances=[[0.1]],
+                metadatas=[[{"target": "ok"}]],
+            ),
+        ]
+
+        result, ctx_used = app._query_with_context_fallback(
+            collection=collection,
+            query_texts=["query"],
+            lang_filter={"langcode": "ja"},
+            batch_context="ctx",
+            context_meta_key="msgctxt",
+            target_lang="ja",
+        )
+
+        assert ctx_used is False
+        assert result["documents"] == [["fallback"]]
