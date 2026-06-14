@@ -217,7 +217,10 @@ def simple_stem(word: str) -> str:
     """Stems an English word using the Snowball (Porter2) algorithm."""
     return _stemmer.stemWord(word)
 
-# Minimal stop words list to prevent TM guardrail bypass
+# Minimal stop words list to prevent TM guardrail bypass.
+# NOTE: This set is English-only by design — source strings in the current
+# system are always English.  If non-English TM sources are ever ingested,
+# the stemming and stop-word logic will need a language-aware implementation.
 STOP_WORDS = {
     "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from", 
     "by", "with", "of", "in", "is", "are", "was", "were", "be", "been", "being",
