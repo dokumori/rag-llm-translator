@@ -23,4 +23,4 @@ Adhere to the following rules:
 - **Indentation:** For python, adhere to PEP8.
  For other languages, follow the most common , industry-standard conventions for respective languages.
 - **Formatting:** Remove all unnecessary whitespaces (e.g., trailing whitespaces, spaces in blank lines).
-- **Shell Scripts:** Write POSIX-compliant shell scripts (`#!/bin/sh`) to ensure compatibility across Alpine, Debian, and macOS. Also follow https://google.github.io/styleguide/shellguide.html.
+- **Shell Scripts:** Write Bash scripts (`#!/bin/bash`). Also follow https://google.github.io/styleguide/shellguide.html.
