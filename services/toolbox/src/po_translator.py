@@ -81,7 +81,7 @@ _PLURAL_COUNTS: Dict[str, int] = {
 class _Slot(NamedTuple):
     """One LLM translation unit (a singular entry or one plural form)."""
     text: str                    # source text to translate
-    entry: object                # polib.POEntry
+    entry: polib.POEntry         # the PO entry this slot belongs to
     form_index: Optional[int]   # None → singular; 0..N-1 → plural form index
     total_forms: Optional[int]  # None → singular; N → total plural forms for this entry
 
