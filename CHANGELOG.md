@@ -9,8 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [6.3.2] - 2026-06-27
 
+### Fixed
+- **`.ai-rules`**: aligned shell script directive with actual bash usage.
+- **`po_translator.py`**: fixed type annotation for `_Slot.entry` to use `polib.POEntry`.
+
 ### Documentation
 - Updated documentation across the project to include both system menu and manual execution commands.
+- **`app.py`**: added an English-only assumption comment for the `STOP_WORDS` set.
+
+### Tests
+- **`test_rag_proxy.py`**: added coverage for `_query_with_context_fallback` and `"string"` key fallback.
 
 ## [6.3.1] - 2026-06-14
 
