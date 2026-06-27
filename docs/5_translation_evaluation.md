@@ -15,7 +15,15 @@ The translation evaluation feature operates as an automated 'blind test', which 
    - Non-RAG translations: `data/translations/eval/{langcode}/without_rag/`
 
 3. **Run the evaluation script**  
-   From the main project folder, run the following shell command:
+   From the main project folder, run the evaluation using either the system menu or the direct script:
+   
+   **Option 1: Via System Menu (Recommended)**
+   ```bash
+   bash bin/system_menu.sh
+   # Select [E] Evaluate translation quality
+   ```
+
+   **Option 2: Direct Execution**
    ```bash
    ./bin/eval_quality.sh
    ```

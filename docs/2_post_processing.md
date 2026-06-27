@@ -10,8 +10,15 @@ Post-processing can be enabled/disabled via environment variables within your `.
 
 ### Quick Setup
 
-The easiest way to configure post-processing is the interactive setup script:
+You can configure post-processing using either the system menu or the direct setup script.
 
+**Option 1: Via System Menu (Recommended)**
+```bash
+bash bin/system_menu.sh
+# Select [P] Post-processing config
+```
+
+**Option 2: Direct Execution**
 ```bash
 bash bin/setup_post_processing.sh
 ```
@@ -155,8 +162,15 @@ import my_plugin
 
 ### Running Tests
 
-You can execute all tests using the provided helper script:
+You can execute all tests using either the system menu or the direct helper script:
 
+**Option 1: Via System Menu (Recommended)**
+```bash
+bash bin/system_menu.sh
+# Select [X] eXecute tests
+```
+
+**Option 2: Direct Execution**
 ```bash
 bash bin/run_tests.sh
 ```

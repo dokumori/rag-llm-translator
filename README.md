@@ -2,7 +2,7 @@
 
 The RAG-LLM Translator leverages LLMs and a Retrieval-Augmented Generation (RAG) architecture to automate PO file localisation for open-source projects using the gettext standard. Originally built as a translation aid for the Drupal community (https://www.drupal.org/project/translation_llm), it has since been generalised to support any gettext-compatible OSS project.
 
-The system connects to any LLM provider via the built-in **LiteLLM gateway** container. Supported providers include Anthropic Claude, Google Gemini, OpenAI (including o-series reasoning models), Mistral, as well as private or self-hosted LLM providers such as amazee.ai, Ollama, and any OpenAI-compatible endpoint. Configure providers by running `bash bin/setup.sh`.
+The system connects to any LLM provider via the built-in **LiteLLM gateway** container. Supported providers include Anthropic Claude, Google Gemini, OpenAI (including o-series reasoning models), Mistral, as well as private or self-hosted LLM providers such as amazee.ai, Ollama, and any OpenAI-compatible endpoint. Configure providers by running the setup wizard (via the system menu **[S] Setup**, or by running `bash bin/setup.sh`).
 
 
 # How to use rag-llm-translator
@@ -77,7 +77,7 @@ Two files are always required:
 - A `.po` file containing **untranslated strings** — this is what the system will translate
 - At least one RAG context source: a **translation memory** (`.po`) and/or a **glossary** (`.csv`) — either alone is sufficient, both together gives the best results
 
-If you wish to quickly run a demo, running `bash bin/demo_prep.sh` will download all the necessary files. Then you can proceed to [the next step](#5-ingest-the-translation-memory-and-glossary).
+If you wish to quickly run a demo, running the demo prep (via the system menu **[D] Download demo data**, or by running `bash bin/demo_prep.sh`) will download all the necessary files. Then you can proceed to [the next step](#5-ingest-the-translation-memory-and-glossary).
 
 If you prefer to place the files manually, follow the steps below:
 
@@ -148,7 +148,7 @@ Once the translation is complete, the .po file with the translated strings will 
 You can override the default list of LLM models by providing a custom model configuration file. This is useful when adding providers not covered by the setup wizard, or when customising the model menu labels.
 
 - **Location**: `config/models/custom/`
-- **Setup**: Copy `config/models/models.example.yaml` to `config/models/models.yaml` (or run `bin/setup.sh` to generate it) and add your model definitions.
+- **Setup**: Copy `config/models/models.example.yaml` to `config/models/models.yaml` (or run the setup wizard via the system menu or `bash bin/setup.sh` to generate it) and add your model definitions.
 - **Effect**: Edit `config/models/models.yaml` then regenerate the LiteLLM config: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models/models.yaml --output /app/config/litellm/config.yaml` and restart with `docker compose restart litellm`.
 - **Model config changes** are picked up automatically — no container restart is needed.
 

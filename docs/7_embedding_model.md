@@ -56,7 +56,7 @@ The `rag-proxy` container reads the model from this directory at startup with `H
 > [!IMPORTANT]
 > Run `docker compose build` first. The download script runs inside the `rag-proxy` image, which must exist before it can be used.
 
-The default model is downloaded automatically by `bin/setup.sh`. If you skipped that step or need to re-download:
+The default model is downloaded automatically by the setup wizard (via the system menu **[S] Setup**, or by running `bash bin/setup.sh`). If you skipped that step or need to re-download:
 
 ```bash
 bin/download-model.sh                          # re-downloads EMBEDDING_MODEL_NAME from .env
@@ -72,7 +72,7 @@ bin/download-model.sh BAAI/bge-base-en-v1.5   # downloads a specific model
 > [!CAUTION]
 > Switching models after data has already been ingested requires wiping and re-ingesting all ChromaDB collections. Vectors produced by different models are not compatible — mixing them produces meaningless search results.
 
-Use the orchestrated switch script to handle this safely:
+Use the system menu (`bash bin/system_menu.sh`, select **[M] Model switch**) or the orchestrated switch script to handle this safely:
 
 ```bash
 bin/switch-embedding-model.sh BAAI/bge-base-en-v1.5
@@ -97,13 +97,16 @@ The script will:
 After the switch completes, follow these steps in order:
 
 ```bash
-bin/ingest.sh                                              # 1. re-ingest all data
+# 1. Re-ingest all data from the system menu ([I] Ingest TM / Glossary)
+bin/ingest.sh
 
 docker compose up -d --build --force-recreate rag-proxy toolbox  # 2. rebuild to clear old logs
 
-bin/translate.sh                                           # 3. dry-run to generate fresh RAG logs
+# 3. Dry-run to generate fresh RAG logs from the system menu ([T] Translate)
+bin/translate.sh
 
-bin/analyse.sh                                             # 4. recalibrate thresholds
+# 4. Recalibrate thresholds from the system menu ([A] Analyse RAG matching)
+bin/analyse.sh
 ```
 
 ### Why Thresholds Are Reset
@@ -171,7 +174,7 @@ for col in client.list_collections():
 # 2. Restart rag-proxy and toolbox (collections are gone — no mismatch possible)
 docker compose up -d --force-recreate rag-proxy toolbox
 
-# 3. Re-ingest
+# 3. Re-ingest (or use system menu [I] Ingest)
 bin/ingest.sh
 ```
 ### TM/Glossary are rejected in translation

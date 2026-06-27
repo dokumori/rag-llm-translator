@@ -57,7 +57,7 @@ Enter a query string and see the closest matches ranked by distance score. This 
 
 # ChromaDB Backup and Restore
 
-Use `bin/manage-backup.sh` to snapshot the ChromaDB volume and restore it later. Backups are stored as timestamped `.tar.gz` archives in `data/backups/` (which is gitignored).
+Use the system menu (`bash bin/system_menu.sh`, select **[B] Backup or restore context data**) or `bin/manage-backup.sh` directly to snapshot the ChromaDB volume and restore it later. Backups are stored as timestamped `.tar.gz` archives in `data/backups/` (which is gitignored).
 
 ```bash
 bin/manage-backup.sh --dump              # create a new backup
@@ -74,7 +74,7 @@ The script operates at the Docker volume level (`chroma_data`), capturing Chroma
 - **Restore**: the `chroma` container is **stopped** before the volume is overwritten, then restarted. A confirmation prompt (`yes`) is required to prevent accidental data loss.
 
 > [!NOTE]
-> Backups are always **full volume snapshots** — granular per-language or per-collection backups are not supported. The underlying HNSW index files do not separate data by collection name or language code at the filesystem level. For selective data management (e.g. wiping a specific language), use the reset flow in `bin/ingest.sh`.
+> Backups are always **full volume snapshots** — granular per-language or per-collection backups are not supported. The underlying HNSW index files do not separate data by collection name or language code at the filesystem level. For selective data management (e.g. wiping a specific language), use the reset flow (via the system menu **[I] Ingest TM / Glossary**, or by running `bash bin/ingest.sh`).
 
 > [!TIP]
 > Back up before any bulk ingestion or reset operation, especially in production. The archive includes all embeddings, so it is a complete restore point that does not require re-ingestion.

@@ -8,8 +8,15 @@ All LLM traffic routes through the gateway (`http://litellm:4000/v1`), which tra
 
 ## Gateway Mode
 
-The LiteLLM gateway is a required service — it starts automatically with `docker compose up -d`. Configure which providers to use by running the setup wizard:
+The LiteLLM gateway is a required service — it starts automatically with `docker compose up -d`. Configure which providers to use by running the setup wizard using either the system menu or the direct script:
 
+**Option 1: Via System Menu (Recommended)**
+```bash
+bash bin/system_menu.sh
+# Select [S] Setup
+```
+
+**Option 2: Direct Execution**
 ```bash
 bash bin/setup.sh
 ```
@@ -153,7 +160,7 @@ If you have one or more OpenAI-compatible endpoints (e.g. amazee.ai, vLLM, a cor
 
 ### Setup via Wizard (recommended)
 
-Run `bash bin/setup.sh`, choose **Gateway** mode, and select **5) Custom**.
+Run the setup wizard (via the system menu `bash bin/system_menu.sh` and select **[S] Setup**, or by running `bash bin/setup.sh`), choose **Gateway** mode, and select **5) Custom**.
 The wizard will ask for each endpoint:
 
 - **Local ID** — the name used internally to route requests (e.g. `amazee-llama3`)
@@ -219,7 +226,7 @@ Routing Ollama through the gateway lets you use local models **alongside** cloud
 
 ### Setup via Wizard (recommended)
 
-Run `bash bin/setup.sh`, choose **Local** mode.
+Run the setup wizard (via the system menu `bash bin/system_menu.sh` and select **[S] Setup**, or by running `bash bin/setup.sh`), choose **Local** mode.
 Enter your model names (comma-separated). The wizard sets `OLLAMA_BASE_URL` in `.env` and writes `config/models/models.yaml` with the Ollama entries automatically.
 
 ### Manual Setup

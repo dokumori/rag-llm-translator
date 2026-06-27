@@ -5,7 +5,7 @@ To ensure high-quality translations, it is necessary to monitor the performance 
 - after ingesting ~5000 new strings (in addition to existing TM/glossary), to avoid performance degradation caused by signal drift.
 - when you observe quality degradation in translations.
 
-The script `bin/analyse.sh` evaluates system accuracy and the relevance of retrieved data.
+The analysis can be run from the system menu (`bash bin/system_menu.sh`, option **[A] Analyse RAG matching**) and evaluates system accuracy and the relevance of retrieved data.
 
 ## 1. Quick Start: Analysis Workflow
 
@@ -17,7 +17,7 @@ Follow these steps to generate performance reports and apply automated tuning re
     docker compose exec toolbox python3 /app/src/check_db.py
     ```
 2.  **Data Ingestion**: If empty, the translation memory and glossary must be prepared and ingested. Refer to [README.md](../README.md#translation-memory-and-glossary) for file placement and [README.md](../README.md#5-ingest-the-translation-memory-and-glossary) for the ingestion process.
-3.  **Reset Threshold**: Relax the `GLOSSARY_THRESHOLD` and `TM_THRESHOLD` to `0.4` in `.env` to ensure the test captures a wide range of potential matches and avoid detection of false negatives.
+3.  **Reset Threshold**: Relax the `GLOSSARY_THRESHOLD` and `TM_THRESHOLD` to `0.4` in `.env` to ensure the test captures a wide range of potential matches and avoid detection of false negatives (this may need to be relaxed further if you are not using the default text embedding model).
 4.  **Clear Logs**: Run the following command to ensure you are starting from a clean state:
     ```bash
     docker compose up -d --force-recreate rag-proxy toolbox
@@ -26,6 +26,14 @@ Follow these steps to generate performance reports and apply automated tuning re
 ### Running the Analysis
 1.  **Generate Logs**: Execute a translation process (a dry-run is sufficient).
 2.  **Execute Analysis**:
+
+    **Option 1: Via System Menu (Recommended)**
+    ```bash
+    bash bin/system_menu.sh
+    # Select [A] Analyse RAG matching
+    ```
+
+    **Option 2: Direct Execution**
     ```bash
     bash bin/analyse.sh
     ```
@@ -72,7 +80,7 @@ If you find the system is missing obvious synonyms (e.g., "Add" vs "Create") or 
 3.  **Adjust `.env`**:
     *   **If too strict**: Increase the threshold (e.g., `0.12` → `0.15`) to accept more synonyms.
     *   **If too loose**: Decrease the threshold to reject "False Friends" (e.g., "Send" vs "Submit").
-4.  **Re-verify**: Recreate the proxy container, run a fresh translation, and re-run `analyse.sh`.
+4.  **Re-verify**: Recreate the proxy container, run a fresh translation, and re-run the analysis (using either the system menu or `bash bin/analyse.sh`).
 
 > [!IMPORTANT]
 > **Re-running Analysis**: If you change any threshold in `.env`, you must recreate the proxy and toolbox containers (`docker compose up -d --force-recreate rag-proxy toolbox`) and generate fresh logs before re-running the analysis script.
