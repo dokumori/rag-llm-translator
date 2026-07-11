@@ -9,7 +9,7 @@ Provides:
   - generate_litellm_config()  : derive config/litellm/config.yaml from config/models/models.yaml
 
 CLI subcommands:
-  python3 bin/lib/model_config.py list            --models <path> --format names|ids|menu|json|lookup [--name <model id>]
+  python3 bin/lib/model_config.py list            --models <path> --format names|json|lookup [--name <name>]
   python3 bin/lib/model_config.py validate-model  --name <model>
   python3 bin/lib/model_config.py generate-litellm --models <path> --output <path>
   python3 bin/lib/model_config.py generate         --models <path> --output <path> --providers <str> [options]
@@ -265,30 +265,14 @@ def _cmd_list(args: argparse.Namespace) -> None:
         for m in models:
             print(json.dumps(m))
 
-    # Print one model id (machine name) per line.
-    elif args.format == "ids":
-        for m in models:
-            print(m["id"])
-
-    # Print one "id<US>is_dry_run<US>provider<US>name" line per model, so
-    # interactive menus can display names while keeping the id and metadata
-    # at hand without a second lookup round-trip. The ASCII unit separator
-    # (0x1f) is used because bash `read` collapses runs of whitespace IFS
-    # characters, which would swallow empty fields such as a missing provider.
-    elif args.format == "menu":
-        for m in models:
-            dry = str(m.get("is_dry_run", False)).lower()
-            print("\x1f".join([m["id"], dry, m.get("provider", ""), m["name"]]))
-
-    # Print the model id, is_dry_run flag, and provider for a single model
-    # looked up by id (machine name).
+    # Print the model id, is_dry_run flag, and provider for a single model looked up by name.
     elif args.format == "lookup":
         if not args.name:
             print("error: --name is required for --format lookup", file=sys.stderr)
             sys.exit(1)
-        match = next((m for m in models if m["id"] == args.name), None)
+        match = next((m for m in models if m["name"] == args.name), None)
         if match is None:
-            print(f"error: model id not found: {args.name!r}", file=sys.stderr)
+            print(f"error: model not found: {args.name!r}", file=sys.stderr)
             sys.exit(1)
         print(match["id"])
         print(str(match.get("is_dry_run", False)).lower())
@@ -352,10 +336,10 @@ def _build_parser() -> argparse.ArgumentParser:
     list_p.add_argument(
         "--format",
         required=True,
-        choices=["names", "ids", "menu", "json", "lookup"],
-        help="Output format: names | ids | menu | json | lookup",
+        choices=["names", "json", "lookup"],
+        help="Output format: names | json | lookup",
     )
-    list_p.add_argument("--name", default=None, help="Model id (machine name) to look up (required for --format lookup)")
+    list_p.add_argument("--name", default=None, help="Model name to look up (required for --format lookup)")
 
     # -- validate-model subcommand --
     val_p = sub.add_parser(
