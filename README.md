@@ -165,7 +165,7 @@ Invalid values (an unknown language or a model name not present in `models.yaml`
 Once the translation is complete, the `.po` file with the translated strings will be stored in `data/translations/output`.
 
 > [!TIP]
-> For the best translation quality, tune the RAG similarity thresholds after your first run. Default thresholds are adjusted based on sample strings — calibrating them to your own data and embedding model can significantly improve context retrieval. See [docs/3_RAG_performance_analysis.md](docs/3_RAG_performance_analysis.md) for the procedure.
+> For the best translation quality, tune the RAG similarity thresholds after your first run. Default thresholds are suggestive — calibrating them to your data and embedding model can significantly improve context retrieval. See [docs/3_RAG_performance_analysis.md](docs/3_RAG_performance_analysis.md) for the procedure.
 
 ### Custom Model Configuration (Optional)
 
