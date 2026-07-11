@@ -337,3 +337,88 @@ class TestBlockedModelPatterns:
         """Models outside the blocked families are not rejected."""
         matched = any(model.startswith(p) for p in _BLOCKED_MODEL_PATTERNS)
         assert not matched, f"{model!r} should be allowed but was blocked"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _cmd_list output formats (names / ids / menu / lookup)
+# ---------------------------------------------------------------------------
+
+
+class TestCmdListFormats:
+
+    @pytest.fixture
+    def models_file(self, tmp_path):
+        """Two regular models (one without provider) plus a dry-run sentinel."""
+        return write_yaml(tmp_path / "models.yaml", {"models": [
+            make_model("model-a", "Model A"),
+            make_model("dry-run-dummy", "Dry Run", is_dry_run=True),
+            make_model("model-b", "Model B", provider="openai"),
+        ]})
+
+    @staticmethod
+    def run_list(models_file, fmt, name=None):
+        # Invoke _cmd_list directly with a hand-built Namespace, bypassing
+        # argparse's CLI parsing so the tests can call it like a function.
+        import argparse
+        from model_config import _cmd_list
+        args = argparse.Namespace(models=models_file, format=fmt, name=name)
+        _cmd_list(args)
+
+    def test_format_names(self, models_file, capsys):
+        """names prints one display name per line, dry-run last with suffix."""
+        self.run_list(models_file, "names")
+        lines = capsys.readouterr().out.splitlines()
+        assert lines == ["Model A", "Model B", "Dry Run (dry run)"]
+
+    def test_format_ids(self, models_file, capsys):
+        """ids prints one machine name per line, dry-run last."""
+        self.run_list(models_file, "ids")
+        lines = capsys.readouterr().out.splitlines()
+        assert lines == ["model-a", "model-b", "dry-run-dummy"]
+
+    def test_format_menu(self, models_file, capsys):
+        """menu prints id/is_dry_run/provider/name joined by the unit separator."""
+        self.run_list(models_file, "menu")
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0] == "model-a\x1ffalse\x1fanthropic\x1fModel A"
+        assert lines[1] == "model-b\x1ffalse\x1fopenai\x1fModel B"
+
+    def test_format_menu_empty_provider(self, models_file, capsys):
+        """A model without a provider yields an empty (but present) field."""
+        self.run_list(models_file, "menu")
+        dry_line = capsys.readouterr().out.splitlines()[-1]
+        assert dry_line == "dry-run-dummy\x1ftrue\x1f\x1fDry Run (dry run)"
+        assert len(dry_line.split("\x1f")) == 4
+
+    def test_lookup_by_id(self, models_file, capsys):
+        """lookup resolves a model id to id, is_dry_run, and provider lines."""
+        self.run_list(models_file, "lookup", name="model-b")
+        assert capsys.readouterr().out.splitlines() == ["model-b", "false", "openai"]
+
+    def test_lookup_dry_run_by_id(self, models_file, capsys):
+        """lookup on the dry-run sentinel reports is_dry_run=true."""
+        self.run_list(models_file, "lookup", name="dry-run-dummy")
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0] == "dry-run-dummy"
+        assert lines[1] == "true"
+
+    def test_lookup_by_display_name_fails(self, models_file, capsys):
+        """lookup is id-only: display names are not resolved."""
+        with pytest.raises(SystemExit) as exc:
+            self.run_list(models_file, "lookup", name="Model A")
+        assert exc.value.code == 1
+        assert "not found" in capsys.readouterr().err
+
+    def test_lookup_unknown_id_fails(self, models_file, capsys):
+        """lookup on an unknown id exits 1 with an error on stderr."""
+        with pytest.raises(SystemExit) as exc:
+            self.run_list(models_file, "lookup", name="no-such-model")
+        assert exc.value.code == 1
+        assert "not found" in capsys.readouterr().err
+
+    def test_lookup_requires_name(self, models_file, capsys):
+        """lookup without --name exits 1."""
+        with pytest.raises(SystemExit) as exc:
+            self.run_list(models_file, "lookup")
+        assert exc.value.code == 1
+        assert "--name is required" in capsys.readouterr().err

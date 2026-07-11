@@ -2,8 +2,50 @@
 # bin/translate.sh
 
 # Executes the translation pipeline
+#
+# Usage:
+#   bin/translate.sh                                  # fully interactive
+#   bin/translate.sh --lang fr --model dry-run-dummy \
+#                    --with-rag -y                    # fully non-interactive
+#
+# Options:
+#   --lang <code|all>   Target language (skips language menu)
+#   --model <id>        Model id (machine name, the 'id' field in config/models/models.yaml;
+#                       skips model menu)
+#   --with-rag          Use RAG context injection (skips RAG-mode menu)
+#   --skip-rag          Translate without RAG (skips RAG-mode menu)
+#   -y, --yes           Skip the cost-estimate confirmation prompt
+#   -h, --help          Show this help
+#
+# Any prompt whose value was not provided via a flag remains interactive.
+# Invalid flag values terminate the script with an error before any work starts.
 
 set -e
+
+_usage() { sed -n '6,21p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------------------
+# Argument parsing — flag values pre-answer the corresponding prompts.
+# ---------------------------------------------------------------------------
+FLAG_LANG=""
+FLAG_MODEL=""
+FLAG_RAG=""      # "with" | "without" | ""
+ASSUME_YES=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --lang)     [ -n "${2:-}" ] || { echo "❌ --lang requires a value"; exit 1; }
+                FLAG_LANG="$2"; shift 2 ;;
+    --model)    [ -n "${2:-}" ] || { echo "❌ --model requires a value"; exit 1; }
+                FLAG_MODEL="$2"; shift 2 ;;
+    --with-rag) FLAG_RAG="with"; shift ;;
+    --skip-rag) FLAG_RAG="without"; shift ;;
+    -y|--yes)   ASSUME_YES=1; shift ;;
+    -h|--help)  _usage; exit 0 ;;
+    -*)         FLAG_LANG="${1#-}"; shift ;;   # legacy: bin/translate.sh -fr
+    *)          echo "❌ Unknown argument: $1"; _usage; exit 1 ;;
+  esac
+done
 
 # Source shared helpers and load .env safely
 source "$(dirname "$0")/common.sh"
@@ -66,8 +108,15 @@ _is_remote_model() {
 _select_translation_params() {
 
   # 1. Language Selection
-  if [[ "$1" == -* ]]; then
-    TARGET_LANG="${1#-}"
+  if [ -n "$FLAG_LANG" ]; then
+    TARGET_LANG="$FLAG_LANG"
+    # Validate against languages that actually have input files.
+    if [ "$TARGET_LANG" != "all" ] && ! list_available_langs "${TRANSLATIONS_ROOT}/input" ".po" | grep -qx "$TARGET_LANG"; then
+      echo "❌ Error: no .po input files found for language '$TARGET_LANG' under ${TRANSLATIONS_ROOT}/input."
+      echo "   Available languages:"
+      list_available_langs "${TRANSLATIONS_ROOT}/input" ".po" | sed 's/^/   - /'
+      exit 1
+    fi
   else
     TARGET_LANG=$(select_language "translation" "${TRANSLATIONS_ROOT}/input" ".po")
   fi
@@ -90,26 +139,51 @@ _select_translation_params() {
   local CONTAINER_MODELS_YAML="/app/config/models/models.yaml"
 
   # 2. Model Selection Menu
-  local menu_options=()
-  while IFS= read -r line; do
-    menu_options+=("$line")
-  done < <(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format names)
-  PS3="Enter the number of your choice: "
-
-  local opt
-  select opt in "${menu_options[@]}"
-  do
-    if [ -n "$opt" ]; then
-      local LOOKUP_OUTPUT
-      LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt")
-      SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
-      IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
-      MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
-      break
-    else
-      echo "❌ Invalid option. Please try again."
+  local opt LOOKUP_OUTPUT
+  if [ -n "$FLAG_MODEL" ]; then
+    opt="$FLAG_MODEL"
+    if ! LOOKUP_OUTPUT=$(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format lookup --name "$opt" </dev/null 2>/dev/null); then
+      echo "❌ Error: model '$opt' not found in config/models/models.yaml."
+      echo "   Available model ids:"
+      docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format ids | sed 's/^/   - /'
+      exit 1
     fi
-  done
+    SELECTED_MODEL=$(echo "$LOOKUP_OUTPUT" | sed -n '1p')
+    IS_DRY_RUN=$(echo "$LOOKUP_OUTPUT"    | sed -n '2p')
+    MODEL_PROVIDER=$(echo "$LOOKUP_OUTPUT" | sed -n '3p')
+  else
+    # One round-trip: "id<US>is_dry_run<US>provider<US>name" per model
+    # (US = ASCII 0x1f — a non-whitespace IFS so empty fields survive).
+    # The menu displays names; parallel arrays keep the id and metadata.
+    local menu_ids=() menu_dry=() menu_providers=() menu_options=()
+    local _id _dry _provider _name
+    while IFS=$'\x1f' read -r _id _dry _provider _name; do
+      menu_ids+=("$_id")
+      menu_dry+=("$_dry")
+      menu_providers+=("$_provider")
+      menu_options+=("$_name")
+    done < <(docker compose exec -T toolbox python3 "$MODEL_CONFIG" list --models "$CONTAINER_MODELS_YAML" --format menu </dev/null)
+    PS3="Enter the number of your choice: "
+
+    SELECTED_MODEL=""
+    select opt in "${menu_options[@]}"
+    do
+      if [ -n "$opt" ]; then
+        SELECTED_MODEL="${menu_ids[$((REPLY - 1))]}"
+        IS_DRY_RUN="${menu_dry[$((REPLY - 1))]}"
+        MODEL_PROVIDER="${menu_providers[$((REPLY - 1))]}"
+        break
+      else
+        echo "❌ Invalid option. Please try again."
+      fi
+    done
+
+    # Guard: Ctrl+D / EOF exits the select loop without a selection.
+    if [ -z "$SELECTED_MODEL" ]; then
+      echo "❌ No model selected. Exiting."
+      exit 1
+    fi
+  fi
 
   echo ""
   if [ "$IS_DRY_RUN" = "true" ]; then
@@ -120,25 +194,45 @@ _select_translation_params() {
 
   # 3. RAG Mode Selection
   echo "----------------------------------------------------------------"
-  echo "Select Evaluation Mode:"
-  local rag_options=("With RAG (Default context injection)" "Without RAG (skip-rag flag)")
-  PS3="Enter the number of your choice: "
+  if [ "$FLAG_RAG" = "with" ]; then
+    SKIP_RAG_ARGS=()
+    echo "🧠 Mode: WITH RAG"
+  elif [ "$FLAG_RAG" = "without" ]; then
+    SKIP_RAG_ARGS=(--skip-rag)
+    echo "⏩ Mode: WITHOUT RAG (skip-rag)"
+  else
+    echo "Select Evaluation Mode:"
+    local rag_options=("With RAG (Default context injection)" "Without RAG (skip-rag flag)")
+    PS3="Enter the number of your choice: "
 
-  local rag_opt
-  select rag_opt in "${rag_options[@]}"
-  do
-    if [ "$REPLY" -eq 1 ]; then
-      SKIP_RAG_ARGS=()
-      echo "🧠 Mode: WITH RAG"
-      break
-    elif [ "$REPLY" -eq 2 ]; then
-      SKIP_RAG_ARGS=(--skip-rag)
-      echo "⏩ Mode: WITHOUT RAG (skip-rag)"
-      break
-    else
-      echo "❌ Invalid option. Please try again."
+    # Sentinel: an empty SKIP_RAG_ARGS array is a valid "with RAG" choice, so
+    # detect an EOF fallthrough with a separate flag.
+    local _rag_chosen=0
+
+    local rag_opt
+    select rag_opt in "${rag_options[@]}"
+    do
+      if [ "$REPLY" -eq 1 ]; then
+        SKIP_RAG_ARGS=()
+        _rag_chosen=1
+        echo "🧠 Mode: WITH RAG"
+        break
+      elif [ "$REPLY" -eq 2 ]; then
+        SKIP_RAG_ARGS=(--skip-rag)
+        _rag_chosen=1
+        echo "⏩ Mode: WITHOUT RAG (skip-rag)"
+        break
+      else
+        echo "❌ Invalid option. Please try again."
+      fi
+    done
+
+    # Guard: Ctrl+D / EOF exits the select loop without a selection.
+    if [ "$_rag_chosen" -eq 0 ]; then
+      echo "❌ No RAG mode selected. Exiting."
+      exit 1
     fi
-  done
+  fi
 
   echo "----------------------------------------------------------------"
 
@@ -158,7 +252,7 @@ _select_translation_params() {
           --target-lang "$_est_lang" \
           --bulk-size "${BULK_SIZE:-15}" \
           "${SKIP_RAG_ARGS[@]}" \
-          2>/dev/null) || true
+          </dev/null 2>/dev/null) || true
 
         if [ -n "$ESTIMATE_OUTPUT" ]; then
           EST_STRINGS=$(echo "$ESTIMATE_OUTPUT" | grep '^STRINGS='    | cut -d= -f2)
@@ -191,6 +285,11 @@ _select_translation_params() {
       fi
     done
 
+    if [ "$ASSUME_YES" -eq 1 ]; then
+      echo "   (--yes given — proceeding without confirmation)"
+      return 0
+    fi
+
     local _est_confirm
     read -rp "Proceed with translation? [Y/n/q — q to quit]: " _est_confirm
     _est_confirm="${_est_confirm:-Y}"
@@ -209,7 +308,7 @@ _select_translation_params() {
 
 # Steps 1–4 are wrapped in a loop so the user can restart language,
 # model, and RAG selection if they decline the cost estimate.
-while ! _select_translation_params "$@"; do :; done
+while ! _select_translation_params; do :; done
 
 # 5. Metadata Validation (Pre-flight check)
 for LANG_ITER in "${TARGET_LANGS[@]}"; do

@@ -5,7 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.4.0] - 2026-07-12
+
+### Added
+- **`translate.sh`**: non-interactive flags — `--lang`, `--model <id>` (machine name from `config/models/models.yaml`), `--with-rag`/`--skip-rag`, `-y`/`--yes`, `-h`/`--help`. Prompts without a flag remain interactive; invalid values exit with an error listing the valid choices.
+- **`eval_quality.sh`**: non-interactive flags — `--lang`, `--model <id>`, `--limit <N|all|recommended>`, `-h`/`--help`, with the same validation behaviour.
+- **`model_config.py`**: `--format ids` and `--format menu` outputs; `--format lookup` now resolves by model id (machine name) only. The interactive model menus fetch id/name pairs in a single round-trip instead of a second lookup call.
+
+### Fixed
+- **`eval_quality.sh`**: dry-run detection read the provider line of the model lookup output instead of the `is_dry_run` flag.
+- **`translate.sh` / `eval_quality.sh`**: `docker compose exec -T` helper calls no longer consume the script's stdin (answers piped to the interactive menus could be swallowed), and an EOF (Ctrl+D) at a `select` menu now exits with an error instead of proceeding with an empty selection.
+- **`toolbox` Dockerfile**: install the test-suite dependencies from `tests/requirements-test.txt` in the image, restoring `snowballstemmer` for `test_rag_proxy.py` (its earlier removal from the toolbox requirements as "unused" broke unit-test collection via `bin/run_tests.sh`).
+
+### Tests
+- **`test_model_config.py`**: coverage for the `names`/`ids`/`menu` list formats and id-only `lookup` (including unknown-id and missing `--name` errors).
+- **`test_cli_flags.bats`**: new suite covering `--help`, unknown arguments, missing flag values, `--limit` validation, and the legacy `-<lang>` shorthand.
 
 ## [6.3.2] - 2026-06-27
 

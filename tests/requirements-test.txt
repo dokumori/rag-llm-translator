@@ -1,5 +1,9 @@
-# Extra dependencies required to run the full unit test suite locally.
-# The toolbox venv already provides: Flask, openai, polib, pytest, pytest-mock.
+# Extra dependencies required to run the full unit test suite, beyond what the
+# code under test needs at runtime. Installed in two places:
+#   - locally, for running pytest on the host
+#   - in the toolbox image (see services/toolbox/Dockerfile), which is where
+#     bin/run_tests.sh executes the suite
+# The toolbox image already provides: Flask, openai, polib, pytest, pytest-mock.
 #
 # snowballstemmer: pure Python — installs fine on Python 3.14.
 # chromadb: requires onnxruntime which has no Python 3.14 wheel yet.

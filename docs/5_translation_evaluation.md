@@ -34,6 +34,23 @@ The translation evaluation feature operates as an automated 'blind test', which 
    - Select the evaluation sample limit. You can choose a custom limit, evaluate all strings, or use the recommended statistical sample.
      - This recommended sample size is automatically calculated using Cochran's formula to provide a 95% confidence level with a 5% margin of error, ensuring statistically reliable results without the need to evaluate every single string.
 
+### Non-interactive (scripted) execution
+
+Every prompt can be pre-answered with a command-line flag; any prompt without a flag stays interactive. This makes the script usable from CI pipelines or other scripts:
+
+```bash
+bin/eval_quality.sh --lang fr --model claude-haiku-4-5 --limit recommended
+```
+
+| Flag | Value | Effect |
+|---|---|---|
+| `--lang` | language code | Skips the language menu |
+| `--model` | model machine name (the `id` field in `config/models/models.yaml`) | Skips the judge-model menu |
+| `--limit` | a number, `all`, or `recommended` | Skips the sample-limit menu (`recommended` uses the Cochran statistical sample) |
+| `-h`, `--help` | — | Prints usage |
+
+Invalid values (an unknown language, a model name not present in `models.yaml`, or a malformed limit) terminate the script immediately with an error message listing the valid choices — no evaluation is started.
+
 5. **Find the results**  
    Once the process finishes, you will find the generated `.csv` and `.txt` result files in this directory:
    - `data/translations/eval/`

@@ -12,6 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY services/toolbox/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --target=/dependencies -r requirements.txt
 
+# Test-suite dependencies: the toolbox is the container bin/run_tests.sh runs
+# pytest in, so it needs the extras listed in tests/requirements-test.txt
+# (e.g. snowballstemmer for rag-proxy's app.py imported by test_rag_proxy.py).
+COPY tests/requirements-test.txt /app/requirements-test.txt
+RUN pip install --no-cache-dir --target=/dependencies -r requirements-test.txt
+
 # --- Final Stage ---
 FROM python:3.10-slim-bookworm@sha256:ac7bf2ae912299e41783a8e4eff07369dc6de3444bdc1cc29626a05241f957d7
 
