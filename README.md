@@ -55,8 +55,6 @@ Run:
 docker compose up -d --build
 ```
 
-
-
 ### 3. Download the embedding model
 
 If you ran `bin/setup.sh` in step 1, the model was already downloaded. If you configured manually or need to re-download:
@@ -75,7 +73,7 @@ This is a one-time download (~1.3 GB). The model is stored in `data/cache/huggin
 Two files are always required:
 
 - A `.po` file containing **untranslated strings** — this is what the system will translate
-- At least one RAG context source: a **translation memory** (`.po`) and/or a **glossary** (`.csv`) — either alone is sufficient, both together gives the best results
+- At least one RAG context source: a **translation memory** (`.po`) and/or a **glossary** (`.csv`) — either alone is sufficient, both together gives the best results.
 
 If you wish to quickly run a demo, running the demo prep (via the system menu **[D] Download demo data**, or by running `bash bin/demo_prep.sh`) will download all the necessary files. Then you can proceed to [the next step](#5-ingest-the-translation-memory-and-glossary).
 
@@ -130,27 +128,75 @@ docker compose exec toolbox python3 /app/src/check_db.py
 
 ### 6. Translate!
 
-Finally, run the following command to start the translation process:
+#### Basic usage
+
+Run the following command to start the translation process:
 
 ```bash
 bash bin/translate.sh
 ```
 
+The script launches in **interactive mode** — it will prompt you for the target language, model, and RAG preference.
+
 The dry run option will send no API calls to the LLM, but will still generate the output files.
 
-Once the translation is complete, the .po file with the translated strings will be stored in `data/translations/output`.
+#### Non-interactive / scripted mode
 
-> [!NOTE]
-> For the best translation quality, tune the RAG similarity thresholds after your first run. Default thresholds are permissive — calibrating them to your data and embedding model can significantly improve context retrieval. See [docs/3_RAG_performance_analysis.md](docs/3_RAG_performance_analysis.md) for the procedure.
+Every interactive prompt can be pre-answered with a flag. Any prompt without a flag stays interactive:
+
+```bash
+bin/translate.sh --lang ja --model claude-haiku-4-5 --with-rag -y
+```
+
+| Flag | Description |
+|------|-------------|
+| `--lang <code\|all>` | Target language (skips the language menu) |
+| `--model <id>` | Model machine name — the `id` field in `config/models/models.yaml` (skips the model menu) |
+| `--with-rag` / `--skip-rag` | RAG mode (skips the RAG-mode menu) |
+| `-y`, `--yes` | Skip the cost-estimate confirmation |
+| `-h`, `--help` | Print usage |
+
+#### Input validation
+
+Invalid values (an unknown language or a model name not present in `models.yaml`) terminate the script immediately with an error listing the valid choices. The same pattern is available for the evaluation script — see [docs/5_translation_evaluation.md](docs/5_translation_evaluation.md).
+
+#### Output
+
+Once the translation is complete, the `.po` file with the translated strings will be stored in `data/translations/output`.
+
+> [!TIP]
+> For the best translation quality, tune the RAG similarity thresholds after your first run. Default thresholds are adjusted based on sample strings — calibrating them to your own data and embedding model can significantly improve context retrieval. See [docs/3_RAG_performance_analysis.md](docs/3_RAG_performance_analysis.md) for the procedure.
 
 ### Custom Model Configuration (Optional)
 
 You can override the default list of LLM models by providing a custom model configuration file. This is useful when adding providers not covered by the setup wizard, or when customising the model menu labels.
 
-- **Location**: `config/models/custom/`
-- **Setup**: Copy `config/models/models.example.yaml` to `config/models/models.yaml` (or run the setup wizard via the system menu or `bash bin/setup.sh` to generate it) and add your model definitions.
-- **Effect**: Edit `config/models/models.yaml` then regenerate the LiteLLM config: `docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm --models /app/config/models/models.yaml --output /app/config/litellm/config.yaml` and restart with `docker compose restart litellm`.
-- **Model config changes** are picked up automatically — no container restart is needed.
+#### 1. Create a custom config
+
+Copy the example file to the custom config location, or run the setup wizard to generate it:
+
+```bash
+cp config/models/models.example.yaml config/models/models.yaml
+# — or —
+bash bin/setup.sh
+```
+
+Add your model definitions to `config/models/models.yaml`.
+
+#### 2. Regenerate the LiteLLM config
+
+After editing, regenerate the gateway configuration and restart the service:
+
+```bash
+docker compose exec toolbox python3 /app/bin/lib/model_config.py generate-litellm \
+  --models /app/config/models/models.yaml \
+  --output /app/config/litellm/config.yaml
+
+docker compose restart litellm
+```
+
+> [!NOTE]
+> Model config changes are picked up automatically — no container restart is needed.
 
 See [docs/8_multi_llm_support.md](docs/8_multi_llm_support.md) for full details on custom provider configuration.
 
