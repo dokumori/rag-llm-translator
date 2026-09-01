@@ -1,4 +1,4 @@
-FROM python:3.10-slim-bookworm@sha256:ac7bf2ae912299e41783a8e4eff07369dc6de3444bdc1cc29626a05241f957d7 AS builder
+FROM python:3.14-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY services/rag-proxy/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --target=/dependencies -r requirements.txt
 
 # --- Final Stage ---
-FROM python:3.10-slim-bookworm@sha256:ac7bf2ae912299e41783a8e4eff07369dc6de3444bdc1cc29626a05241f957d7
+FROM python:3.14-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f
 
 WORKDIR /app
 
