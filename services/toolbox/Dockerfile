@@ -27,8 +27,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Copy installed dependencies from builder
-COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
+# Copy installed dependencies from builder.
+# Kept at /dependencies and exposed via PYTHONPATH rather than copied into
+# /usr/local/lib/pythonX.Y/site-packages/, so a base-image Python version bump
+# cannot silently strand them in a path the new interpreter never reads.
+COPY --from=builder /dependencies /dependencies
 
 
 # Create logs directory
@@ -38,6 +41,6 @@ RUN mkdir -p /app/data/logs && chmod 777 /app/data/logs
 COPY services/toolbox/src/ ./src/
 
 # Set PYTHONPATH so scripts can import from sibling modules if needed
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/dependencies:/app/src
 
 CMD ["tail", "-f", "/dev/null"]

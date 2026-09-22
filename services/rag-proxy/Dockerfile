@@ -21,8 +21,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Copy installed dependencies from builder
-COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
+# Copy installed dependencies from builder.
+# Kept at /dependencies and exposed via PYTHONPATH rather than copied into
+# /usr/local/lib/pythonX.Y/site-packages/, so a base-image Python version bump
+# cannot silently strand them in a path the new interpreter never reads.
+COPY --from=builder /dependencies /dependencies
 
 # --- Embedding Model Download Script ---
 # Kept permanently in the image so bin/download-model.sh can invoke it
@@ -37,7 +40,7 @@ COPY services/shared/scripts/delete_collections.py /app/delete_collections.py
 COPY services/rag-proxy/src/ ./src/
 
 # Set PYTHONPATH
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/dependencies:/app/src
 
 # Run the application
 CMD ["python", "src/app.py"]

@@ -3,11 +3,9 @@
 #   - locally, for running pytest on the host
 #   - in the toolbox image (see services/toolbox/Dockerfile), which is where
 #     bin/run_tests.sh executes the suite
-# The toolbox image already provides: Flask, openai, polib, pytest, pytest-mock.
+# The toolbox image already provides: Flask, chromadb, openai, polib, pytest,
+# pytest-mock.
 #
 # snowballstemmer: pure Python — installs fine on Python 3.14.
-# chromadb: requires onnxruntime which has no Python 3.14 wheel yet.
-#   → A minimal stub in tests/custom/chromadb/ shadows the real package so
-#     source modules can be imported; all actual DB calls are mocked.
 
 snowballstemmer~=3.0
