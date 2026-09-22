@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+> **Upgrade:** `docker compose build rag-proxy toolbox && docker compose up -d` (`--build` is required — the base image and the dependency layout both changed). No reindex needed: embeddings are unchanged.
+
+### Changed
+- **Base image Python 3.10 → 3.14** (`rag-proxy`, `toolbox`): dependencies now stay at `/dependencies` and are exposed via `PYTHONPATH` instead of being copied into `/usr/local/lib/python3.10/site-packages/` — a hardcoded path the 3.14 interpreter never reads, which left the images unable to `import flask` at runtime. The three places that override `PYTHONPATH` (`docker-compose.yml` for both services, `bin/run_tests.sh`) keep `/dependencies` on the path.
+- **`rag-proxy` Dockerfile**: torch now resolves from PyTorch's CPU index, dropping 16 `nvidia-*` wheels and `triton` that the default PyPI build pulls in transitively via `sentence-transformers`. The image shrinks from 6.37 GB to 1.66 GB. Embeddings are bit-identical to the CUDA-wheel build, so existing Chroma collections are unaffected.
+
 ## [6.4.0] - 2026-07-12
 
 ### Added
