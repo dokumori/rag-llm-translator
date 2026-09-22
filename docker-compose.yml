@@ -34,7 +34,7 @@ services:
       - .env
     environment:
       # Container-specific paths and settings (not from .env)
-      - PYTHONPATH=/app/src:/app/shared
+      - PYTHONPATH=/dependencies:/app/src:/app/shared
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - CHROMA_HOST=chroma
@@ -101,7 +101,7 @@ services:
       - POST_PROCESS_INPUT_DIR=/app/po/output
       - POST_PROCESSING_ENABLED=${POST_PROCESSING_ENABLED:-false}
       - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONPATH=/app/src:/app/shared:/app/services/rag-proxy/src:/app/bin/lib
+      - PYTHONPATH=/dependencies:/app/src:/app/shared:/app/services/rag-proxy/src:/app/bin/lib
       - PYTHONUNBUFFERED=1
       - MODELS_CONFIG_PATH=/app/config/models/models.yaml
       # Also uses from .env (via env_file):

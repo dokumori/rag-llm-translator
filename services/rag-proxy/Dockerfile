@@ -1,4 +1,4 @@
-FROM python:3.10-slim-bookworm@sha256:ac7bf2ae912299e41783a8e4eff07369dc6de3444bdc1cc29626a05241f957d7 AS builder
+FROM python:3.14-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56 AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY services/rag-proxy/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --target=/dependencies -r requirements.txt
 
 # --- Final Stage ---
-FROM python:3.10-slim-bookworm@sha256:ac7bf2ae912299e41783a8e4eff07369dc6de3444bdc1cc29626a05241f957d7
+FROM python:3.14-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56
 
 WORKDIR /app
 
@@ -21,8 +21,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Copy installed dependencies from builder
-COPY --from=builder /dependencies /usr/local/lib/python3.10/site-packages/
+# Copy installed dependencies from builder.
+# Kept at /dependencies and exposed via PYTHONPATH rather than copied into
+# /usr/local/lib/pythonX.Y/site-packages/, so a base-image Python version bump
+# cannot silently strand them in a path the new interpreter never reads.
+COPY --from=builder /dependencies /dependencies
 
 # --- Embedding Model Download Script ---
 # Kept permanently in the image so bin/download-model.sh can invoke it
@@ -37,7 +40,7 @@ COPY services/shared/scripts/delete_collections.py /app/delete_collections.py
 COPY services/rag-proxy/src/ ./src/
 
 # Set PYTHONPATH
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/dependencies:/app/src
 
 # Run the application
 CMD ["python", "src/app.py"]
