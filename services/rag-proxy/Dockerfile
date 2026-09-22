@@ -9,8 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-dev \
   && rm -rf /var/lib/apt/lists/*
 
+# Resolve torch from PyTorch's CPU index: the default PyPI build pulls ~1.5 GB
+# of nvidia/triton CUDA wheels this service never loads. Both indexes must be on
+# ONE pip run — a separate "install CPU torch first" step gets silently undone,
+# as two --target installs resolve independently. PEP 440 ranks X.Y.Z+cpu above
+# plain X.Y.Z, so torch takes the CPU wheel and the rest falls through to PyPI.
 COPY services/rag-proxy/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --target=/dependencies -r requirements.txt
+RUN pip install --no-cache-dir --target=/dependencies \
+  --index-url https://download.pytorch.org/whl/cpu \
+  --extra-index-url https://pypi.org/simple \
+  -r requirements.txt
 
 # --- Final Stage ---
 FROM python:3.14-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56
