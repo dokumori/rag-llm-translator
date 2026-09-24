@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Base image Python 3.10 → 3.14** (`rag-proxy`, `toolbox`): dependencies now stay at `/dependencies` and are exposed via `PYTHONPATH` instead of being copied into `/usr/local/lib/python3.10/site-packages/` — a hardcoded path the 3.14 interpreter never reads, which left the images unable to `import flask` at runtime. The three places that override `PYTHONPATH` (`docker-compose.yml` for both services, `bin/run_tests.sh`) keep `/dependencies` on the path.
 - **`rag-proxy` Dockerfile**: torch now resolves from PyTorch's CPU index, dropping 16 `nvidia-*` wheels and `triton` that the default PyPI build pulls in transitively via `sentence-transformers`. The image shrinks from 6.37 GB to 1.66 GB. Embeddings are bit-identical to the CUDA-wheel build, so existing Chroma collections are unaffected.
+- **`openai` SDK 2.x → 3.x** (`rag-proxy`, `toolbox`): no code changes needed. Request bodies (including the `max_tokens` / `max_completion_tokens` switch for reasoning models), usage extraction in `TokenTracker`, retry behaviour and error attributes are identical to 2.x against the same endpoint. The SDK now uses `httpx2` and `truststore`, so TLS verification goes through the OS certificate store. Responses relayed by `rag-proxy` gain a few extra `null` fields (`metadata`, `usage.*.text_tokens`, `image_tokens`).
 
 ## [6.4.0] - 2026-07-12
 
