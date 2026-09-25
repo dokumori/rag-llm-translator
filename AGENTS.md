@@ -1,26 +1,57 @@
-# Instructions for the AI
+# Agent instructions
 
-Adhere to the following rules:
+Drupal .po translation pipeline with RAG. Services (docker-compose):
+`rag-proxy` (Flask, OpenAI-compatible proxy that injects Chroma context),
+`toolbox` (CLI scripts: translate, evaluate, ingest), `litellm`, `chroma`.
+Shared Python code lives in `services/shared/src/core/`.
 
-## Your behaviour
-- Never omit any existing code or comment, unless it is absolutely necessary or makes sense.
-- Leave comments to explain the logic, especially for complex code.
+## Commands
+- Rebuild after any `requirements.txt` or Dockerfile change:
+  `docker compose up -d --build` (plain `up -d` reuses stale images).
+- Tests run inside the toolbox container, never on the host:
+  - `bin/run_tests.sh` (unit), `bin/run_tests.sh --run-integration` (stack must be up)
+  - `bin/run_bash_tests.sh` (shell scripts)
 
-## Code quality
-- Follow best practices for the languages, libraries and frameworks used, **except where specified below**.
-- Avoid using deprecated functions or features.
-- Use type hints and annotations where appropriate (especially in Python).
-- Use descriptive variable and function names.
-- Use consistent naming conventions.
-- **Check for Hard-coding:** When values are hard-coded, check other files to see if they should be defined as a shared constant, environment variable, or configuration setting.
-- **Logging:** Use the Python `logging` module for all operational output. Avoid `print()` except for CLI output.
-- **Error Handling:** Prioritize stability. Wrap external operations (I/O, Network, DB) in `try/except` blocks and log errors rather than crashing.
+## Non-obvious facts
+- Python deps are installed with `pip --target` into `/dependencies` and
+  exposed via `PYTHONPATH`, not site-packages. Anything that overrides
+  `PYTHONPATH` (docker-compose.yml, bin/run_tests.sh) must keep `/dependencies`.
+- The tests mock the OpenAI client and the embedding model. A green suite
+  does not prove an SDK, torch or sentence-transformers change is safe:
+  also exercise the real library.
+- Changing the embedding model means reindexing Chroma. For an upgrade of
+  its libraries (sentence-transformers, transformers, torch), first re-embed
+  the stored documents and compare against the vectors already in Chroma;
+  reindex only if they differ.
+- Renovate PRs have no CI. "Mergeable" only means no textual conflict.
 
-## Writing style
-- Use British English. This includes names and comments.
+## Safety
+- LLM calls cost money. Use the `dry-run-dummy` model for testing, and ask
+  before making real provider calls.
+- Never print, log or commit values from `.env`.
+- Ask before destructive actions against the main stack or `data/`
+  (e.g. `docker compose down -v`, deleting translations or collections).
 
-## Coding standards
-- **Indentation:** For python, adhere to PEP8.
- For other languages, follow the most common , industry-standard conventions for respective languages.
-- **Formatting:** Remove all unnecessary whitespaces (e.g., trailing whitespaces, spaces in blank lines).
-- **Shell Scripts:** Write Bash scripts (`#!/bin/bash`). Also follow https://google.github.io/styleguide/shellguide.html.
+## Git
+- Commit messages: Conventional Commits, `type(scope): subject`
+  (e.g. `fix(docker): …`, `docs(changelog): …`).
+- User-visible changes get an entry under `## [Unreleased]` in CHANGELOG.md,
+  one change per entry, so each can be reverted independently.
+
+## Code
+- Keep changes scoped to the task. Don't delete or rewrite unrelated code
+  or comments; if you remove something, say what and why.
+- Comments explain *why* (intent, constraints, gotchas), not what the code does.
+- Errors: catch specific exceptions where you can recover (retry, fallback,
+  clear message). Otherwise log with context and re-raise or exit non-zero.
+  Never `except Exception: pass`.
+- Use `logging` for operational output; `print()` only for CLI output.
+- No hard-coded URLs, model IDs, paths or limits: use `core.config.Config`,
+  `.env`, or `config/*.yaml`, and reuse existing constants.
+- Type hints on every new or changed function signature.
+- British English in identifiers, comments, docs and the changelog.
+- Python: PEP 8. Bash: `#!/bin/bash`, Google Shell Style Guide.
+
+## Before saying "done"
+- Run the relevant tests and quote failures verbatim.
+- State what you did *not* verify.
