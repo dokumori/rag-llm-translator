@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.4.1] - 2026-09-25
 
 > **Upgrade:** `docker compose build rag-proxy toolbox && docker compose up -d` (`--build` is required — the base image and the dependency layout both changed). No reindex needed: embeddings are unchanged.
 
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`rag-proxy` Dockerfile**: torch now resolves from PyTorch's CPU index, dropping 16 `nvidia-*` wheels and `triton` that the default PyPI build pulls in transitively via `sentence-transformers`. The image shrinks from 6.37 GB to 1.66 GB. Embeddings are bit-identical to the CUDA-wheel build, so existing Chroma collections are unaffected.
 - **`openai` SDK 2.x → 3.x** (`rag-proxy`, `toolbox`): no code changes needed. Request bodies (including the `max_tokens` / `max_completion_tokens` switch for reasoning models), usage extraction in `TokenTracker`, retry behaviour and error attributes are identical to 2.x against the same endpoint. The SDK now uses `httpx2` and `truststore`, so TLS verification goes through the OS certificate store. Responses relayed by `rag-proxy` gain a few extra `null` fields (`metadata`, `usage.*.text_tokens`, `image_tokens`).
 - **`sentence-transformers` 5.x → 6.x** (`rag-proxy`): no code changes and no reindex needed. Re-embedding all 8,695 documents in `app_glossary` and `app_tm` with `BAAI/bge-large-en-v1.5` produced vectors bit-identical to 5.x, and top-10 retrieval rankings are unchanged. chromadb's `SentenceTransformerEmbeddingFunction` works with 6.x as-is.
+- **AI agent instructions**: `.ai-rules` is now `AGENTS.md`, the file most coding agents load automatically, and a one-line `CLAUDE.md` imports it for Claude Code. The rules were rewritten around project-specific knowledge (build and test commands, the `/dependencies` layout, what the mocked test suite cannot catch), plus safety, git and verification guidelines.
 
 ## [6.4.0] - 2026-07-12
 
