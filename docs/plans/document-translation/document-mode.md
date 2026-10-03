@@ -7,7 +7,6 @@ the log wins; fix the plan.
 **Prerequisites:** `source-language-awareness.md` and
 `collections-presets.md` released. Does **not** depend on the
 `tmgmt-integration` branch, which stays unmerged.
-**Supersedes:** `document-mode-implementation-plan.md` (2026-07-22).
 
 ## Goal
 
@@ -25,6 +24,9 @@ with its markup intact; PO is an internal format only (Q3).
   documents (Q50); caching the brief (Q19); explicit prompt-cache markers
   (Q54); a background job service (Q49).
 - LLM-based quality checks; left to custom prompts (Q28).
+- Re-translating an updated document from a previous version
+  (`--previous-source` / `--previous-output`, Q61). Nice-to-have; v1 only
+  keeps extraction deterministic so it can be added later.
 
 ## Architecture (Q51)
 
@@ -73,7 +75,7 @@ Each milestone ends with green tests and a dry-run on the fixtures.
   Format from the extension unless `--format`; unknown extensions are
   rejected; output `page.md` → `page.ja.md`. One target language per run.
 
-### M2. Chunking, window and prompts (Q5, Q9, Q10, Q12, Q18, Q54)
+### M2. Chunking, window and prompts (Q5, Q9, Q10, Q12, Q18, Q54, Q62)
 
 - Units stay whole: never split below paragraph level.
 - Batches by token budget (default ~250 source tokens, configurable;
@@ -83,7 +85,8 @@ Each milestone ends with green tests and a dry-run on the fixtures.
 - Attribute values are batched separately and use `match.ui` retrieval
   (Q44).
 - Window: the 3 preceding source+target pairs (configurable), independent
-  of batch boundaries.
+  of batch boundaries. A paragraph that failed and kept its source goes in
+  with no target (`tgt: null`), never with its source as the target (Q62).
 - Prompt chain `custom/{lang}.document.md` → `{lang}.document.md` →
   `document.generic.md`; ship the generic one. Static parts first (system
   prompt, brief, instructions), then window, retrieval hits and items.
@@ -101,7 +104,7 @@ Each milestone ends with green tests and a dry-run on the fixtures.
   both token counts.
 - The brief is sent with every batch (`brief` field).
 
-### M4. Retrieval in the proxy (Q13, Q15, Q22)
+### M4. Retrieval in the proxy (Q13, Q15, Q22, Q64)
 
 Implements `match.document` from feature 2:
 
@@ -116,6 +119,8 @@ Implements `match.document` from feature 2:
   distance (character-level for CJK), keep those above the threshold
   (~70–75 %, configurable). Separate thresholds for `phrase` and `fuzzy`.
 - Every hit is logged with its collection and matcher.
+- `analyse_logs.py` reports hits per matcher and bases distance-threshold
+  recommendations on embedding (`match.ui`) hits only (Q64).
 
 ### M5. Consistency (Q29–Q33, Q38, Q38a, Q46)
 
@@ -138,7 +143,7 @@ Implements `match.document` from feature 2:
   rendering → keep both and mark the conflict in the file and in the
   end-of-run summary.
 
-### M6. Validation, failure and report (Q17, Q28, Q37, Q45)
+### M6. Validation, failure and report (Q17, Q28, Q37, Q45, Q63)
 
 - **Markup check:** same tag set and attributes (HTML), same placeholder
   set (Markdown `{n}`).
@@ -146,7 +151,10 @@ Implements `match.document` from feature 2:
   own median, with median absolute deviation, above a minimum length. Use
   a wide default band from `config/languages.yml` until enough paragraphs
   exist, or a TM-derived ratio when a TM exists.
-- **Failure:** markup mismatch, omission flag, or no usable response
+- **Echo check:** output equal to the source (whitespace- and
+  case-normalised) is flagged, except for code and below the omission
+  check's minimum length (Q63).
+- **Failure:** markup mismatch, omission or echo flag, or no usable response
   (API error after retries, unparseable, wrong count). Retry once, then
   keep the source paragraph.
 - **Report** `<name>.<lang>.report.md`: failed paragraphs (reason,
@@ -211,4 +219,3 @@ Implements `match.document` from feature 2:
   limits, what is never translated, custom document prompts, the report,
   term drafts, cost. README flag table.
 - `docs/9_cost_estimation.md`: document-mode estimate.
-- Add a "superseded by" header to `document-mode-implementation-plan.md`.

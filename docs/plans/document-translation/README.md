@@ -19,8 +19,6 @@ rest of plan 1 is viable.
 - [Decision log](document-translation-decisions.md): every design decision
   (Q-numbers) and why it was made. The plans cite it; where a plan and the
   log disagree, the log wins and the plan gets fixed.
-- [July draft](document-mode-implementation-plan.md): the 2026-07-22
-  plan, superseded by the three above. Kept for history.
 
 ## Keeping this up to date
 

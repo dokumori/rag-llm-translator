@@ -1,10 +1,10 @@
 # Decision Log: Document Translation Feature
 
 **Started:** 2026-10-01 (grilling session, round 1–9)
-**Status:** Design agreed (round 10). Plans written: `source-language-awareness.md`, `collections-presets.md`, `document-mode.md`
-**Supersedes:** parts of `document-mode-implementation-plan.md` (2026-07-22
-draft). Where the two disagree, this log wins. The draft remains the
-reference for anything this log does not cover.
+**Status:** Design agreed (round 10). Plans written: `source-language-awareness.md`, `collections-presets.md`, `document-mode.md`. Round 11 adds Q61–Q65; Q61 (re-translating an updated document) is a nice-to-have outside v1.
+**Supersedes:** `document-mode-implementation-plan.md` (2026-07-22
+draft). Reviewed in round 11 and deleted (Q66); it is in the git history
+(commit 5fbcccb).
 
 ## Goal
 
@@ -132,12 +132,56 @@ Acceptance: English-source output identical to today's.
 | Q58a | ICU pinning: install `libicu72` by name (bookworm keeps upstream ICU at 72.1; only Debian patches change), `PyICU==2.16.2`, base image pinned by digest; tests with expected word/sentence splits catch behaviour drift. No exact Debian version pin (old versions are removed) and no ICU build from source. ICU is not semver: every regular release bumps the major. |
 | Q56 | HTML adapter **subclasses the `html2po` parser**: excluded elements and translatable attributes from config; translate-toolkit pinned; guard test fails if upstream class lists change. |
 
+## Round 11 (2026-10-02, July draft review)
+
+Ideas from the July draft that rounds 1–10 had not covered.
+
+| # | Decision |
+|---|---|
+| Q61 | **Re-translating an updated document: nice-to-have, not in v1.** Requirements recorded below so the v1 design doesn't block it. |
+| Q61a | Edited and new units get the **old translated document** as context; for a long document, a summary of it (same idea as the brief, Q4/Q50). Not a per-unit hint: a new unit has no old translation, and surrounding paragraphs may not carry enough. |
+| Q61b | Mismatched old files with `-y`: stop with an error. |
+| Q61c | Reused units count as **approved**. They fill the window like units translated in this run (e.g. units 7–9 reused → they are unit 10's window). They feed the term record; since they produce no model response, their terms come from elsewhere (e.g. the Q61a summary listing the old translation's key terms). The final pass never edits a reused unit, so a term with an approved rendering takes it as canonical unless the glossary says otherwise; a glossary/approved conflict is listed in the report, not fixed. |
+| Q62 | Window entry for a paragraph that failed and kept its source (Q45): send the source with no target (`tgt: null`), so the model never sees source text presented as a translation. |
+| Q63 | Echo check: a unit whose output equals its source (whitespace- and case-normalised) fails like an omission (Q45). Skipped for code and below the omission check's minimum length, so short names and headings like "Drupal" pass. The omission ratio alone misses this between similar languages (en→de ratio ≈ 1). |
+| Q64 | `analyse_logs.py` reports hits per matcher. Distance-threshold recommendations use embedding (`match.ui`) hits only; `lexical` hits have no distance and `phrase`/`fuzzy` have their own thresholds, so mixing them would skew the numbers. |
+| Q65 | Errors and warnings in document mode are logged the same way as in UI-string translation (terminal, via `logging`); no separate log file. The report (Q45) remains the per-document record of failures. |
+| Q66 | July draft deleted after the round 11 review rather than kept with a "superseded" header; the log and the three plans now cover everything it had. Supersedes the "kept" part of Q55. |
+
+### Q61: re-translating an updated document (later)
+
+Each run is independent; the only state kept is the resume checkpoint
+(Q49), which covers an interrupted run, not a finished one. So a run can
+only see a previous version if the user supplies it.
+
+- **Approach:** the user passes the previous version:
+  `bin/translate_doc.sh … --previous-source old.md --previous-output
+  old.ja.md new.md`. Shorthands later if needed.
+- **Pairing:** extract the old source and the old output in the same run
+  (same converter version) and pair them unit by unit. Units of the new
+  source that match an old source unit exactly reuse the old output's
+  translation, with no model call. Reading the old output, not stored
+  model output, means reviewer edits survive.
+- **Edited and new units:** translated by the model, with the old
+  translated document as context (Q61a). A new unit has no old
+  translation of its own, and the window (a few surrounding paragraphs)
+  doesn't guarantee enough information, so the old translation as a whole
+  is what carries the established terminology and register.
+- **Mismatched old files** (unit counts differ, or the reviewer changed
+  the markup structure so units can't be paired): flag it and ask whether
+  to run as a new translation session. Yes → ignore the old files and
+  translate everything; no → stop. With `-y` (no prompt): stop with an
+  error (Q61b).
+- **Rejected:** a sidecar per document (grows over time; renaming a file,
+  e.g. adding `-final`, silently breaks the link) and reuse through a TM
+  collection (translations reused outside their document's context,
+  grows indefinitely, misses reviewer edits).
+- **v1 constraint:** extraction stays deterministic for a given converter
+  version, so pairing works when this is added.
+
 ## Open questions
 
-None open as of round 10. Q50, Q43a, Q40a and the topics not yet visited in
-round 9 (acceptance criteria, prompt caching, docs/changelog, the July draft)
-are settled in the "Round 10" table above. Awaiting the user's confirmation
-of a shared understanding before writing the three feature plans (Q55).
+None open as of round 11.
 
 ### Facts checked
 
