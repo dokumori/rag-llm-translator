@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`models.example.yaml`**: Google and OpenAI models updated to the current lineup. Gemini 2.5 Flash-Lite / Flash / Pro → `gemini-3-5-flash-lite`, `gemini-3-8-flash`, `gemini-4-argon`; GPT-4.1 Nano / Mini / GPT-4.1 / o3 → `gpt-6-luna`, `gpt-5-4-mini`. OpenAI shuts down `gpt-4.1-nano` on 2026-10-23 and `o3` on 2026-12-11. Existing `models.yaml` files keep the old ids until re-run through setup or edited by hand.
+
 ### Fixed
 - **`core.utils`**: GPT-6 models (`gpt-6-*`) are now treated as reasoning models, so `rag-proxy` and `po_translator` send `max_completion_tokens` and omit `temperature`. Previously every request to them failed with a 400 for sending `max_tokens`.
 
