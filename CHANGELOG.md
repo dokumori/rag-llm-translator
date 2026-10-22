@@ -5,13 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.5.0] - 2026-10-22
+
+> **Upgrade:** re-run `bin/setup.sh` (or update `config/models/models.yaml` and regenerate the LiteLLM config), then `docker compose restart litellm rag-proxy`. `gpt-4.1-nano` stops working after 2026-10-23.
+
+### Added
+- **`models.yaml`**: per-model `additional_drop_params`, passed through to LiteLLM.
+- **`models.example.yaml`**: Claude Haiku, Sonnet and Opus 5.5.
 
 ### Changed
-- **`models.example.yaml`**: Google and OpenAI models updated to the current lineup. Gemini 2.5 Flash-Lite / Flash / Pro → `gemini-3-5-flash-lite`, `gemini-3-8-flash`, `gemini-4-argon`; GPT-4.1 Nano / Mini / GPT-4.1 / o3 → `gpt-6-luna`, `gpt-5-4-mini`. OpenAI shuts down `gpt-4.1-nano` on 2026-10-23 and `o3` on 2026-12-11. Existing `models.yaml` files keep the old ids until re-run through setup or edited by hand.
+- **`models.example.yaml`**: Gemini 2.5 → `gemini-3-5-flash-lite`, `gemini-3-8-flash`, `gemini-4-argon`; GPT-4.1 / o3 → `gpt-6-luna`, `gpt-5-4-mini`.
 
 ### Fixed
-- **`core.utils`**: GPT-6 models (`gpt-6-*`) are now treated as reasoning models, so `rag-proxy` and `po_translator` send `max_completion_tokens` and omit `temperature`. Previously every request to them failed with a 400 for sending `max_tokens`.
+- **`core.utils`**: `gpt-6-*` models are treated as reasoning models; requests to them no longer fail with a 400.
+- **`models.example.yaml`**: Claude Opus 4.7 no longer fails with a 400 for `temperature`.
+- **`models.example.yaml`**: Claude Haiku 4.5 and Opus 4.7 pricing updated to current rates.
 
 ## [6.4.1] - 2026-09-25
 
