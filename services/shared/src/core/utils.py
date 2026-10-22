@@ -69,13 +69,13 @@ def find_po_files(directory: str, recursive: bool = False) -> List[str]:
 # O-series / reasoning-model detection
 # ---------------------------------------------------------------------------
 
-# OpenAI reasoning models (o1, o3, o4) and GPT-5 family require two special
-# accommodations vs. standard chat models:
+# OpenAI reasoning models (o1, o3, o4) and the GPT-5 and GPT-6 families require
+# two special accommodations vs. standard chat models:
 #   1. They reject temperature values other than 1 with a 400 error.
 #   2. They use max_completion_tokens instead of max_tokens.
 # We detect them by prefix match on the model ID.  LiteLLM does NOT translate
 # these automatically, so we handle both explicitly.
-_REASONING_MODEL_PREFIXES = ("o1", "o1-", "o3", "o3-", "o4", "o4-", "gpt-5")
+_REASONING_MODEL_PREFIXES = ("o1", "o1-", "o3", "o3-", "o4", "o4-", "gpt-5", "gpt-6")
 
 
 def is_openai_reasoning_model(model_id: str) -> bool:

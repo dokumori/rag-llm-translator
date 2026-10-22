@@ -83,7 +83,7 @@ docker compose up -d
 | amazee.ai | ✅ | Use the `Custom` option in the setup wizard |
 | OpenAI GPT-4o | ✅ | — |
 | OpenAI o-series / GPT-5 | ✅ | LiteLLM auto-handles temperature / max_completion_tokens |
-| **Anthropic Claude** | ✅ | Non-OpenAI API — handled by LiteLLM |
+| **Anthropic Claude** | ✅ | Non-OpenAI API — handled by LiteLLM; newer models need `additional_drop_params: [temperature]` (see Field Reference) |
 | **Google Gemini** | ✅ | Non-OpenAI API — handled by LiteLLM |
 | Mistral | ✅ | — |
 | Meta Llama (via hosts) | ✅ | Together AI, Groq, Fireworks — use the `Custom` option |
@@ -136,6 +136,7 @@ docker compose restart litellm
 | `api_base_env` | for `custom`/`ollama` | Name of the env var holding the base URL |
 | `is_dry_run` | dry-run only | Set `true` for the no-API-calls sentinel |
 | `pricing` | optional | `prompt_per_1k_tokens` / `completion_per_1k_tokens` in USD |
+| `additional_drop_params` | optional | Request parameters LiteLLM must strip for this model, e.g. `[temperature]` for Claude models that reject sampling parameters (Opus 4.7, Haiku/Sonnet/Opus 5.5). Copied into the LiteLLM config as-is |
 
 ---
 

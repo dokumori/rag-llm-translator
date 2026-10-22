@@ -185,6 +185,42 @@ class TestGenerateLitellmConfig:
         cfg = self._load_yaml(out)
         assert cfg["litellm_settings"]["drop_params"] is True
 
+    # additional_drop_params: per-model parameter stripping. Callers always
+    # send temperature=0, which Opus 4.7 and the Claude 5.5 models reject with
+    # a 400; LiteLLM's global drop_params doesn't catch it because its model
+    # map still marks temperature as supported for them.
+
+    def test_additional_drop_params_copied(self, tmp_path):
+        """A model's additional_drop_params list reaches its litellm_params.
+
+        Without it, every translation request to these Claude models fails
+        with a 400 for sending temperature.
+        """
+        src = write_yaml(tmp_path / "models.yaml", {"models": [
+            make_model("claude-opus-5-5", "Claude Opus 5.5",
+                       additional_drop_params=["temperature"]),
+        ]})
+        out = str(tmp_path / "config.yaml")
+        generate_litellm_config(src, out)
+
+        params = self._load_yaml(out)["model_list"][0]["litellm_params"]
+        assert params["additional_drop_params"] == ["temperature"]
+
+    def test_additional_drop_params_absent_by_default(self, tmp_path):
+        """Models without the field get no additional_drop_params key.
+
+        Older Claude models (e.g. Sonnet 4.6) accept temperature=0, and the
+        pipeline relies on it for deterministic translations.
+        """
+        src = write_yaml(tmp_path / "models.yaml", {"models": [
+            make_model("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        ]})
+        out = str(tmp_path / "config.yaml")
+        generate_litellm_config(src, out)
+
+        params = self._load_yaml(out)["model_list"][0]["litellm_params"]
+        assert "additional_drop_params" not in params
+
     def test_output_file_created(self, tmp_path):
         """Output file is created even when parent dir doesn't exist yet."""
         src = write_yaml(tmp_path / "models.yaml", {"models": []})
@@ -232,6 +268,22 @@ class TestGenerateModelsYaml:
         assert "gemini-3.5-flash" not in ids
         assert "gpt-4o" not in ids
         assert "dry-run-dummy" in ids
+
+    def test_additional_drop_params_kept(self, tmp_path):
+        """setup.sh's models.yaml keeps additional_drop_params from the template.
+
+        If generate dropped the field, regenerating models.yaml would silently
+        re-break the Claude models that reject temperature.
+        """
+        example = write_yaml(tmp_path / "models.example.yaml", {"models": [
+            make_model("claude-opus-5-5", "Claude Opus 5.5",
+                       additional_drop_params=["temperature"]),
+        ]})
+        out = str(tmp_path / "models.yaml")
+        generate_models_yaml(example, out, providers=["anthropic"])
+
+        model = self._load(out)["models"][0]
+        assert model["additional_drop_params"] == ["temperature"]
 
     def test_multiple_providers(self, example_file, tmp_path):
         """anthropic + google returns claude-* and gemini-* models."""

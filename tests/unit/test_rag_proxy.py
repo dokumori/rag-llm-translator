@@ -542,6 +542,7 @@ def test_o_series_model_omits_temperature(mock_config, mock_rag, mock_get_client
     "o4-mini",
     "gpt-5",
     "gpt-5.5",
+    "gpt-6-luna",
 ])
 @patch('app.get_upstream_client')
 @patch('app.perform_rag_lookup')
@@ -616,6 +617,7 @@ def test_o_series_model_uses_max_completion_tokens(mock_config, mock_rag, mock_g
     "o4-mini",
     "gpt-5",
     "gpt-5.5",
+    "gpt-6-luna",
 ])
 @patch('app.get_upstream_client')
 @patch('app.perform_rag_lookup')

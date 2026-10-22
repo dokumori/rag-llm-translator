@@ -115,7 +115,7 @@ def generate_litellm_config(models_yaml_path: str, output_path: str) -> None:
         prefix = _PROVIDER_PREFIX.get(provider, provider)
         model_id = m.get("model", m["id"])
 
-        params: dict[str, str] = {
+        params: dict[str, Any] = {
             # Only prepend the provider prefix when model_id doesn't already
             # include one (e.g. "gemini/gemini-2.5-flash" must not become
             # "gemini/gemini/gemini-2.5-flash").
@@ -126,6 +126,12 @@ def generate_litellm_config(models_yaml_path: str, output_path: str) -> None:
             params["api_key"] = f"os.environ/{m['api_key_env']}"
         if m.get("api_base_env"):
             params["api_base"] = f"os.environ/{m['api_base_env']}"
+        # The global drop_params only drops what LiteLLM's model map marks as
+        # unsupported, and that map still lists temperature for Claude models
+        # that reject it with a 400 (Opus 4.7 and the 5.5 generation). Callers
+        # send temperature=0, so those entries drop it explicitly.
+        if m.get("additional_drop_params"):
+            params["additional_drop_params"] = list(m["additional_drop_params"])
 
         model_list.append({
             "model_name": m["id"],

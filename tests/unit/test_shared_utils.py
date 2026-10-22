@@ -157,10 +157,13 @@ class TestIsOpenAIReasoningModel:
         "o4-mini",
         "gpt-5",
         "gpt-5-turbo",
+        "gpt-6-luna",
+        "gpt-6-1-sol",
         # Case-insensitive: identifiers can arrive with varied casing
         "O1",
         "O3-Mini",
         "GPT-5",
+        "GPT-6-Luna",
     ])
     def test_recognised_reasoning_models(self, model_id: str):
         """Models matching a known O-series prefix must return True."""
@@ -216,6 +219,18 @@ class TestBuildLlmCallKwargs:
     def test_gpt5_family_treated_as_reasoning_model(self):
         """GPT-5 family must follow the same O-series rules."""
         kwargs = build_llm_call_kwargs("gpt-5-turbo", self._MESSAGES, 512)
+
+        assert "temperature" not in kwargs
+        assert kwargs["max_completion_tokens"] == 512
+        assert "max_tokens" not in kwargs
+
+    def test_gpt6_family_treated_as_reasoning_model(self):
+        """GPT-6 family must follow the same O-series rules.
+
+        Regression test: gpt-6-luna rejected max_tokens with a 400 while the
+        prefix list stopped at gpt-5.
+        """
+        kwargs = build_llm_call_kwargs("gpt-6-luna", self._MESSAGES, 512)
 
         assert "temperature" not in kwargs
         assert kwargs["max_completion_tokens"] == 512
