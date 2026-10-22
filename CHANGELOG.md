@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`core.utils`**: GPT-6 models (`gpt-6-*`) are now treated as reasoning models, so `rag-proxy` and `po_translator` send `max_completion_tokens` and omit `temperature`. Previously every request to them failed with a 400 for sending `max_tokens`.
+
 ## [6.4.1] - 2026-09-25
 
 > **Upgrade:** `docker compose build rag-proxy toolbox && docker compose up -d` (`--build` is required — the base image and the dependency layout both changed). No reindex needed: embeddings are unchanged.
